@@ -1,0 +1,20 @@
+{
+  "name": "supermax",
+  "version": "1.0.0",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/epologee/supermax"
+  },
+  "@pika/pack": {
+    "pipeline": [
+      ["@pika/plugin-standard-pkg", {"exclude": ["__tests__/*"]}],
+      ["@pika/plugin-build-web"]
+    ]
+  },
+  "devDependencies": {
+    "@pika/plugin-standard-pkg": "*",
+    "@pika/plugin-build-web": "*"
+  },
+  "scripts": {}
+}
