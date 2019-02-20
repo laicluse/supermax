@@ -1,0 +1,46 @@
+@import "stacks_variables";
+
+.stacks {
+  .stacks-view.debug {
+    border-right: 1px dotted grey;
+
+    @for $col from 1 through 5 {
+      &.min-#{$col} {
+        @for $max from 1 through $max-columns {
+          &:after {
+            content: "min-#{$col}";
+            display: inline-block;
+            color: black;
+            font-style: italic;
+            font-size: 7pt;
+          }
+
+          &.max-#{$max} {
+            &:after {
+              padding: 4px;
+              content: "min-#{$col} - max-#{$max}";
+              position: absolute;
+              top: 11px;
+              right: 0;
+            }
+          }
+        }
+      }
+    }
+
+    @for $col from 1 through $max-columns {
+      &.visible-#{$col} {
+        &:before {
+          padding: 4px;
+          content: "size: #{$col}";
+          display: block;
+          color: black;
+          font-size: 7pt;
+          position: absolute;
+          top: 0;
+          right: 0;
+        }
+      }
+    }
+  }
+}
