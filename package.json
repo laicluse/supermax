@@ -1,12 +1,12 @@
 {
-  "name": "@epologee/supermax",
+  "name": "@laicluse/supermax",
   "version": "1.0.0",
   "description": "Framework-free responsive cell layout primitives for left-to-right drilldown interfaces.",
   "type": "module",
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/epologee/supermax.git"
+    "url": "https://github.com/laicluse/supermax.git"
   },
   "exports": {
     ".": {

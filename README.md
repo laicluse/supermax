@@ -7,7 +7,7 @@ The public package surface is intentionally small: `src/cell-collection.js` is t
 ## Usage
 
 ```js
-import { CellCollection } from "@epologee/supermax";
+import { CellCollection } from "@laicluse/supermax";
 
 const cells = new CellCollection([
   { id: "world", title: "Board", min: 8, max: 64, zoomable: true },

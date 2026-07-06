@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { CellCollection, CellProxy } from "../src/cell-collection.js";
 
-const packageApi = await import("@epologee/supermax");
+const packageApi = await import("@laicluse/supermax");
 assert.equal(packageApi.CellCollection, CellCollection);
 assert.equal(packageApi.CellProxy, CellProxy);
 assert.equal(globalThis.Supermax.CellCollection, CellCollection);
