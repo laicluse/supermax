@@ -1,23 +1,33 @@
 {
-  "name": "supermax",
+  "name": "@epologee/supermax",
   "version": "1.0.0",
+  "description": "Framework-free responsive cell layout primitives for left-to-right drilldown interfaces.",
+  "type": "module",
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/epologee/supermax"
+    "url": "https://github.com/epologee/supermax.git"
   },
-  "@pika/pack": {
-    "pipeline": [
-      ["@pika/plugin-standard-pkg", {"exclude": ["__tests__/*"]}],
-      ["@pika/plugin-build-web"]
-    ]
+  "exports": {
+    ".": {
+      "import": "./src/cell-collection.js",
+      "default": "./src/cell-collection.js"
+    },
+    "./cell-collection": "./src/cell-collection.js"
   },
-  "devDependencies": {
-    "@pika/plugin-standard-pkg": "*",
-    "@pika/plugin-build-web": "*"
+  "files": [
+    "src/cell-collection.js",
+    "LICENSE",
+    "README.md"
+  ],
+  "scripts": {
+    "test": "node test/smoke.test.js",
+    "test:node": "node test/smoke.test.js",
+    "test:bun": "bun test/smoke.test.js",
+    "check": "node test/smoke.test.js && bun test/smoke.test.js"
   },
-  "scripts": {},
-  "dependencies": {
-    "jquery": "^3.3.1"
-  }
+  "engines": {
+    "node": ">=22"
+  },
+  "packageManager": "pnpm@11.10.0+sha512.0b7f8b98060031904c017e3a41eb187a16d40eeb829b95c4f8cb03681761fc4ab53dd219115b9b447f4dce1a05a214764461e7d3703392a9f32f9511ce8c86c8"
 }
