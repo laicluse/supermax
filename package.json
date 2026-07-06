@@ -21,10 +21,12 @@
     "README.md"
   ],
   "scripts": {
+    "build:docs": "node scripts/build-docs.mjs",
+    "check:docs": "node scripts/build-docs.mjs --check",
     "test": "node test/smoke.test.js",
     "test:node": "node test/smoke.test.js",
     "test:bun": "bun test/smoke.test.js",
-    "check": "node test/smoke.test.js && bun test/smoke.test.js"
+    "check": "node scripts/build-docs.mjs --check && node test/smoke.test.js && bun test/smoke.test.js"
   },
   "engines": {
     "node": ">=22"

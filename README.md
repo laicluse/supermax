@@ -2,6 +2,8 @@
 
 Framework-free responsive cell layout primitives for left-to-right drilldown interfaces.
 
+The public package surface is intentionally small: `src/cell-collection.js` is the source of truth, and hosts bundle that package into their own artifacts when they need a standalone browser file. A GitHub Pages demo lives in `docs/` outside the package files.
+
 ## Usage
 
 ```js
@@ -22,6 +24,7 @@ The package also assigns `globalThis.Supermax` for hosts that bundle the module 
 Supermax is package-manager agnostic. The package is developed with pnpm as the primary lockfile owner, and the same smoke test also runs under Bun:
 
 ```sh
+corepack pnpm run build:docs
 corepack pnpm test
 bun run test:bun
 ```
