@@ -19,6 +19,10 @@ const layout = cells.distribute(16);
 
 The package also assigns `globalThis.Supermax` for hosts that bundle the module into a browser artifact and still need a global compatibility surface.
 
+## Application design
+
+The allocator deliberately does not render an interface, but a Supermax application still follows a shared interaction model. Read the [application-shell guide](docs/application-shell.md) before adapting an existing application. It defines the cell hierarchy, cell anatomy, control placement, width semantics, routing, and cold-start behavior that make separate consumers behave like the same system.
+
 ## Development
 
 Supermax is package-manager agnostic. The package is developed with pnpm as the primary lockfile owner, and the same smoke test also runs under Bun:

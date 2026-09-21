@@ -17,6 +17,7 @@
   },
   "files": [
     "src/cell-collection.js",
+    "docs/application-shell.md",
     "LICENSE",
     "README.md"
   ],
