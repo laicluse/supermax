@@ -80,6 +80,7 @@ export class Navigator {
 		this.rowStarts = new Map();
 		this.sizes = { width: new Map(), height: new Map() };
 		this.root = this.createOccurrence(this.rootDestination, null, 0, null);
+		if (isSplit(this.definitionOf(this.rootDestination))) this.openDefaults(this.root, null);
 		this.focused = this.root.id;
 	}
 

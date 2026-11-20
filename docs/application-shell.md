@@ -105,7 +105,7 @@ When cells no longer fit, a cell with no [kept cell](#kept-cells) above it leave
 
 ## Rows
 
-The root chain can contain several splits separated by full-height cells. Each split owns its row heights and horizontal row windows; the cell between them spans the workspace height. A split cannot open inside another split's row.
+The root chain can contain several splits separated by full-height cells. Each split owns its row heights and horizontal row windows; the cell between them spans the workspace height. A split cannot open inside another split's row. The root itself may be a split: it opens with its rows, and a `beside-split` cell opened from one of them starts the rest of the root chain beside it, so a lower row can run below several cells of the upper one.
 
 | Full-height workspace | Short workspace |
 | --- | --- |
