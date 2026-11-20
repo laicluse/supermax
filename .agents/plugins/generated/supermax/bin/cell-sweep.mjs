@@ -68,9 +68,12 @@ function launch(profile) {
 function connect(endpoint) {
 	const socket = new WebSocket(endpoint);
 	const waiting = new Map();
-	let sequence = 0;
+	const requests = new Map();
+	let sequence = 0, lastRequest = 0;
 	socket.addEventListener("message", (event) => {
 		const message = JSON.parse(event.data);
+		if (message.method === "Network.requestWillBeSent" && !["EventSource", "WebSocket"].includes(message.params.type)) { requests.set(message.params.requestId, Date.now()); lastRequest = Date.now(); }
+		if (message.method === "Network.loadingFinished" || message.method === "Network.loadingFailed") { requests.delete(message.params.requestId); lastRequest = Date.now(); }
 		const pending = waiting.get(message.id);
 		if (!pending) return;
 		waiting.delete(message.id);
@@ -87,8 +90,16 @@ function connect(endpoint) {
 		waiting.set(id, { done, failed, method });
 		socket.send(JSON.stringify({ id, method, params, ...(sessionId ? { sessionId } : {}) }));
 	});
+	// allow-comment: a host may open more cells once its own data arrives, so a page counts as loaded only after its requests have been quiet for a while. A page that polls never goes quiet and falls back on its content standing still; a request that hangs past the deadline is reported, because what it would have opened is unknown.
+	const quiet = async (deadline, span = 700) => {
+		while (Date.now() < deadline && (requests.size > 0 || Date.now() - lastRequest < span)) await new Promise((done) => setTimeout(done, 100));
+		const hanging = [...requests.values()].filter((started) => Date.now() - started > 5000).length;
+		requests.clear();
+		return hanging;
+	};
+	const requested = () => lastRequest;
 	return new Promise((opened, failed) => {
-		socket.addEventListener("open", () => opened({ send, close: () => socket.close() }));
+		socket.addEventListener("open", () => opened({ send, quiet, requested, close: () => socket.close() }));
 		socket.addEventListener("error", () => failed(new Abort("Could not reach Chrome's DevTools endpoint")));
 	});
 }
@@ -121,8 +132,8 @@ function encode(frames, target, format) {
 	if (result.status !== 0) fail(`ffmpeg failed for ${target}:\n${result.stderr}`);
 }
 
-const LOADED = `new Promise((done) => {
-	const deadline = performance.now() + 10000;
+const loaded = (budget) => `new Promise((done) => {
+	const deadline = performance.now() + ${Math.max(0, budget)};
 	let previous = null, since = performance.now();
 	(function sample() {
 		const content = document.body.innerText.length + ":" + document.images.length + ":" + [...document.images].filter((image) => image.complete).length;
@@ -192,12 +203,13 @@ async function run(config) {
 	const out = resolve(config.out);
 	mkdirSync(out, { recursive: true });
 	const scratch = mkdtempSync(join(tmpdir(), "cell-sweep-"));
-	const report = { clips: [], splits: [], missed: [] };
+	const report = { clips: [], splits: [], missed: [], unsettled: [] };
 	let chrome = null;
 	try {
 		const started = launch(join(scratch, "profile"));
 		chrome = started.chrome;
 		await record(config, await started.endpoint, out, scratch, report);
+		if (report.unsettled.length > 0) fail(`${report.unsettled.join(", ")} still had requests in flight after 10 seconds, so a cell that opens later may have no clip`);
 		if (report.missed.length > 0) fail(`No clip for ${report.missed.map((cell) => `${cell.title} (${cell.reason})`).join(", ")}`);
 		if (report.clips.length === 0) fail("Nothing was recorded: the route has no cell with a width of its own.");
 	} finally {
@@ -225,9 +237,18 @@ async function record(config, endpoint, out, scratch, report) {
 		const { errorText } = await page("Page.navigate", { url: config.url });
 		if (errorText) fail(`${config.url} did not load: ${errorText}`);
 		if (!await evaluate(SETTLED)) fail(`No Supermax workspace appeared at ${config.url}`);
-		await evaluate(LOADED);
+		const deadline = Date.now() + 10000;
+		let hanging = 0;
+		while (true) {
+			hanging = await browser.quiet(deadline);
+			const before = browser.requested();
+			await evaluate(loaded(deadline - Date.now()));
+			if (browser.requested() === before || Date.now() >= deadline) break;
+		}
+		if (hanging > 0 && !report.unsettled.includes(config.url)) report.unsettled.push(config.url);
 	};
 	await page("Page.enable");
+	await page("Network.enable");
 	const cap = config["elastic-max"];
 	const target = (cell) => cell.max ?? Math.max(cap, cell.min);
 	let route = null, room = 1512;
