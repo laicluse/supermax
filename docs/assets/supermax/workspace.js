@@ -911,6 +911,7 @@ export class Workspace extends EventTarget {
 		for (const entry of this.chains.values()) entry.strip.destroy();
 		this.cells.clear();
 		this.leavingCells.clear();
+		this.origins.clear();
 		this.chains.clear();
 		this.rows.clear();
 		this.element.replaceChildren();

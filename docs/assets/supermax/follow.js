@@ -24,7 +24,7 @@ export function projectionAlong(element, axis, { perspective, vanish }) {
 	return { shift, reach: Math.max(0, reach) };
 }
 
-const frames = new Map();
+const frames = new WeakMap();
 
 function depthOf(element) {
 	let depth = 0;
@@ -32,19 +32,24 @@ function depthOf(element) {
 	return depth;
 }
 
-export function follow(owner, step) {
+// allow-comment: `detached` runs once when the owner leaves the document, because a detached owner gets no more steps.
+export function follow(owner, step, { detached = null } = {}) {
 	const view = owner.ownerDocument.defaultView;
 	let frame = frames.get(view);
 	if (!frame) {
 		frame = { steps: new Map(), handle: null };
 		frames.set(view, frame);
 	}
-	frame.steps.set(owner, step);
+	const run = { step, detached };
+	frame.steps.set(owner, run);
 	const tick = () => {
 		const deepestFirst = [...frame.steps].sort(([a], [b]) => depthOf(b) - depthOf(a));
 		for (const [element, run] of deepestFirst) {
 			if (frame.steps.get(element) !== run) continue;
-			if (!element.isConnected || run() === false) frame.steps.delete(element);
+			if (!element.isConnected) {
+				frame.steps.delete(element);
+				run.detached?.();
+			} else if (run.step() === false) frame.steps.delete(element);
 		}
 		frame.handle = frame.steps.size ? view.requestAnimationFrame(tick) : null;
 	};

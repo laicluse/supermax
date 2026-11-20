@@ -177,12 +177,14 @@ export class ModalHost {
 			this.constrain(dialog, layer);
 			this.workspace.scheduleOrigins();
 		};
-		const stop = () => {
-			this.workspace.document.removeEventListener("pointermove", move);
-			this.workspace.document.removeEventListener("pointerup", stop);
-		};
-		this.workspace.document.addEventListener("pointermove", move);
-		this.workspace.document.addEventListener("pointerup", stop);
+		this.dragging?.abort();
+		const controller = new AbortController();
+		this.dragging = controller;
+		const stop = () => controller.abort();
+		const options = { signal: controller.signal };
+		this.workspace.document.addEventListener("pointermove", move, options);
+		this.workspace.document.addEventListener("pointerup", stop, options);
+		this.workspace.document.addEventListener("pointercancel", stop, options);
 	}
 
 	settled(modal) {
@@ -212,6 +214,7 @@ export class ModalHost {
 		if (!modal) return;
 		const workspace = this.workspace;
 		this.current = null;
+		this.dragging?.abort();
 		this.resizeObserver?.disconnect();
 		this.resizeObserver = null;
 		modal.slot.cancel();

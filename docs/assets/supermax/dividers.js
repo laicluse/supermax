@@ -76,6 +76,7 @@ export class DividerLayer {
 
 	remove(divider) {
 		divider.element.ownerDocument.defaultView.clearTimeout(divider.resetTimer);
+		divider.dragging?.abort();
 		unfollow(divider.element);
 		divider.element.remove();
 	}
@@ -165,7 +166,9 @@ export class DividerLayer {
 		const drag = { pointerId: event.pointerId, origin: vertical ? event.clientX : event.clientY };
 		const original = new Map(parts.map((entry) => [entry.id, this.workspace.navigator.sizeOf(entry.id, divider.axis)]));
 		const touched = new Set();
+		divider.dragging?.abort();
 		const controller = new AbortController();
+		divider.dragging = controller;
 		const move = (moveEvent) => {
 			if (moveEvent.pointerId !== drag.pointerId) return;
 			const sizes = followEdge(parts, edge, start + (vertical ? moveEvent.clientX : moveEvent.clientY) - drag.origin, room);
@@ -183,5 +186,6 @@ export class DividerLayer {
 		view.addEventListener("pointermove", move, { signal: controller.signal });
 		view.addEventListener("pointerup", stop, { signal: controller.signal });
 		view.addEventListener("pointercancel", stop, { signal: controller.signal });
+		divider.handle.addEventListener("lostpointercapture", stop, { signal: controller.signal });
 	}
 }

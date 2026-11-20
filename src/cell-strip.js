@@ -8,6 +8,9 @@ export const STILL = 2;
 
 const depthOf = (id) => String(id).split("/").length;
 
+// allow-comment: a cell element belongs to the strip that placed it last; an earlier strip that still runs or closes must not pull it back.
+const owners = new WeakMap();
+
 // allow-comment: the longest run of staying boxes already in their wanted order stays put, because moving a node resets the scroll of everything inside it.
 function inOrder(positions) {
 	const tails = [];
@@ -125,6 +128,7 @@ export class CellStrip {
 			if (!Number.isFinite(entry.width) || (entry.width < 0 || (entry.width === 0 && !entry.folded))) throw new Error(`Invalid cell width: ${entry.id}`);
 			ids.add(entry.id);
 		}
+		for (const entry of entries) this.claim(entry.element);
 		const firstPaint = !this.initialized;
 		this.initialized = true;
 		if (!animate || (!interactive && this.reducedMotion.matches) || this.duration <= 0 || (firstPaint && !arrive)) {
@@ -292,7 +296,7 @@ export class CellStrip {
 		for (const move of moves) move.run();
 		if (!this.motion) this.slide(previous, timing(start));
 		this.step();
-		if (this.driven.size || this.geometry.length) follow(this.strip, () => this.step());
+		if (this.driven.size || this.geometry.length) follow(this.strip, () => this.step(), { detached: () => this.detached() });
 		for (const participant of participants) participant.animate?.((element, frames) => {
 			const animation = element.animate(frames, { ...this.roomTiming(), fill: "both" });
 			this.geometry.push(animation);
@@ -326,6 +330,14 @@ export class CellStrip {
 		return true;
 	}
 
+
+	// allow-comment: a strip taken out of the document, such as one inside a closing cell, gets no more frames, so it stops following and releases what waits on that. It places nothing, because its cells may already live in another strip.
+	detached() {
+		this.driven = new Set();
+		const waiters = this.drivenWaiters;
+		this.drivenWaiters = [];
+		waiters.forEach((resolve) => resolve());
+	}
 
 	placeGutters() {
 		const view = this.viewport.ownerDocument.defaultView;
@@ -591,6 +603,36 @@ export class CellStrip {
 			if (current?.departing) this.drop(current);
 			else entry.element.style.removeProperty("transform-origin");
 		}, () => {});
+	}
+
+	claim(element) {
+		const owner = owners.get(element);
+		if (owner && owner !== this) owner.surrender(element);
+		owners.set(element, this);
+	}
+
+	surrender(element) {
+		const entry = this.entries.find((candidate) => candidate.element === element);
+		if (!entry) return;
+		const room = this.rooms.get(element);
+		const targets = new Set([element, room]);
+		this.geometry = this.geometry.filter((animation) => {
+			if (!targets.has(animation.effect?.target)) return true;
+			animation.cancel();
+			return false;
+		});
+		stop(this.motions.get(entry.id)?.animation);
+		stop(this.departures.get(entry.id));
+		this.motions.delete(entry.id);
+		this.departures.delete(entry.id);
+		this.driven.delete(entry.id);
+		this.rooms.delete(element);
+		element.style.removeProperty("margin-left");
+		element.style.removeProperty("transform-origin");
+		this.clearFoldPaper(entry);
+		this.entries = this.entries.filter((candidate) => candidate !== entry);
+		// allow-comment: the claiming strip moves the cell out of this room in the same task, so the empty room goes afterwards and the cell is never detached on its own.
+		if (room && room !== element) queueMicrotask(() => { if (!room.contains(element)) room.remove(); });
 	}
 
 	drop(entry) {

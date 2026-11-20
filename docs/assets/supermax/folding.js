@@ -185,6 +185,7 @@ export class FoldController {
 		this.drag?.cancel();
 		if (this.layer) unfollow(this.layer);
 		this.entries.clear();
+		this.visibleCues = null;
 	}
 
 	announce(occurrence, axis) {
