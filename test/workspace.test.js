@@ -727,6 +727,11 @@ test("a twenty-cell chain stays navigable in both presentations", async () => {
 	assert.ok(chain.filter((cell) => cell.visible).length >= 3 && chain.filter((cell) => cell.visible).length < 20, "some cells are visible, the rest hidden behind reveal");
 	assert.ok(chain.filter((cell) => cell.compact).length <= 2, "the compact cap holds in a long chain");
 	assert.equal(await page.locator(inFrame("a", ".supermax-reveal.is-left")).textContent(), "Depth 15", "the reveal chip names the nearest hidden cell");
+	await page.waitForFunction(() => document.querySelector('.frame[data-frame="a"] [data-spec-for$="/depth:20"] .cell-spec-state')?.textContent === "allocated");
+	const spec = await page.locator(inFrame("a", '[data-spec-for$="/depth:20"]')).evaluate((element) => ({ hidden: element.hidden, text: [...element.querySelectorAll("dt")].map((term) => `${term.textContent} ${term.nextElementSibling.textContent}`) }));
+	assert.equal(spec.hidden, false, "a cell with room shows its definition");
+	assert.deepEqual(spec.text.slice(0, 4), ["id depth:20", "min 160", "max 240", "compact 36"]);
+	assert.match(spec.text[4], /^width \d+ px$/);
 	await page.selectOption("[data-presentation]", "fold");
 	await settle();
 	await page.focus(inFrame("a", ".supermax-back"));

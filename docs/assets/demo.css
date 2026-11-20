@@ -249,3 +249,8 @@ body {
 .metadata h4 { margin: 8px 0 4px; font-size: 12px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); }
 .metadata .metadata-link { margin: 4px 0 8px; }
 .history { margin: 0; padding-left: 18px; color: var(--muted); }
+
+.cell-spec { display: grid; grid-template-columns: max-content max-content; gap: 1px 10px; white-space: nowrap; margin: 12px; padding: 8px 10px; border: 1px dashed var(--line, #d0d4da); border-radius: 6px; font: 11px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace; color: var(--muted); align-self: flex-start; }
+.cell-spec[hidden] { display: none; }
+.cell-spec dt { margin: 0; }
+.cell-spec dd { margin: 0; color: var(--ink); }

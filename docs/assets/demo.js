@@ -130,10 +130,48 @@ function renderAlbumIcons(occurrence, workspace) {
 
 function renderContent(occurrence, definition, workspace) {
 	const kind = definition.data?.kind;
+	const withSpec = (handle) => {
+		handle.element?.append(renderSpec(occurrence, definition));
+		return handle;
+	};
 	if (remoteKinds.has(kind)) {
-		return session.fetchContent(occurrence.destination).then((content) => renderers[kind](occurrence, definition.data, workspace, content));
+		return session.fetchContent(occurrence.destination).then((content) => withSpec(renderers[kind](occurrence, definition.data, workspace, content)));
 	}
-	return renderers[kind](occurrence, definition.data, workspace);
+	return withSpec(renderers[kind](occurrence, definition.data, workspace));
+}
+
+function renderSpec(occurrence, definition) {
+	const spec = element("dl", "cell-spec");
+	spec.dataset.specFor = occurrence.id;
+	spec.setAttribute("aria-hidden", "true");
+	const line = (term, value) => {
+		if (value == null) return;
+		spec.append(element("dt", null, term), element("dd", null, String(value)));
+	};
+	line("id", occurrence.destination);
+	line("min", definition.min);
+	line("max", definition.max);
+	line("preferred", definition.preferred);
+	line("compact", definition.compact?.min);
+	line("defaultChild", definition.defaultChild);
+	spec.append(element("dt", null, "width"), element("dd", "cell-spec-width", "…"));
+	spec.append(element("dt", null, "state"), element("dd", "cell-spec-state", "…"));
+	return spec;
+}
+
+function updateSpecs(root, layout) {
+	requestAnimationFrame(() => {
+		for (const spec of root.querySelectorAll(".cell-spec")) {
+			const cell = layout.cells.get(spec.dataset.specFor);
+			if (!cell) continue;
+			const state = cell.compact ? "compact" : cell.visible ? (cell.sized ? "dragged" : "allocated") : "hidden";
+			spec.querySelector(".cell-spec-width").textContent = `${Math.round(cell.width)} px`;
+			spec.querySelector(".cell-spec-state").textContent = state;
+			spec.hidden = false;
+			const body = spec.closest(".supermax-cell-body");
+			if (body && (body.scrollHeight > body.clientHeight || body.scrollWidth > body.clientWidth)) spec.hidden = true;
+		}
+	});
 }
 
 function prefetchOnHover(button, id) {
@@ -559,6 +597,7 @@ class Session {
 			const { layout } = event.detail;
 			size.textContent = `${layout.width} × ${layout.height} px`;
 			limit.hidden = !layout.belowMinimum;
+			updateSpecs(root, layout);
 		});
 		return { ...frame, box, workspace };
 	}
