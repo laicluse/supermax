@@ -524,12 +524,18 @@ export class Workspace extends EventTarget {
 			entry = { viewport, strip };
 			this.chains.set(chain.root, entry);
 		}
+		const known = new Set((entry.strip.entries ?? []).map((existing) => existing.id));
+		const appearsByItself = (cell) => !known.has(cell.occurrence) && this.navigator.isAuto(this.navigator.get(cell.occurrence));
 		const entries = chain.cells.map((cell) => ({
 			id: cell.occurrence,
 			element: this.mountCell(cell.occurrence),
 			width: cell.width,
 			visible: cell.visible,
+			instant: appearsByItself(cell),
 		}));
+		const arrivals = chain.cells.filter((cell) => cell.visible && !known.has(cell.occurrence));
+		// A cell that opened by itself is simply there; when nothing else arrives, the chain settles at once.
+		if (arrivals.length > 0 && arrivals.every(appearsByItself)) animating = false;
 		for (const cell of chain.cells) this.peeks.apply(cell);
 		this.protectFocus(entries.filter((cell) => !cell.visible).map((cell) => cell.element));
 		entry.strip.update(entries, { animate: animating });

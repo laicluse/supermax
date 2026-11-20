@@ -47,7 +47,10 @@ test("the package stylesheet alone renders the chrome at the sizes the model com
 		const navbar = document.querySelector(".supermax-navbar").getBoundingClientRect().height;
 		window.workspace.navigate("gallery", { from: "root" });
 		document.getElementById("host").style.height = "300px";
-		return new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve({ navbar, ...measureRows() }))));
+		return new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => {
+			document.getAnimations().forEach((animation) => animation.finish());
+			resolve({ navbar, ...measureRows() });
+		})));
 		function measureRows() {
 		return { rows: [...document.querySelectorAll(".supermax-row")].map((row) => row.getBoundingClientRect().height) };
 		}

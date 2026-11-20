@@ -341,6 +341,37 @@ test("a host that shows the canvas keeps cells at their maximum and centres them
 	assert.ok(row.left > 4 && Math.abs(row.left - row.right) < 1, "with the canvas showing equally on both sides");
 });
 
+test("a render during an entrance carries the fold and the flip on instead of dropping them", { skip: PRESENTATION !== "origami" }, async () => {
+	await openDemo(THREE_ROWS);
+	const carried = await page.evaluate(({ row, photo }) => {
+		document.querySelector(`.frame[data-frame="a"] [data-occurrence="${row}"] [data-destination="coast:photo:d"]`).click();
+		window.supermaxDemo.frames[0].workspace.render();
+		return document.getAnimations()
+			.filter((animation) => animation.effect?.target?.matches?.('.frame[data-frame="a"] .supermax-cell') && animation.effect.getKeyframes().some((frame) => frame.transform?.includes("rotate")))
+			.map((animation) => animation.effect.target.dataset.occurrence.split("/").pop())
+			.sort();
+	}, { row: coast.row("map"), photo: coast.photo("map", "b") });
+	assert.deepEqual(carried, ["coast:metadata:b", "coast:photo:b", "coast:photo:d"], "the replaced photo turns away, its successor turns in, and the closed metadata folds back");
+});
+
+test("a cell that opens by itself is simply there, without a fold, a flip or a growing width", async () => {
+	await openDemo(THREE_ROWS);
+	await page.evaluate(() => {
+		window.__autoMotion = new Set();
+		new MutationObserver(() => {
+			for (const animation of document.getAnimations()) {
+				if (!animation.effect?.target?.matches?.('.frame[data-frame="a"] .supermax-cell[data-occurrence$="coast:metadata:d"]')) continue;
+				const frames = animation.effect.getKeyframes();
+				if (frames.some((frame) => frame.width !== undefined || frame.transform?.includes("rotate"))) window.__autoMotion.add(JSON.stringify(frames.map((frame) => frame.width ?? frame.transform)));
+			}
+		}).observe(document.querySelector('.frame[data-frame="a"]'), { childList: true, subtree: true, attributes: true });
+	});
+	await page.click(inFrame("a", `[data-occurrence="${coast.row("map")}"] [data-destination="coast:photo:d"]`));
+	await page.waitForSelector(inFrame("a", `[data-occurrence="${coast.metadata("map", "d")}"]`));
+	await settle();
+	assert.deepEqual(await page.evaluate(() => [...window.__autoMotion]), [], "the default Metadata D only moves along with its parent");
+});
+
 test("origami folds a new cell open, folds a closed one back in reverse, and turns a replaced cell over", { skip: PRESENTATION !== "origami" }, async () => {
 	await openDemo(THREE_ROWS);
 	const motion = () => page.evaluate(() => document.getAnimations().filter((animation) => animation.effect?.target?.matches?.('.frame[data-frame="a"] .supermax-cell')).map((animation) => ({

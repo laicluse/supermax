@@ -17,6 +17,7 @@ export class CellStrip {
 		viewport.append(this.strip);
 		this.entries = [];
 		this.animations = [];
+		this.motions = new Map();
 		this.finished = Promise.resolve();
 		this.initialized = false;
 		this.reducedMotion = viewport.ownerDocument.defaultView.matchMedia("(prefers-reduced-motion: reduce)");
@@ -40,11 +41,12 @@ export class CellStrip {
 			currentWidth: entry.element.getBoundingClientRect().width,
 			currentLeft: entry.element.getBoundingClientRect().left,
 		}]));
+		const resumed = this.motionsInFlight();
 		this.cancelAnimations();
 		const departing = this.entries.filter((entry) => !ids.has(entry.id));
 		this.entries = entries.map((entry) => ({ ...entry, departing: false }));
-		this.entries.push(...departing.map((entry) => ({ ...entry, visible: false, departing: true })));
-		this.pairs = this.motion ? this.pairReplacements(previous) : new Map();
+		this.entries.push(...departing.map((entry) => ({ ...entry, visible: false, departing: true, instant: false })));
+		this.pairs = this.motion ? this.pairReplacements(previous, resumed) : new Map();
 		const firstVisible = this.entries.findIndex((entry) => entry.visible);
 		const lastVisible = this.entries.findLastIndex((entry) => entry.visible);
 		let offset = 0;
@@ -93,7 +95,9 @@ export class CellStrip {
 			this.animateStrip(view, startingTransform, targetTransform);
 			this.animateWidths(previous);
 			this.animateMovement(previous);
-			this.animateMotion(previous);
+			this.animateMotion(previous, resumed);
+		} else if (resumed.size > 0 && !this.reducedMotion.matches) {
+			this.animateMotion(previous, resumed, { carriedOnly: true });
 		}
 		if (this.animations.length === 0) {
 			this.settle();
@@ -120,12 +124,17 @@ export class CellStrip {
 		this.animations.push(this.strip.animate([{ transform: startingTransform }, { transform: targetTransform }], this.timing()));
 	}
 
-	pairReplacements(previous) {
+	pairReplacements(previous, resumed) {
 		const before = [...previous.values()].filter((entry) => !entry.departing);
 		const pairs = new Map();
+		for (const [id, motion] of resumed) {
+			const entry = this.entries.find((candidate) => candidate.id === id);
+			const partner = this.entries.find((candidate) => candidate.id === motion.partner);
+			if (entry && partner && entry.departing !== partner.departing) pairs.set(id, partner);
+		}
 		this.entries.forEach((entry, index) => {
 			const old = before[index];
-			if (entry.departing || !entry.visible || previous.has(entry.id) || !old?.visible || this.entries.some((next) => next.id === old.id && !next.departing)) return;
+			if (entry.departing || entry.instant || !entry.visible || previous.has(entry.id) || !old?.visible || this.entries.some((next) => next.id === old.id && !next.departing)) return;
 			pairs.set(old.id, entry);
 			pairs.set(entry.id, old);
 		});
@@ -148,7 +157,7 @@ export class CellStrip {
 
 	animateWidths(previous) {
 		for (const entry of this.entries) {
-			if (entry.departing && this.pairs.has(entry.id)) continue;
+			if (entry.instant || (entry.departing && this.pairs.has(entry.id))) continue;
 			const old = previous.get(entry.id) ?? this.pairs.get(entry.id);
 			if (old && Math.abs(old.currentWidth - entry.displayWidth) > 0.01) {
 				this.animations.push(entry.element.animate([{ width: `${old.currentWidth}px` }, { width: `${entry.displayWidth}px` }], this.timing()));
@@ -158,7 +167,7 @@ export class CellStrip {
 
 	animateMovement(previous) {
 		for (const entry of this.entries) {
-			if (entry.departing && this.pairs.has(entry.id)) continue;
+			if (entry.instant || (entry.departing && this.pairs.has(entry.id))) continue;
 			const old = previous.get(entry.id) ?? this.pairs.get(entry.id);
 			const currentLeft = entry.element.getBoundingClientRect().left;
 			const startingLeft = old ? old.currentLeft : Math.max(currentLeft, this.viewport.getBoundingClientRect().right);
@@ -169,15 +178,33 @@ export class CellStrip {
 		}
 	}
 
-	animateMotion(previous) {
+	// An update during an entrance or exit carries that motion on from where it was, so a cell never lands half folded.
+	animateMotion(previous, resumed, { carriedOnly = false } = {}) {
 		if (!this.motion) return;
 		const timing = { duration: this.duration, easing: this.easing };
 		for (const entry of this.entries) {
-			const hook = entry.departing ? this.motion.leave : !previous.has(entry.id) && entry.visible ? this.motion.enter : null;
-			const partner = this.pairs.get(entry.id)?.element ?? null;
-			const produced = hook?.(entry.element, timing, entry.departing ? { replacedBy: partner } : { replacing: partner });
-			for (const animation of [].concat(produced ?? [])) this.animations.push(animation);
+			const kind = entry.departing ? "leave" : "enter";
+			const carried = resumed.get(entry.id)?.kind === kind ? resumed.get(entry.id) : null;
+			const fresh = entry.departing ? !previous.get(entry.id)?.departing : !previous.has(entry.id) && entry.visible && !entry.instant;
+			if (!carried && (!fresh || carriedOnly)) continue;
+			const partner = this.pairs.get(entry.id) ?? null;
+			const produced = [].concat(this.motion[kind](entry.element, timing, entry.departing ? { replacedBy: partner?.element ?? null } : { replacing: partner?.element ?? null }) ?? []);
+			for (const animation of produced) {
+				if (carried) animation.currentTime = carried.elapsed;
+				this.animations.push(animation);
+			}
+			this.motions.set(entry.id, { kind, partner: partner?.id ?? null, animations: produced });
 		}
+	}
+
+	motionsInFlight() {
+		const resumed = new Map();
+		for (const [id, motion] of this.motions) {
+			const [lead] = motion.animations;
+			if (lead && lead.playState === "running") resumed.set(id, { kind: motion.kind, partner: motion.partner, elapsed: lead.currentTime });
+		}
+		this.motions = new Map();
+		return resumed;
 	}
 
 	settle() {
