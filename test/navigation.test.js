@@ -492,6 +492,33 @@ scenario("sync opens the longest beginning of ifRoom that shows without hiding w
 	assert.equal(chain.sync([...required, "messages:1"], { ifRoom: ["attachments:1"] }).noop, true, "and a sync that finds everything in place changes nothing");
 });
 
+scenario("a nested list in ifRoom opens whole or not at all, so a conversation never shows without its messages", () => {
+	const chain = new Navigator({
+		destinations: {
+			elsewhere,
+			inbox: { title: "Inbox", min: 200, max: 300 },
+			list: { title: "List", min: 200, max: "*", preferred: 300 },
+			"metadata:1": { title: "Metadata 1", min: 200, max: 300 },
+			"messages:1": { title: "Messages 1", min: 300, max: 400 },
+		},
+		root: "inbox",
+		minViewportHeight,
+		chrome,
+	});
+	const open = () => {
+		const ids = [];
+		for (let current = chain.root; current; current = chain.child(current)) ids.push(current.destination);
+		return ids;
+	};
+	chain.resize({ width: 800, height: 500 });
+	assert.equal(chain.sync(["inbox", "list"], { ifRoom: [["metadata:1", "messages:1"]] }).ok, true);
+	assert.deepEqual(open(), ["inbox", "list"], "Metadata alone would fit, Messages would not, so neither opens");
+	chain.resize({ width: 1100, height: 500 });
+	assert.equal(chain.sync(["inbox", "list"], { ifRoom: [["metadata:1", "messages:1"]] }).ok, true);
+	assert.deepEqual(open(), ["inbox", "list", "metadata:1", "messages:1"], "with room for both, the pair opens together");
+	assert.deepEqual(chain.sync(["inbox", "list"], { ifRoom: [["metadata:1", "nowhere"]] }), { ok: false, reason: "unknown-destination", destination: "nowhere" }, "an unknown destination inside a group refuses the whole sync");
+});
+
 scenario("a title can change after a cell opened, in its occurrence, its group and where the application is, without a new declaration", () => {
 	const instance = model();
 	openGallery(instance);

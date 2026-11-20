@@ -259,7 +259,7 @@ export class Navigator {
 	sync(destinationIds, { ifRoom = [] } = {}) {
 		const [rootId] = destinationIds;
 		if (rootId !== this.root.destination) return { ok: false, reason: "other-root", destination: rootId };
-		const unknown = [...destinationIds, ...ifRoom].find((id) => !this.definitionOf(id));
+		const unknown = [...destinationIds, ...ifRoom.flat()].find((id) => !this.definitionOf(id));
 		if (unknown) return { ok: false, reason: "unknown-destination", destination: unknown };
 		const open = [];
 		for (let current = this.root; current; current = this.child(current)) open.push(current);
@@ -294,36 +294,46 @@ export class Navigator {
 		return { ok: true, occurrence: last, optional };
 	}
 
-	// allow-comment: an optional cell opens only when it shows without hiding or compacting a cell that is in view now; existing widths may change.
-	openIfRoom(parent, destinationIds) {
+	// allow-comment: an optional cell opens only when it shows without hiding or compacting a cell that is in view now; existing widths may change. A nested list opens whole or not at all.
+	openIfRoom(parent, entries) {
 		const opened = [];
 		const shown = (layout) => [...layout.cells.values()].filter((cell) => cell.visible && !cell.compact).map((cell) => cell.occurrence);
 		let current = parent;
-		for (const id of destinationIds) {
-			const existing = this.child(current);
-			if (existing) {
-				if (existing.destination !== id) break;
-				current = existing;
-				continue;
-			}
-			if (isSplit(this.definitionOf(id)) && !validateSplit(this, id, current).ok) break;
+		for (const entry of entries) {
+			const ids = Array.isArray(entry) ? entry : [entry];
 			const inView = shown(this.layout());
 			const before = this.snapshot();
-			const group = this.groups.find((candidate) => candidate.id === current.group) ?? null;
-			const child = this.createOccurrence(id, current, 0, group);
-			if (!group) this.createGroup(child);
+			const added = [];
+			let start = current;
+			let refused = false;
+			for (const id of ids) {
+				const existing = this.child(start);
+				if (existing) {
+					if (existing.destination !== id) { refused = true; break; }
+					start = existing;
+					continue;
+				}
+				if (isSplit(this.definitionOf(id)) && !validateSplit(this, id, start).ok) { refused = true; break; }
+				const group = this.groups.find((candidate) => candidate.id === start.group) ?? null;
+				const child = this.createOccurrence(id, start, 0, group);
+				if (!group) this.createGroup(child);
+				added.push(child.id);
+				start = child;
+			}
 			const layout = this.layout();
-			const cell = layout.cells.get(child.id);
-			const fits = cell?.visible && !cell.compact && inView.every((occurrence) => {
+			const fits = !refused && added.every((id) => {
+				const cell = layout.cells.get(id);
+				return cell?.visible && !cell.compact;
+			}) && inView.every((occurrence) => {
 				const kept = layout.cells.get(occurrence);
 				return kept?.visible && !kept.compact;
 			});
 			if (!fits) {
-				this.restore(before);
+				if (added.length > 0) this.restore(before);
 				break;
 			}
-			opened.push(child.id);
-			current = child;
+			opened.push(...added);
+			current = start;
 		}
 		return opened;
 	}

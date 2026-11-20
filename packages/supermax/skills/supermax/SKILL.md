@@ -30,7 +30,7 @@ The workspace warns once per kind in the console when a host leaves out an `orig
 ## Which feature, when
 
 - **`sync(destinations, { origin, ifRoom })`**: the host knows the whole root chain, for example from its URL. One call per navigation; it keeps what is shared and renders once.
-- **`ifRoom`**: a cell that should open only when the window has room for it, such as a detail pane next to a list. It is an ordered chain; the longest beginning that fits without hiding a cell in view opens, as automatic cells that a later explicit sync or click promotes. It never opens on resize.
+- **`ifRoom`**: a cell that should open only when the window has room for it, such as a detail pane next to a list. It is an ordered chain; the longest beginning that fits without hiding a cell in view opens, as automatic cells that a later explicit sync or click promotes. It never opens on resize. Cells that only make sense together, such as a conversation's metadata and its messages, go in as one nested list, `ifRoom: [["metadata:1", "messages:1"]]`, so they open whole or not at all.
 - **`navigate(destination, { from, origin })`**: a click inside a cell's content that opens something to its right, when the host does not keep the chain itself.
 - **Content handle `{ element, header?, update?, leave?, dispose? }`**:
   - `header`: the content's own controls (search, sort, zoom) in the cell header;
