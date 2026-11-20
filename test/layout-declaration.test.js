@@ -29,27 +29,27 @@ await assert.rejects(readLayout(head(mixed)), (error) => error instanceof Superm
 await assert.rejects(readLayout(head(null)), (error) => error.reason === "missing-header");
 await assert.rejects(readLayout(head(inline.value.replace("v=2", "v=3"))), (error) => error.reason === "schema-version");
 
-assert.deepEqual(layoutOf({ title: "Albums", min: 200, max: 320, keep: true, data: { kind: "albums" } }), { title: "Albums", min: 200, max: 320, preferred: null, keep: true, rows: null, defaultChild: null }, "the layout of a definition leaves host data and callbacks out");
+assert.deepEqual(layoutOf({ title: "Albums", min: 200, max: 320, overflow: { mode: "keep" }, data: { kind: "albums" } }), { title: "Albums", min: 200, max: 320, preferred: null, overflow: { mode: "keep" }, rows: null, defaultChild: null }, "the layout of a definition leaves host data and callbacks out");
 
 {
 	const foldable = { schemaVersion: 2, context: "ana", root: "split", destinations: {
-		split: { title: "Split", rows: [{ destination: "top", minHeight: 160, maxHeight: 160, fold: { size: 20 } }, { destination: "bottom", minHeight: 220, maxHeight: "*", preferredHeight: 280 }] },
-		top: { title: "Top", min: 200, max: 300, preferred: null, defaultChild: null, fold: { size: 16 } },
+		split: { title: "Split", rows: [{ destination: "top", minHeight: 160, maxHeight: 160, overflow: { mode: "fold", size: 20 } }, { destination: "bottom", minHeight: 220, maxHeight: "*", preferredHeight: 280 }] },
+		top: { title: "Top", min: 200, max: 300, preferred: null, defaultChild: null, overflow: { mode: "fold", size: 16 } },
 		bottom: { title: "Bottom", min: 220, max: "*", preferred: 300, defaultChild: null },
 	} };
 	assert.deepEqual(validateDeclarationSet(foldable), [], "a server declaration can carry horizontal and vertical fold sizes");
-	assert.deepEqual(layoutOf(foldable.destinations.split).rows[0].fold, { size: 20 });
-	assert.deepEqual(layoutOf(foldable.destinations.top).fold, { size: 16 });
-	foldable.destinations.top.fold = false;
-	foldable.destinations.split.rows[0].fold = false;
+	assert.deepEqual(layoutOf(foldable.destinations.split).rows[0].overflow, { mode: "fold", size: 20 });
+	assert.deepEqual(layoutOf(foldable.destinations.top).overflow, { mode: "fold", size: 16 });
+	foldable.destinations.top.overflow = { mode: "hide" };
+	foldable.destinations.split.rows[0].overflow = { mode: "hide" };
 	assert.deepEqual(validateDeclarationSet(foldable), [], "a server declaration can exclude cells and rows from folding");
-	assert.equal(layoutOf(foldable.destinations.top).fold, false);
-	assert.equal(layoutOf(foldable.destinations.split).rows[0].fold, false);
-	foldable.destinations.top.fold = { size: 16 };
-	foldable.destinations.top.fold.size = 0;
+	assert.deepEqual(layoutOf(foldable.destinations.top).overflow, { mode: "hide" });
+	assert.deepEqual(layoutOf(foldable.destinations.split).rows[0].overflow, { mode: "hide" });
+	foldable.destinations.top.overflow = { mode: "fold", size: 16 };
+	foldable.destinations.top.overflow.size = 0;
 	assert.deepEqual(validateDeclarationSet(foldable), [], "a fold can explicitly reserve no space");
-	foldable.destinations.top.fold.size = -1;
-	assert.deepEqual(validateDeclarationSet(foldable).map((problem) => problem.reason), ["invalid-fold"], "a fold cannot reserve negative space");
+	foldable.destinations.top.overflow.size = -1;
+	assert.deepEqual(validateDeclarationSet(foldable).map((problem) => problem.reason), ["invalid-fold-size"], "a fold cannot reserve negative space");
 }
 
 for (const context of ["ana", "ben"]) {

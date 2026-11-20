@@ -1,5 +1,6 @@
+import { overflowProblems } from "./overflow.js";
 import { variantProblems } from "./variants.js";
-import { ELASTIC, breakoutOf, chainCells, chainFits, chainRootOf, chainWidth, isFull, isSplit, layoutWorkspace, retainFoldAllocation, rowSplitOf, validateSplit } from "./layout.js";
+import { ELASTIC, breakoutOf, chainCells, chainFits, chainRootOf, chainWidth, isBesideSplit, isSplit, layoutWorkspace, retainFoldAllocation, rowSplitOf, validateSplit } from "./layout.js";
 import { sameLayout, validateDeclarationSet } from "./layout-declaration.js";
 
 const DEFAULT_CHROME = { header: 28, maxRows: 4 };
@@ -33,11 +34,13 @@ export function validateDestinations(destinations, { minViewportHeight, chrome =
 		if (!isSplit(definition) && (!(Number.isFinite(definition.min) && definition.min > 0) || (definition.max !== ELASTIC && !(Number.isFinite(definition.max) && definition.max >= definition.min)))) problems.push({ destination: id, reason: "invalid-size" });
 		if (!isSplit(definition) && definition.max !== ELASTIC && definition.preferred != null && (!Number.isFinite(definition.preferred) || definition.preferred < definition.min || definition.preferred > definition.max)) problems.push({ destination: id, reason: "invalid-preferred" });
 		if (destinations[id].compact != null) problems.push({ destination: id, reason: "unsupported-compact" });
-		if (destinations[id].height != null && (!isFull(destinations[id]) || isSplit(destinations[id]))) problems.push({ destination: id, reason: "invalid-height" });
+		if (Object.hasOwn(definition, "height")) problems.push({ destination: id, reason: "unsupported-height" });
+		if (destinations[id].placement != null && (!isBesideSplit(destinations[id]) || isSplit(destinations[id]))) problems.push({ destination: id, reason: "invalid-placement" });
 		if (isSplit(destinations[id]) && ["min", "max", "preferred"].some((key) => destinations[id][key] != null)) problems.push({ destination: id, reason: "split-with-width" });
 		if (destinations[id].header != null && destinations[id].header !== "title") problems.push({ destination: id, reason: "invalid-header" });
 		if (destinations[id].menu != null && destinations[id].menu !== true && destinations[id].menu !== "exact") problems.push({ destination: id, reason: "invalid-menu" });
-		if (destinations[id].fold != null && (isSplit(destinations[id]) || (destinations[id].fold !== false && (!Number.isFinite(destinations[id].fold.size) || destinations[id].fold.size < 0 || destinations[id].fold.size >= destinations[id].min)))) problems.push({ destination: id, reason: "invalid-fold" });
+		for (const reason of overflowProblems(definition, definition.min)) problems.push({ destination: id, reason });
+		if (isSplit(definition) && definition.overflow?.mode === "fold") problems.push({ destination: id, reason: "folding-split" });
 	}
 	const elastic = Object.keys(destinations).filter((id) => destinations[id].max === ELASTIC);
 	for (const id of elastic) {
@@ -200,7 +203,7 @@ export class Navigator {
 			return { ok: true, promoted: true, occurrence: existing, group };
 		}
 		if (existing) this.closeSubtree(existing);
-		const other = isFull(definition) ? this.breakoutBeside(parent) : null;
+		const other = isBesideSplit(definition) ? this.breakoutBeside(parent) : null;
 		if (other) this.closeSubtree(other);
 		const occurrence = this.createOccurrence(destinationId, parent, 0, null);
 		const group = this.createGroup(occurrence);
@@ -266,7 +269,7 @@ export class Navigator {
 
 	// allow-comment: the chain a candidate would join from a parent: its parent's own, or the chain beside the split when a full-height cell opens from a row.
 	placeFor(parentOccurrence, candidateId) {
-		const split = isFull(this.definitionOf(candidateId)) ? rowSplitOf(this, parentOccurrence) : null;
+		const split = isBesideSplit(this.definitionOf(candidateId)) ? rowSplitOf(this, parentOccurrence) : null;
 		const root = chainRootOf(this, split ?? parentOccurrence);
 		return { beside: !!split, root, cells: chainCells(this, root) };
 	}

@@ -47,9 +47,9 @@ async function openDemoWithCoastFoldExcluded(log) {
 	await openDemo(log);
 	await page.evaluate(() => {
 		for (const { workspace } of window.supermaxDemo.frames) {
-			workspace.navigator.destinations["album:coast"].rows.forEach((row) => { row.fold = false; });
+			workspace.navigator.destinations["album:coast"].rows.forEach((row) => { row.overflow = { mode: "hide" }; });
 			for (const [id, definition] of Object.entries(workspace.navigator.destinations)) {
-				if (id.startsWith("coast:") && !definition.rows) definition.fold = false;
+				if (id.startsWith("coast:") && !definition.rows) definition.overflow = { mode: "hide" };
 			}
 			workspace.render({ animate: false });
 		}
@@ -2361,7 +2361,8 @@ test("a twenty-cell chain stays navigable in both presentations", async () => {
 	const spec = await page.locator(inFrame("a", '[data-spec-for$="/depth:20"]')).evaluate((element) => ({ hidden: element.hidden, text: [...element.querySelectorAll("dt")].map((term) => `${term.textContent} ${term.nextElementSibling.textContent}`) }));
 	assert.equal(spec.hidden, false, "a cell with room shows its definition");
 	assert.deepEqual(spec.text.slice(0, 3), ["id depth:20", "min 160", "max 240"]);
-	assert.match(spec.text[3], /^width \d+ px$/);
+	assert.ok(spec.text.includes("overflow hide"));
+	assert.match(spec.text.find((line) => line.startsWith("width ")), /^width \d+ px$/);
 	await page.selectOption("[data-presentation]", "fold");
 	await settle();
 	await page.click(inFrame("a", ".supermax-up"));

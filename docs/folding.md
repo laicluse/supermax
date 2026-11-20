@@ -8,12 +8,12 @@ The up/back (Show) control also reaches earlier folded cells and rows, so the se
 
 | Term | Meaning |
 | --- | --- |
-| Foldable surface | Any ordinary cell or row unless it declares `fold: false` or `keep: true`. |
+| Foldable surface | Any ordinary cell or row unless it declares `overflow: { mode: "hide" }` or `overflow: { mode: "keep" }`. |
 | Fold cue | The visible seam of a folded surface. The host can render its contents with `foldContent`. |
 | Fold focus | The full cell or row selected by clicking a fold cue. Neighbours fold as needed to make room. |
 | Trade | Clicking another cue changes fold focus without closing either surface. |
 
-`keep` holds a cell or row at its declared minimum; the host keeps its content usable at that size. A fold cue marks content that can exchange space with the current task. Folding is the default for ordinary cells and rows. Declare `fold: false` on an important surface that must never become a fold cue. Without a declaration, a fold reserves no space; `fold: { size }` optionally reserves a non-negative width or height. An excluded surface earlier than the active one may hide behind Show. At or after the active surface it stays visible, extending the scrollable workspace if necessary.
+`overflow.mode: "keep"` holds a cell or row at its declared minimum; the host keeps its content usable at that size. A fold cue marks content that can exchange space with the current task. Folding is the default for ordinary cells and rows. Declare `overflow: { mode: "hide" }` on an important surface that must never become a fold cue. Without a declaration, a fold reserves no space; `overflow: { mode: "fold", size }` optionally reserves a non-negative width or height. An excluded surface earlier than the active one may hide behind Show. At or after the active surface it stays visible, extending the scrollable workspace if necessary.
 
 ## One hierarchy at four sizes
 
@@ -41,7 +41,7 @@ Narrow 390px, short 350px       Mode 48 | Mailboxes [handle] | Messages 270+
                                 Detail 260+
 ```
 
-In the last state, clicking Mailboxes makes `Mode 48 | Mailboxes 180+ | Messages [handle]`; clicking Messages exchanges those widths again. Clicking Summary makes `Summary 170+ / Detail [handle]`; clicking Detail exchanges the heights again. The host may change the cue's content and colours, or reserve space per surface with `fold: { size }`.
+In the last state, clicking Mailboxes makes `Mode 48 | Mailboxes 180+ | Messages [handle]`; clicking Messages exchanges those widths again. Clicking Summary makes `Summary 170+ / Detail [handle]`; clicking Detail exchanges the heights again. The host may change the cue's content and colours, or reserve space per surface with `overflow: { mode: "fold", size }`.
 
 ## Interaction and motion
 
@@ -53,7 +53,7 @@ When open content declares no variants, a local fold preserves the surrounding c
 
 Choose **Folding: cells and rows** in the [main demo](index.html) to see both axes in the narrow frame. The Motion menu switches the same interaction between Veil, Origami and Paper Fold.
 
-Folding is also the default in the ordinary album scenarios. The [Coast album at 415 × 332px](assets/captures/coast-default-folding.png) retains fold handles for its earlier rows and the current row's selector. A host can opt a specific surface out with `fold: false`.
+Folding is also the default in the ordinary album scenarios. The [Coast album at 415 × 332px](assets/captures/coast-default-folding.png) retains fold handles for its earlier rows and the current row's selector. A host can opt a specific surface out with `overflow: { mode: "hide" }`.
 
 [After two Show steps at 401 × 292px](assets/captures/coast-reachable-after-show.png), Thumbnails is full and the next row remains available through one fold handle. Opening that handle presents the following row's handle.
 
@@ -73,7 +73,7 @@ At 296 × 335px, [partway through opening History](assets/captures/coast-drag-ti
 
 Canvas-coloured hatching on the white host background at the viewport edge: [right edge](assets/captures/folding-edge-right.png) and [bottom edge](assets/captures/folding-edge-bottom.png). The two outer corners are square against the edge; only the two inner corners are rounded.
 
-The host controls gutter thickness with `--supermax-gutter` (1px by default, including at a folded viewport edge). Set it to `0px` for a gutterless host; the handle retains its 1px outline and hatch strokes. Fold reservation is independent: `fold: { size: 8 }` reserves 8px horizontally on a cell or vertically on a row. The main demo offers **Folding: 8px reserved on both axes** alongside the default unreserved scenario.
+The host controls gutter thickness with `--supermax-gutter` (1px by default, including at a folded viewport edge). Set it to `0px` for a gutterless host; the handle retains its 1px outline and hatch strokes. Fold reservation is independent: `overflow: { mode: "fold", size: 8 }` reserves 8px horizontally on a cell or vertically on a row. The main demo offers **Folding: 8px reserved on both axes** alongside the default unreserved scenario.
 
 [8px reservation on both axes](assets/captures/folding-reserved.png) · [Host with 0px gutters](assets/captures/folding-gutterless.png).
 

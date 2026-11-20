@@ -9,7 +9,7 @@ const variants = [
 ];
 function menuModel() {
 	const model = new Navigator({ root: "menu", minViewportHeight: 100, destinations: {
-		menu: { title: "Albums", min: 48, preferred: 240, max: 320, keep: true, variants },
+		menu: { title: "Albums", min: 48, preferred: 240, max: 320, overflow: { mode: "keep" }, variants },
 		work: { title: "Work", min: 200, preferred: 500, max: "*" },
 	} });
 	model.open("work");
@@ -50,7 +50,7 @@ assert.equal(model.layout().cells.get("menu").variant, "labels", "invalid update
 
 function rowsModel() {
 	const model = new Navigator({ root: "home", minViewportHeight: 80, destinations: {
-		home: { title: "Home", min: 20, max: 20, keep: true },
+		home: { title: "Home", min: 20, max: 20, overflow: { mode: "keep" } },
 		split: { title: "Split", header: "title", rows: [
 			{ destination: "one", minHeight: 40, preferredHeight: 160, maxHeight: 160, variants: [
 				{ id: "expanded", when: { minHeight: 100 } },
@@ -110,7 +110,7 @@ assert.ok(!sameLayout(declaration, { ...declaration, variants: variants.map((var
 assert.deepEqual(validateDeclarationSet({ schemaVersion: 2, root: "menu", destinations: { menu: layoutOf(declaration) } }), []);
 
 const crowded = new Navigator({ root: "item-0", minViewportHeight: 100, destinations: Object.fromEntries(Array.from({ length: 20 }, (_, index) => [`item-${index}`, {
-	title: `Item ${index}`, min: 20, preferred: 120, max: index === 19 ? "*" : 220, keep: index === 0,
+	title: `Item ${index}`, min: 20, preferred: 120, max: index === 19 ? "*" : 220, overflow: index === 0 ? { mode: "keep" } : undefined,
 	variants: [{ id: "expanded", when: { minWidth: 120 } }, { id: "compact", preferred: 20, max: index === 19 ? "*" : 20 }],
 }])) });
 crowded.resize({ width: 200, height: 300 });
@@ -123,10 +123,10 @@ assert.equal(crowdedLayout.access.size, 20);
 console.log(`Twenty cells with folds: ${Math.round(performance.now() - crowdedStarted)}ms`);
 
 const repeated = new Navigator({ root: "home", minViewportHeight: 150, destinations: {
-	home: { title: "Home", min: 20, max: 20, keep: true },
+	home: { title: "Home", min: 20, max: 20, overflow: { mode: "keep" } },
 	split: { title: "Split", rows: [{ destination: "one", minHeight: 100, maxHeight: 100 }, { destination: "two", minHeight: 100, preferredHeight: 100, maxHeight: "*" }] },
-	one: { title: "One", min: 20, max: 20, keep: true },
-	two: { title: "Two", min: 100, max: 100, keep: true },
+	one: { title: "One", min: 20, max: 20, overflow: { mode: "keep" } },
+	two: { title: "Two", min: 100, max: 100, overflow: { mode: "keep" } },
 	common: { title: "Common", min: 30, preferred: 200, max: "*", variants: [{ id: "expanded", when: { minWidth: 180 } }, { id: "compact", preferred: 30, max: 30 }] },
 } });
 repeated.resize({ width: 280, height: 400 }); repeated.open("split");
@@ -182,7 +182,7 @@ const random = (limit) => { seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0
 for (let sample = 0; sample < 40; sample += 1) {
 	const definitions = Object.fromEntries(Array.from({ length: 5 }, (_, index) => {
 		const min = 20 + random(30);
-		return [`cell-${index}`, { title: `Cell ${index}`, min, preferred: min + 100, max: index === 4 ? "*" : min + 200, keep: index === 0, fold: sample % 2 ? false : { size: 4 }, variants: [
+		return [`cell-${index}`, { title: `Cell ${index}`, min, preferred: min + 100, max: index === 4 ? "*" : min + 200, overflow: index === 0 ? { mode: "keep" } : sample % 2 ? { mode: "hide" } : { mode: "fold", size: 4 }, variants: [
 			{ id: "expanded", when: { minWidth: min + 50 + random(100) } },
 			{ id: "compact", min, preferred: min, max: index === 4 ? "*" : min },
 		] }];

@@ -1,3 +1,4 @@
+import { overflowProblems } from "./overflow.js";
 import { variantProblems } from "./variants.js";
 export const LAYOUT_HEADER = "Supermax-Layout";
 export const LAYOUT_SCHEMA = 2;
@@ -5,8 +6,8 @@ export const LAYOUT_SCHEMA = 2;
 const REQUIRED = ["title", "min", "max", "preferred", "defaultChild"];
 const REQUIRED_SPLIT = ["title", "rows"];
 const WIDTH = ["min", "max", "preferred"];
-const FIELDS = new Set([...REQUIRED, "keep", "fold", "rows", "zoomable", "height", "header", "variants", "menu"]);
-const ROW_FIELDS = new Set(["destination", "minHeight", "maxHeight", "preferredHeight", "keep", "fold", "variants"]);
+const FIELDS = new Set([...REQUIRED, "overflow", "rows", "zoomable", "placement", "header", "variants", "menu"]);
+const ROW_FIELDS = new Set(["destination", "minHeight", "maxHeight", "preferredHeight", "overflow", "variants"]);
 
 export class SupermaxLayoutError extends Error {
 	constructor(message, reason) {
@@ -23,8 +24,8 @@ export function layoutOf(definition) {
 	if (definition.rows) {
 		return {
 			title: definition.title,
-			keep: !!definition.keep,
-			rows: definition.rows.map((row) => ({ destination: row.destination, minHeight: row.minHeight, maxHeight: row.maxHeight, preferredHeight: row.preferredHeight ?? null, keep: !!row.keep, ...(row.variants ? { variants: structuredClone(row.variants) } : {}), ...(row.fold === false ? { fold: false } : row.fold ? { fold: { size: row.fold.size } } : {}) })),
+			...(definition.overflow ? { overflow: structuredClone(definition.overflow) } : {}),
+			rows: definition.rows.map((row) => ({ destination: row.destination, minHeight: row.minHeight, maxHeight: row.maxHeight, preferredHeight: row.preferredHeight ?? null, ...(row.overflow ? { overflow: structuredClone(row.overflow) } : {}), ...(row.variants ? { variants: structuredClone(row.variants) } : {}) })),
 			...(definition.header === "title" ? { header: "title" } : {}),
 			...(definition.menu != null ? { menu: definition.menu } : {}),
 		};
@@ -34,13 +35,12 @@ export function layoutOf(definition) {
 		min: definition.min,
 		max: definition.max,
 		preferred: definition.preferred ?? null,
-		keep: !!definition.keep,
+		...(definition.overflow ? { overflow: structuredClone(definition.overflow) } : {}),
 		...(definition.variants ? { variants: structuredClone(definition.variants) } : {}),
-		...(definition.fold === false ? { fold: false } : definition.fold ? { fold: { size: definition.fold.size } } : {}),
-		rows: definition.rows ? definition.rows.map((row) => ({ destination: row.destination, minHeight: row.minHeight, maxHeight: row.maxHeight, preferredHeight: row.preferredHeight ?? null, keep: !!row.keep, ...(row.variants ? { variants: structuredClone(row.variants) } : {}), ...(row.fold === false ? { fold: false } : row.fold ? { fold: { size: row.fold.size } } : {}) })) : null,
+		rows: null,
 		defaultChild: definition.defaultChild ?? null,
 		...(definition.zoomable ? { zoomable: true } : {}),
-		...(definition.height === "full" ? { height: "full" } : {}),
+		...(definition.placement === "beside-split" ? { placement: "beside-split" } : {}),
 		...(definition.header === "title" ? { header: "title" } : {}),
 		...(definition.menu != null ? { menu: definition.menu } : {}),
 	};
@@ -58,7 +58,7 @@ export function sameLayout(first, second) {
 
 function problemsOf(id, declaration) {
 	if (!declaration || typeof declaration !== "object") return ["not-an-object"];
-	const problems = [...variantProblems(declaration)];
+	const problems = [...variantProblems(declaration), ...overflowProblems(declaration, declaration.min)];
 	if (id.includes("/")) problems.push("invalid-id");
 	if (Object.keys(declaration).some((key) => !FIELDS.has(key))) problems.push("unknown-field");
 	if (declaration.header != null && declaration.header !== "title") problems.push("invalid-header");
@@ -66,12 +66,12 @@ function problemsOf(id, declaration) {
 	if (typeof declaration.title !== "string" || declaration.title.trim().length === 0) problems.push("invalid-title");
 	if (declaration.rows != null) {
 		if (REQUIRED_SPLIT.some((key) => !Object.hasOwn(declaration, key))) problems.push("missing-field");
-		if (WIDTH.some((key) => declaration[key] != null) || declaration.defaultChild != null || declaration.fold != null || declaration.variants != null) problems.push("split-with-width");
+		if (WIDTH.some((key) => declaration[key] != null) || declaration.defaultChild != null || declaration.overflow?.mode === "fold" || declaration.variants != null) problems.push("split-with-width");
 		const rows = declaration.rows;
 		const badHeight = (row) => (row.maxHeight === ELASTIC ? !(size(row.preferredHeight) && row.preferredHeight >= row.minHeight) : !size(row.maxHeight) || row.minHeight > row.maxHeight);
-		const badRow = (row) => !row || variantProblems(row, "height").length > 0 || typeof row.destination !== "string" || Object.keys(row).some((key) => !ROW_FIELDS.has(key)) || !size(row.minHeight) || badHeight(row) || (row.fold != null && row.fold !== false && ((!Number.isFinite(row.fold.size) || row.fold.size < 0) || row.fold.size >= row.minHeight || Object.keys(row.fold).some((key) => key !== "size")));
+		const badRow = (row) => !row || variantProblems(row, "height").length > 0 || typeof row.destination !== "string" || Object.keys(row).some((key) => !ROW_FIELDS.has(key)) || !size(row.minHeight) || badHeight(row) || overflowProblems(row, row.minHeight).length > 0;
 		if (!Array.isArray(rows) || rows.length === 0 || rows.some(badRow)) problems.push("invalid-row-shape");
-		if (declaration.height != null) problems.push("invalid-height");
+		if (declaration.placement != null) problems.push("invalid-placement");
 		return problems;
 	}
 	if (REQUIRED.some((key) => !Object.hasOwn(declaration, key))) problems.push("missing-field");
@@ -79,9 +79,8 @@ function problemsOf(id, declaration) {
 	if (!size(declaration.min) || (!elastic && (!size(declaration.max) || declaration.min > declaration.max))) problems.push("invalid-size");
 	if (elastic && !(size(declaration.preferred) && declaration.preferred >= declaration.min)) problems.push("elastic-without-preferred");
 	else if (declaration.preferred != null && (!size(declaration.preferred) || declaration.preferred < declaration.min || (!elastic && declaration.preferred > declaration.max))) problems.push("invalid-preferred");
-	if (declaration.fold != null && declaration.fold !== false && ((!Number.isFinite(declaration.fold.size) || declaration.fold.size < 0) || declaration.fold.size >= declaration.min || Object.keys(declaration.fold).some((key) => key !== "size"))) problems.push("invalid-fold");
 	if (declaration.defaultChild != null && (typeof declaration.defaultChild !== "string" || declaration.defaultChild.length === 0 || declaration.defaultChild === id)) problems.push("invalid-default");
-	if (declaration.height != null && declaration.height !== "full") problems.push("invalid-height");
+	if (declaration.placement != null && declaration.placement !== "beside-split") problems.push("invalid-placement");
 	return problems;
 }
 

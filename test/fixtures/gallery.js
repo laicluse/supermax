@@ -30,8 +30,8 @@ export const destinations = {
 };
 
 for (const definition of Object.values(destinations)) {
-	if (definition.rows) definition.rows.forEach((row) => { row.fold ??= false; });
-	else definition.fold ??= false;
+	if (definition.rows) definition.rows.forEach((row) => { row.overflow ??= { mode: "hide" }; });
+	else definition.overflow ??= { mode: "hide" };
 }
 
 export const invalidSplits = {

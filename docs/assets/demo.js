@@ -36,8 +36,8 @@ const sizePresets = [
 
 const foldReservation = (size) => (frame) => {
 	for (const [id, definition] of Object.entries(frame.workspace.navigator.destinations)) {
-		if (id === "album:folding") definition.rows.forEach((row) => { row.fold = { size }; });
-		else if (id.startsWith("folding:")) definition.fold = { size };
+		if (id === "album:folding") definition.rows.forEach((row) => { row.overflow = { mode: "fold", size }; });
+		else if (id.startsWith("folding:")) definition.overflow = { mode: "fold", size };
 	}
 };
 
@@ -158,7 +158,7 @@ function renderSpec(occurrence, definition) {
 	line("min", definition.min);
 	line("max", definition.max);
 	line("preferred", definition.preferred);
-	line("keep", definition.keep ? "yes" : null);
+	line("overflow", definition.overflow?.mode ?? "fold");
 	line("defaultChild", definition.defaultChild);
 	spec.append(element("dt", null, "width"), element("dd", "cell-spec-width", "…"));
 	spec.append(element("dt", null, "state"), element("dd", "cell-spec-state", "…"));

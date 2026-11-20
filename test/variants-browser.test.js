@@ -15,7 +15,7 @@ before(async () => {
 		await new Promise((resolve) => { link.onload = resolve; });
 		const host = document.createElement("div"); host.style.cssText = "width:700px;height:400px"; document.body.append(host);
 		const navigator = new Navigator({ root: "menu", minViewportHeight: 100, destinations: {
-			menu: { title: "Menu", min: 48, max: 320, preferred: 240, keep: true, variants: [
+			menu: { title: "Menu", min: 48, max: 320, preferred: 240, overflow: { mode: "keep" }, variants: [
 				{ id: "labels", when: { minWidth: 161 } }, { id: "icons", min: 48, max: 48, preferred: 48 },
 			] },
 			work: { title: "Work", min: 200, max: "*", preferred: 500 },
@@ -166,7 +166,7 @@ test("fixed content width accounts for the gutter inside a non-leading cell", as
 		const { Navigator, Workspace } = await import("/src/index.js");
 		const element = document.createElement("div"); element.style.cssText = "width:700px;height:200px"; document.body.append(element);
 		const navigator = new Navigator({ root: "menu", minViewportHeight: 100, destinations: {
-			menu: { title: "Menu", min: 48, max: 48, keep: true },
+			menu: { title: "Menu", min: 48, max: 48, overflow: { mode: "keep" } },
 			work: { title: "Work", min: 200, max: "*", preferred: 500, header: "title", variants: [{ id: "expanded", when: { minWidth: 400 } }, { id: "compact", max: 200, preferred: 200 }] },
 		} }); navigator.open("work");
 		const view = new Workspace(element, { navigator, content: () => {
@@ -192,7 +192,7 @@ test("fixed content width accounts for the gutter inside a non-leading cell", as
 test("a surviving boundary keeps its gutter until its preceding surface has left view", async () => {
 	const point = await page.evaluate(async () => {
 		await finish();
-		workspace.navigator.destinations.menu = { title: "Menu", min: 200, max: 200, fold: false };
+		workspace.navigator.destinations.menu = { title: "Menu", min: 200, max: 200, overflow: { mode: "hide" } };
 		workspace.navigator.destinations.work = { title: "Work", min: 300, max: "*", preferred: 400 };
 		workspace.navigator.setSize("menu", null); workspace.navigator.setSize("menu/work", null);
 		workspace.element.style.setProperty("--supermax-canvas", "rgb(201,204,209)");

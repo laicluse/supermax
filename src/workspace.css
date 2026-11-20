@@ -1,12 +1,12 @@
 :where(:root) {
 	--supermax-canvas: light-dark(#000000, #c9ccd1);
 	--supermax-surface: light-dark(#ffffff, #17191c);
-	--supermax-raised: light-dark(#ffffff, #202328);
+	--supermax-modal-surface: light-dark(#ffffff, #202328);
 	--supermax-muted-surface: light-dark(#f1f2f4, #25282d);
 	--supermax-ink: light-dark(#15171a, #eceef1);
 	--supermax-muted: light-dark(#646b75, #9ba2ad);
-	--supermax-line: light-dark(#e4e6e9, #2c3036);
-	--supermax-warn: light-dark(#b4261b, #ff8f80);
+	--supermax-navigation-divider: light-dark(#e4e6e9, #2c3036);
+	--supermax-load-error: light-dark(#b4261b, #ff8f80);
 	--supermax-backdrop: light-dark(rgba(0, 0, 0, 0.34), rgba(0, 0, 0, 0.55));
 	--supermax-shadow: light-dark(0 10px 30px rgba(0, 0, 0, 0.18), 0 10px 30px rgba(0, 0, 0, 0.5));
 	--supermax-gutter: 1px;
@@ -48,7 +48,7 @@
 	height: 100%;
 	padding: 0 10px;
 	border: 0;
-	border-right: var(--supermax-gutter) solid var(--supermax-line);
+	border-right: var(--supermax-gutter) solid var(--supermax-navigation-divider);
 	background: transparent;
 	color: var(--supermax-ink);
 	font: inherit;
@@ -132,7 +132,7 @@
 }
 @media (prefers-reduced-motion: reduce) { .supermax-loading-mark { animation: none; } }
 @keyframes supermax-spin { to { transform: rotate(360deg); } }
-.supermax-error strong { color: var(--supermax-warn); }
+.supermax-error strong { color: var(--supermax-load-error); }
 .supermax-error-detail { margin: 0; }
 .supermax-retry {
 	align-self: flex-start;
@@ -140,12 +140,12 @@
 	padding: 6px 12px;
 	border: 0;
 	background: var(--supermax-muted-surface);
-	color: var(--supermax-warn);
+	color: var(--supermax-load-error);
 	font: inherit;
 	font-size: 13px;
 	cursor: pointer;
 }
-.supermax-retry:hover { background: var(--supermax-warn); color: var(--supermax-surface); }
+.supermax-retry:hover { background: var(--supermax-load-error); color: var(--supermax-surface); }
 .supermax-cell.is-folded { border-left-width: 0; overflow: hidden; }
 .supermax-cell > .supermax-cell-title, .supermax-cell > .supermax-cell-body, .supermax-row > .supermax-row-chain :is(.supermax-cell-title, .supermax-cell-body) { transition: opacity 160ms ease; }
 .supermax-cell.is-folded > .supermax-cell-title, .supermax-cell.is-folded > .supermax-cell-body, .supermax-row.is-folded > .supermax-row-chain :is(.supermax-cell-title, .supermax-cell-body) { opacity: 0; pointer-events: none; }
@@ -277,7 +277,7 @@
 	pointer-events: none;
 }
 .supermax-notice, .supermax-notice-leaving {
-	--notice-surface: var(--supermax-raised);
+	--notice-surface: var(--supermax-surface);
 	--notice-ink: var(--supermax-muted);
 	position: relative;
 	display: flex;
@@ -360,7 +360,7 @@
 	box-sizing: border-box;
 	resize: both;
 	border-radius: var(--supermax-radius);
-	background: var(--supermax-raised);
+	background: var(--supermax-modal-surface);
 	color: var(--supermax-ink);
 	box-shadow: var(--supermax-shadow);
 	overflow: hidden;

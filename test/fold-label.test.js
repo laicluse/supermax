@@ -17,7 +17,7 @@ async function example(title = "Photo view", options = {}) {
 		const { Navigator, Workspace } = await import("/src/index.js");
 		const host = document.createElement("div"); host.style.cssText = "width:300px;height:200px;--supermax-canvas:#999;--supermax-surface:white"; document.body.append(host);
 		const navigator = new Navigator({ root: "menu", minViewportHeight: 160, destinations: {
-			menu: { title: "Menu", min: 40, max: 40, keep: true },
+			menu: { title: "Menu", min: 40, max: 40, overflow: { mode: "keep" } },
 			photo: { title, min: 200, max: 200 },
 			work: { title: "Work", min: 200, max: "*", preferred: 260 },
 			split: { title: "Workspace", rows: [{ destination: "overview", minHeight: 120, maxHeight: 120 }, { destination: "details", minHeight: 120, maxHeight: "*", preferredHeight: 160 }] },

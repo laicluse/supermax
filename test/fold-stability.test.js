@@ -6,7 +6,7 @@ import { serveDocs } from "./serve-docs.js";
 
 function gallery(width = 420) {
 	const model = new Navigator({ root: "menu", minViewportHeight: 200, destinations: {
-		menu: { title: "Menu", min: 48, max: 120, keep: true, fold: false },
+		menu: { title: "Menu", min: 48, max: 120, overflow: { mode: "keep" } },
 		split: { title: "Work", rows: [
 			{ destination: "list", minHeight: 100, maxHeight: "*", preferredHeight: 200 },
 			{ destination: "support", minHeight: 100, maxHeight: 100 },

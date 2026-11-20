@@ -1,3 +1,4 @@
+import { foldSize } from "./overflow.js";
 const WIDTH = ["min", "max", "preferred"];
 const HEIGHT = ["minHeight", "maxHeight", "preferredHeight"];
 
@@ -15,7 +16,7 @@ export function variantProblems(owner, axis = "width") {
 		const bounds = { ...owner, ...variant };
 		if (!Number.isFinite(bounds[minimum]) || bounds[minimum] <= 0 || (bounds[maximum] !== "*" && (!Number.isFinite(bounds[maximum]) || bounds[maximum] < bounds[minimum]))) return ["invalid-variant-size"];
 		if ((bounds[maximum] === "*" && bounds[preferred] == null) || (bounds[preferred] != null && (!Number.isFinite(bounds[preferred]) || bounds[preferred] < bounds[minimum] || (bounds[maximum] !== "*" && bounds[preferred] > bounds[maximum])))) return ["invalid-variant-preferred"];
-		if (owner.fold && bounds[minimum] <= owner.fold.size) return ["invalid-variant-fold"];
+		if (bounds[minimum] <= foldSize(owner)) return ["invalid-variant-fold"];
 		if (axis === "height" && (bounds[maximum] === "*") !== (owner[maximum] === "*")) return ["variant-changes-elastic-row"];
 		if (Number.isFinite(bounds[maximum]) && (variant.when?.[axis === "width" ? "minWidth" : "minHeight"] ?? 0) > bounds[maximum]) return ["unreachable-variant"];
 		if (index === variants.length - 1) {

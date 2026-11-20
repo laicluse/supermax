@@ -86,9 +86,9 @@ test("zoom retains an exit when its ancestors were already hidden", async () => 
 			host.style.cssText = "position:relative;width:100px;height:100px";
 			document.body.append(host);
 			const navigator = new Navigator({ root: "root", minViewportHeight: 100, destinations: {
-				root: { title: "Root", min: 100, max: 100, fold: false },
-				parent: { title: "Parent", min: 100, max: 100, fold: false },
-				detail: { title: "Detail", min: 100, max: "*", preferred: 100, fold: false, zoomable: true, header: "title" },
+				root: { title: "Root", min: 100, max: 100, overflow: { mode: "hide" } },
+				parent: { title: "Parent", min: 100, max: 100, overflow: { mode: "hide" } },
+				detail: { title: "Detail", min: 100, max: "*", preferred: 100, overflow: { mode: "hide" }, zoomable: true, header: "title" },
 			} });
 			navigator.resize({ width: 100, height: 100 });
 			navigator.open("parent", { from: "root" });
@@ -121,7 +121,7 @@ test("adjacent folded cells can be dragged open one page at a time", async () =>
 			host.style.cssText = "position:relative;width:300px;height:300px";
 			document.body.append(host);
 			const navigator = new Navigator({ root: "mode", minViewportHeight: 300, destinations: {
-				mode: { title: "Mode", min: 40, max: 40, keep: true },
+				mode: { title: "Mode", min: 40, max: 40, overflow: { mode: "keep" } },
 				a: { title: "A", min: 200, max: 200 },
 				b: { title: "B", min: 200, max: 200 },
 				c: { title: "C", min: 200, max: "*", preferred: 260 },
@@ -217,10 +217,10 @@ test("nonfoldable content after the active cell remains scrollable in a split", 
 			host.style.cssText = "position:relative;width:300px;height:300px";
 			document.body.append(host);
 			const navigator = new Navigator({ root: "menu", minViewportHeight: 300, destinations: {
-				menu: { title: "Menu", min: 40, max: 40, keep: true },
+				menu: { title: "Menu", min: 40, max: 40, overflow: { mode: "keep" } },
 				split: { title: "Split", rows: [{ destination: "list", minHeight: 200, maxHeight: "*", preferredHeight: 250 }] },
-				list: { title: "List", min: 200, max: 200, fold: false },
-				item: { title: "Item", min: 200, max: "*", preferred: 200, fold: false },
+				list: { title: "List", min: 200, max: 200, overflow: { mode: "hide" } },
+				item: { title: "Item", min: 200, max: "*", preferred: 200, overflow: { mode: "hide" } },
 			} });
 			navigator.resize({ width: 300, height: 300 });
 			navigator.open("split", { from: "menu" });
@@ -263,14 +263,14 @@ test("allocated rows and cells remain physically reachable with overflow on both
 			host.style.cssText = "position:relative;width:120px;height:100px";
 			document.body.append(host);
 			const navigator = new Navigator({ root: "menu", minViewportHeight: 300, destinations: {
-				menu: { title: "Menu", min: 40, max: 40, keep: true },
+				menu: { title: "Menu", min: 40, max: 40, overflow: { mode: "keep" } },
 				split: { title: "Split", header: "title", rows: [
-					{ destination: "first", minHeight: 180, maxHeight: "*", preferredHeight: 200, fold: false },
-					{ destination: "second", minHeight: 180, maxHeight: 200, fold: false },
+					{ destination: "first", minHeight: 180, maxHeight: "*", preferredHeight: 200, overflow: { mode: "hide" } },
+					{ destination: "second", minHeight: 180, maxHeight: 200, overflow: { mode: "hide" } },
 				] },
-				first: { title: "First", min: 200, max: 200, fold: false },
-				second: { title: "Second", min: 200, max: 200, fold: false },
-				item: { title: "Item", min: 200, max: "*", preferred: 200, fold: false },
+				first: { title: "First", min: 200, max: 200, overflow: { mode: "hide" } },
+				second: { title: "Second", min: 200, max: 200, overflow: { mode: "hide" } },
+				item: { title: "Item", min: 200, max: "*", preferred: 200, overflow: { mode: "hide" } },
 			} });
 			navigator.resize({ width: 120, height: 100 });
 			navigator.open("split", { from: "menu" });
@@ -309,8 +309,8 @@ test("folded cells and rows trade space when their cues are clicked", async () =
 			host.style.cssText = "position:relative;width:360px;height:420px";
 			document.body.append(host);
 			const navigator = new Navigator({ root: "mode", minViewportHeight: 300, destinations: {
-				mode: { title: "Mode", min: 48, max: 48, keep: true },
-				mail: { title: "Mailboxes", min: 180, max: 180, fold: { size: 16 } },
+				mode: { title: "Mode", min: 48, max: 48, overflow: { mode: "keep" } },
+				mail: { title: "Mailboxes", min: 180, max: 180, overflow: { mode: "fold", size: 16 } },
 				work: { title: "Messages", min: 280, max: "*", preferred: 320 },
 			} });
 			navigator.open("mail", { from: "mode" });
@@ -374,9 +374,9 @@ test("folded cells and rows trade space when their cues are clicked", async () =
 			host.style.cssText = "position:relative;width:360px;height:300px";
 			document.body.append(host);
 			const navigator = new Navigator({ root: "root", minViewportHeight: 300, destinations: {
-				root: { title: "Home", min: 48, max: 48, keep: true },
+				root: { title: "Home", min: 48, max: 48, overflow: { mode: "keep" } },
 				split: { title: "Work", rows: [
-					{ destination: "overview", minHeight: 160, maxHeight: 160, fold: { size: 20 } },
+					{ destination: "overview", minHeight: 160, maxHeight: 160, overflow: { mode: "fold", size: 20 } },
 					{ destination: "detail", minHeight: 250, maxHeight: "*", preferredHeight: 300 },
 				] },
 				overview: { title: "Overview", min: 280, max: 280 },
@@ -706,7 +706,7 @@ test("dragging folds follows the pointer and settles beyond the directional gold
 				const destinations = axis === "horizontal" ? {
 					first: { title: "First", min: 280, max: "*", preferred: 320 }, second: { title: "Second", min: 280, max: "*", preferred: 320 },
 				} : {
-					mode: { title: "Mode", min: 32, max: 32, keep: true },
+					mode: { title: "Mode", min: 32, max: 32, overflow: { mode: "keep" } },
 					first: { title: "Rows", rows: [{ destination: "upper", minHeight: 300, maxHeight: 300 }, { destination: "lower", minHeight: 300, maxHeight: "*", preferredHeight: 400 }] },
 					upper: { title: "Upper", min: 280, max: "*", preferred: 320 }, lower: { title: "Lower", min: 280, max: "*", preferred: 320 },
 				};

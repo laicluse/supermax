@@ -1,0 +1,12 @@
+export const overflowMode = (definition) => definition.overflow?.mode ?? "fold";
+export const foldSize = (definition) => definition.overflow?.size ?? 0;
+
+export function overflowProblems(definition, minimum) {
+	const problems = [];
+	if (Object.hasOwn(definition, "keep") || Object.hasOwn(definition, "fold")) problems.push("unsupported-overflow-field");
+	if (definition.overflow === undefined) return problems;
+	const policy = definition.overflow;
+	if (!policy || typeof policy !== "object" || Array.isArray(policy) || !["fold", "hide", "keep"].includes(policy.mode) || Object.keys(policy).some((key) => !["mode", "size"].includes(key))) return [...problems, "invalid-overflow"];
+	if (Object.hasOwn(policy, "size") && (policy.mode !== "fold" || !Number.isFinite(policy.size) || policy.size < 0 || policy.size >= minimum)) problems.push("invalid-fold-size");
+	return problems;
+}

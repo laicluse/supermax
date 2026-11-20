@@ -3,7 +3,7 @@ import { LAYOUT_SCHEMA, layoutOf } from "./supermax/layout-declaration.js";
 export const minViewportHeight = 360;
 
 const widths = {
-	albums: { min: 48, max: 320, preferred: 240, keep: true, header: "title", variants: [{ id: "labels", when: { minWidth: 161 } }, { id: "icons", min: 48, preferred: 48, max: 48 }] },
+	albums: { min: 48, max: 320, preferred: 240, overflow: { mode: "keep" }, header: "title", variants: [{ id: "labels", when: { minWidth: 161 } }, { id: "icons", min: 48, preferred: 48, max: 48 }] },
 	selector: { min: 200, max: "*", preferred: 360 },
 	map: { min: 220, max: "*", preferred: 480 },
 	photo: { min: 240, max: "*", preferred: 360, zoomable: true },
@@ -11,7 +11,7 @@ const widths = {
 	history: { min: 200, max: 320, header: "title" },
 	edit: { min: 200, max: 320, header: "title" },
 	depth: { min: 160, max: 240, header: "title" },
-	full: { min: 320, max: "*", preferred: 900, height: "full" },
+	full: { min: 320, max: "*", preferred: 900, placement: "beside-split" },
 };
 
 export const depthCount = 20;
@@ -101,7 +101,7 @@ export function destinations(context = "ana") {
 	if (catalogs.has(context)) return catalogs.get(context);
 	const result = { albums: { title: "Albums", ...widths.albums, data: { kind: "albums" } } };
 	for (let n = 1; n <= depthCount; n += 1) {
-		result[depthId(n)] = { title: `Depth ${n}`, ...widths.depth, fold: false, data: { kind: "depth", n } };
+		result[depthId(n)] = { title: `Depth ${n}`, ...widths.depth, overflow: { mode: "hide" }, data: { kind: "depth", n } };
 	}
 	for (const album of albums) {
 		const key = ids(album);
@@ -157,8 +157,8 @@ export function declarationSet(root, context = "ana") {
 }
 
 function declare(definition) {
-	const { keep, rows, ...layout } = layoutOf(definition);
-	return { ...layout, ...(keep ? { keep } : {}), ...(rows ? { rows: rows.map(({ keep: rowKeep, preferredHeight, ...row }) => ({ ...row, ...(preferredHeight !== null ? { preferredHeight } : {}), ...(rowKeep ? { keep: rowKeep } : {}) })) } : {}) };
+	const { rows, ...layout } = layoutOf(definition);
+	return { ...layout, ...(rows ? { rows: rows.map(({ preferredHeight, ...row }) => ({ ...row, ...(preferredHeight !== null ? { preferredHeight } : {}) })) } : {}) };
 }
 
 export function embeddedDestinations(context = "ana") {

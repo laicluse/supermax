@@ -6,16 +6,16 @@ import { scenario } from "./scenario.js";
 
 class Navigator extends BaseNavigator {
 	constructor(options) {
-		const destinations = Object.fromEntries(Object.entries(options.destinations).map(([id, definition]) => [id, definition.rows ? { ...definition, rows: Array.isArray(definition.rows) ? definition.rows.map((row) => row && typeof row === "object" ? { ...row, fold: row.fold ?? false } : row) : definition.rows } : { ...definition, fold: definition.fold ?? false }]));
+		const destinations = Object.fromEntries(Object.entries(options.destinations).map(([id, definition]) => [id, definition.rows ? { ...definition, rows: Array.isArray(definition.rows) ? definition.rows.map((row) => row && typeof row === "object" ? { ...row, overflow: row.overflow ?? { mode: "hide" } } : row) : definition.rows } : { ...definition, overflow: definition.overflow ?? { mode: "hide" } }]));
 		super({ ...options, destinations });
 	}
 }
 
-scenario("ordinary cells and rows fold by default while fold false excludes them", () => {
-	const horizontal = (fold) => {
+scenario("ordinary cells and rows fold by default while hide excludes them", () => {
+	const horizontal = (mode) => {
 		const model = new BaseNavigator({ root: "mode", minViewportHeight: 300, destinations: {
-			mode: { title: "Mode", min: 48, max: 48, keep: true },
-			selector: { title: "Selector", min: 180, max: 180, ...(fold === false ? { fold: false } : {}) },
+			mode: { title: "Mode", min: 48, max: 48, overflow: { mode: "keep" } },
+			selector: { title: "Selector", min: 180, max: 180, ...(mode ? { overflow: { mode } } : {}) },
 			content: { title: "Content", min: 270, max: "*", preferred: 320 },
 		} });
 		model.resize({ width: 340, height: 300 });
@@ -25,12 +25,12 @@ scenario("ordinary cells and rows fold by default while fold false excludes them
 	};
 	assert.equal(horizontal().folded, true);
 	assert.equal(horizontal().width, 0);
-	assert.equal(horizontal(false).folded, false);
-	const vertical = (fold) => {
+	assert.equal(horizontal("hide").folded, false);
+	const vertical = (mode) => {
 		const model = new BaseNavigator({ root: "home", minViewportHeight: 300, destinations: {
-			home: { title: "Home", min: 40, max: 40, keep: true },
+			home: { title: "Home", min: 40, max: 40, overflow: { mode: "keep" } },
 			split: { title: "Split", rows: [
-				{ destination: "summary", minHeight: 170, maxHeight: 170, ...(fold === false ? { fold: false } : {}) },
+				{ destination: "summary", minHeight: 170, maxHeight: 170, ...(mode ? { overflow: { mode } } : {}) },
 				{ destination: "detail", minHeight: 250, maxHeight: "*", preferredHeight: 280 },
 			] },
 			summary: { title: "Summary", min: 280, max: 280 },
@@ -42,7 +42,7 @@ scenario("ordinary cells and rows fold by default while fold false excludes them
 	};
 	assert.equal(vertical().folded, true);
 	assert.equal(vertical().height, 0);
-	assert.equal(vertical(false).folded, false);
+	assert.equal(vertical("hide").folded, false);
 });
 
 function model(width = 1000, height = 500) {
@@ -243,10 +243,10 @@ scenario("a window start never strands later cells in a row", () => {
 
 scenario("a split exposes the full width of a protected nonfoldable row", () => {
 	const instance = new BaseNavigator({ root: "menu", minViewportHeight: 300, destinations: {
-		menu: { title: "Menu", min: 40, max: 40, keep: true },
+		menu: { title: "Menu", min: 40, max: 40, overflow: { mode: "keep" } },
 		split: { title: "Split", rows: [{ destination: "list", minHeight: 200, maxHeight: "*", preferredHeight: 250 }] },
-		list: { title: "List", min: 200, max: 200, fold: false },
-		item: { title: "Item", min: 200, max: "*", preferred: 200, fold: false },
+		list: { title: "List", min: 200, max: 200, overflow: { mode: "hide" } },
+		item: { title: "Item", min: 200, max: "*", preferred: 200, overflow: { mode: "hide" } },
 	} });
 	instance.resize({ width: 300, height: 300 });
 	instance.open("split", { from: "menu" });
@@ -258,7 +258,7 @@ scenario("a split exposes the full width of a protected nonfoldable row", () => 
 });
 
 scenario("Up reaches every cell hidden above the window, newest branch first, never what lies after it", () => {
-	const narrow = new Navigator({ destinations: { ...destinations, root: { ...destinations.root, keep: true } }, root: "root", minViewportHeight, chrome });
+	const narrow = new Navigator({ destinations: { ...destinations, root: { ...destinations.root, overflow: { mode: "keep" } } }, root: "root", minViewportHeight, chrome });
 	narrow.resize({ width: 210, height: 500 });
 	openGallery(narrow);
 	assert.equal(narrow.upTarget(), null, "nothing is above the window, and the kept root never counts");
@@ -272,7 +272,7 @@ scenario("Up reaches every cell hidden above the window, newest branch first, ne
 	assert.equal(narrow.upTarget(), null, "a row that stays fully visible needs no Back target");
 	assert.deepEqual(titles(narrow), ["Gallery", "Item A", "Item B"], "finding a target closes nothing");
 
-	const chain = new Navigator({ destinations: { elsewhere, menu: { title: "Menu", min: 100, max: 100, keep: true }, a: { title: "A", min: 100, max: 100, defaultChild: "b" }, b: { title: "B", min: 100, max: 100, defaultChild: "c" }, c: { title: "C", min: 100, max: 100 } }, root: "menu", minViewportHeight, chrome });
+	const chain = new Navigator({ destinations: { elsewhere, menu: { title: "Menu", min: 100, max: 100, overflow: { mode: "keep" } }, a: { title: "A", min: 100, max: 100, defaultChild: "b" }, b: { title: "B", min: 100, max: 100, defaultChild: "c" }, c: { title: "C", min: 100, max: 100 } }, root: "menu", minViewportHeight, chrome });
 	chain.resize({ width: 400, height: 500 });
 	chain.open("a", { from: "menu" });
 	chain.resize({ width: 120, height: 500 });
@@ -330,7 +330,7 @@ scenario("a revealed outer chain does not change which defaults open", () => {
 scenario("a kept cell stays at its declared minimum while other cells give way", () => {
 	const set = {
 		elsewhere,
-		menu: { title: "Menu", min: 100, max: 100, keep: true, defaultChild: "a" },
+		menu: { title: "Menu", min: 100, max: 100, overflow: { mode: "keep" }, defaultChild: "a" },
 		a: { title: "A", min: 100, max: 100, defaultChild: "b" },
 		b: { title: "B", min: 100, max: 100, defaultChild: "c" },
 		c: { title: "C", min: 100, max: 100 },
@@ -697,8 +697,8 @@ const mail = ({ defaults = false, width = 1600 } = {}) => {
 			},
 			messages: { title: "Messages", min: 300, max: "*", preferred: 600, zoomable: true },
 			attachments: { title: "Attachments", min: 200, max: 400, ...(defaults ? { defaultChild: "attachment:1" } : {}) },
-			"attachment:1": { title: "Attachment 1", min: 300, max: 500, height: "full", defaultChild: "info:1" },
-			"attachment:2": { title: "Attachment 2", min: 300, max: 500, height: "full" },
+			"attachment:1": { title: "Attachment 1", min: 300, max: 500, placement: "beside-split", defaultChild: "info:1" },
+			"attachment:2": { title: "Attachment 2", min: 300, max: 500, placement: "beside-split" },
 			"info:1": { title: "Info 1", min: 150, max: 200 },
 			note: { title: "Note", min: 150, max: 200 },
 			"second:conversation": { title: "Second", rows: [{ destination: "note", minHeight: 100, maxHeight: "*", preferredHeight: 200 }] },
@@ -789,10 +789,10 @@ scenario("a breakout survives a snapshot, follows the window and zoom rules of t
 });
 
 scenario("full height is a declaration: refused on a split, as a row, and as a second split beside a split, and an ordinary cell outside a row", () => {
-	const full = { title: "Full", min: 100, max: 200, height: "full" };
-	assert.deepEqual(validateDestinations({ ...destinations, full, bad: { ...destinations.inner, height: "full" } }, { minViewportHeight, chrome }).problems, [{ destination: "bad", reason: "invalid-height" }], "a split cannot declare a height; it is full by nature");
-	assert.deepEqual(validateDestinations({ ...destinations, full, tall: { ...destinations.gallery, rows: [{ destination: "full", minHeight: 100, maxHeight: "*", preferredHeight: 200 }] } }, { minViewportHeight, chrome }).problems[0].validation.rows[0].problems, ["full-height-row"], "a full-height cell cannot be a row");
-	assert.deepEqual(validateDestinations({ ...destinations, half: { ...full, height: "half" } }, { minViewportHeight, chrome }).problems, [{ destination: "half", reason: "invalid-height" }]);
+	const full = { title: "Full", min: 100, max: 200, placement: "beside-split" };
+	assert.deepEqual(validateDestinations({ ...destinations, full, bad: { ...destinations.inner, placement: "beside-split" } }, { minViewportHeight, chrome }).problems, [{ destination: "bad", reason: "invalid-placement" }], "a split cannot declare beside-split placement");
+	assert.deepEqual(validateDestinations({ ...destinations, full, tall: { ...destinations.gallery, rows: [{ destination: "full", minHeight: 100, maxHeight: "*", preferredHeight: 200 }] } }, { minViewportHeight, chrome }).problems[0].validation.rows[0].problems, ["beside-split-on-row"], "a full-height cell cannot be a row");
+	assert.deepEqual(validateDestinations({ ...destinations, half: { ...full, placement: "inside-split" } }, { minViewportHeight, chrome }).problems, [{ destination: "half", reason: "invalid-placement" }]);
 	const instance = mail();
 	instance.open("attachment:2", { from: ATTACHMENTS, origin: null });
 	const second = instance.open("second:conversation", { from: `${ATTACHMENTS}/attachment:2` });
@@ -816,7 +816,7 @@ scenario("sync follows the root chain past a split: a split opens from ifRoom wi
 			"conversation:1": { title: "Conversation", rows: [{ destination: "messages:1", minHeight: 240, maxHeight: "*", preferredHeight: 560 }, { destination: "attachments:1", minHeight: 100, maxHeight: 200 }] },
 			"messages:1": { title: "Messages", min: 320, max: "*", preferred: 960 },
 			"attachments:1": { title: "Attachments", min: 200, max: 400 },
-			"attachment:1": { title: "Attachment", min: 300, max: 500, height: "full" },
+			"attachment:1": { title: "Attachment", min: 300, max: 500, placement: "beside-split" },
 		},
 		root: "modes",
 		minViewportHeight: 320,
@@ -864,14 +864,14 @@ scenario("sync names a path into a row: the next id after a split is one of its 
 	const E = "*";
 	const chain = new Navigator({
 		destinations: {
-			modes: { title: "Modes", min: 192, max: 256, keep: true },
+			modes: { title: "Modes", min: 192, max: 256, overflow: { mode: "keep" } },
 			mailboxes: { title: "Mailboxes", min: 256, max: 320 },
 			conversations: { title: "Conversations", min: 320, max: E, preferred: 640 },
 			conversation: { title: "Subject", rows: [{ destination: "metadata", minHeight: 240, maxHeight: E, preferredHeight: 560 }, { destination: "attachments", minHeight: 96, maxHeight: 120 }] },
 			metadata: { title: "Subject", min: 320, max: 640, defaultChild: "messages" },
 			messages: { title: "Subject", min: 320, max: E, preferred: 960, zoomable: true },
 			attachments: { title: "Attachments", min: 320, max: E, preferred: 960 },
-			attachment: { title: "Attachment", min: 320, max: E, preferred: 960, height: "full" },
+			attachment: { title: "Attachment", min: 320, max: E, preferred: 960, placement: "beside-split" },
 		},
 		root: "modes",
 		minViewportHeight: 320,
@@ -914,7 +914,7 @@ scenario("sync names a path into a row: the next id after a split is one of its 
 scenario("room gives way in reading order through a split: the cells before it first, then the row's older cells, the split last, and Show closes the newest row cell before the split", () => {
 	const E = "*";
 	const destinations = {
-		modes: { title: "Modes", min: 192, max: 256, keep: true },
+		modes: { title: "Modes", min: 192, max: 256, overflow: { mode: "keep" } },
 		mailboxes: { title: "Mailboxes", min: 256, max: 320 },
 		nav: { title: "Nav", min: 256, max: 320 },
 		conversations: { title: "Conversations", min: 320, max: E, preferred: 640 },
@@ -922,7 +922,7 @@ scenario("room gives way in reading order through a split: the cells before it f
 		metadata: { title: "Summary", min: 320, max: 640, defaultChild: "messages" },
 		messages: { title: "Messages", min: 320, max: E, preferred: 960 },
 		attachments: { title: "Attachments", min: 320, max: E, preferred: 960 },
-		attachment: { title: "Attachment", min: 320, max: E, preferred: 960, height: "full" },
+		attachment: { title: "Attachment", min: 320, max: E, preferred: 960, placement: "beside-split" },
 	};
 	const at = (width) => {
 		const chain = new Navigator({ destinations, root: "modes", minViewportHeight: 320 });
@@ -968,7 +968,7 @@ scenario("ifRoom may name a path into a row, and opens it whole or not at all", 
 	const make = (width) => {
 		const chain = new Navigator({
 			destinations: {
-				modes: { title: "Modes", min: 192, max: 256, keep: true },
+				modes: { title: "Modes", min: 192, max: 256, overflow: { mode: "keep" } },
 				conversations: { title: "Conversations", min: 320, max: E, preferred: 640 },
 				conversation: { title: "Subject", header: "title", rows: [{ destination: "metadata", minHeight: 240, maxHeight: E, preferredHeight: 560 }] },
 				metadata: { title: "Summary", min: 320, max: 640 },
@@ -994,7 +994,7 @@ scenario("ifRoom may name a path into a row, and opens it whole or not at all", 
 
 scenario("Show navigates to folded ancestors by closing their trailing content", () => {
 	const model = new BaseNavigator({ root: "root", minViewportHeight: 300, destinations: {
-		root: { title: "Root", min: 40, max: 40, keep: true },
+		root: { title: "Root", min: 40, max: 40, overflow: { mode: "keep" } },
 		a: { title: "A", min: 100, max: 100 },
 		b: { title: "B", min: 100, max: 100 },
 		c: { title: "C", min: 100, max: "*", preferred: 140 },
@@ -1017,7 +1017,7 @@ scenario("Show navigates to folded ancestors by closing their trailing content",
 
 scenario("Show traverses folded vertical rows toward earlier context without toggling", () => {
 	const model = new BaseNavigator({ root: "home", minViewportHeight: 300, destinations: {
-		home: { title: "Home", min: 40, max: 40, keep: true },
+		home: { title: "Home", min: 40, max: 40, overflow: { mode: "keep" } },
 		split: { title: "Work", rows: [
 			{ destination: "first", minHeight: 170, maxHeight: 170 },
 			{ destination: "summary", minHeight: 170, maxHeight: 170 },
@@ -1110,4 +1110,14 @@ scenario("focus names the menu item to mark: the first destination on the path w
 	instance.restore(snapshot);
 	assert.equal(instance.focus().menu, "albums", "a snapshot carries the active item with the focus");
 	assert.throws(() => new BaseNavigator({ root: "shell", minViewportHeight: 400, destinations: { shell: { title: "Shell", min: 200, max: "*", preferred: 200, menu: "always" } } }), /invalid-menu/, "menu is true or \"exact\"");
+});
+
+scenario("overflow declarations reject ambiguous policies on cells and rows", () => {
+	for (const policy of [null, false, "keep", {}, { mode: "other" }, { mode: "keep", size: 0 }, { mode: "hide", size: 1 }, { mode: "fold", size: -1 }, { mode: "fold", size: 100 }, { mode: "fold", extra: true }]) {
+		const definitions = { root: { title: "Root", min: 100, max: "*", preferred: 200, overflow: policy } };
+		assert.equal(validateDestinations(definitions, { minViewportHeight: 200 }).ok, false);
+		definitions.root = { title: "Root", rows: [{ destination: "body", minHeight: 100, maxHeight: "*", preferredHeight: 150, overflow: policy }] };
+		definitions.body = { title: "Body", min: 100, max: "*", preferred: 200 };
+		assert.equal(validateDestinations(definitions, { minViewportHeight: 200 }).ok, false);
+	}
 });
