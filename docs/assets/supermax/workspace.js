@@ -15,8 +15,9 @@ function normalizePresentation(presentation) {
 	if (!presentation || typeof presentation.name !== "string" || presentation.name.length === 0) throw new TypeError("presentation needs a name");
 	if (!/^[a-z][a-z0-9-]*$/.test(presentation.name)) throw new TypeError("presentation name must be a lowercase identifier");
 	const motion = presentation.motion ?? null;
-	const createStrip = presentation.createStrip ?? ((viewport) => new CellStrip(viewport, { motion }));
-	return Object.freeze({ name: presentation.name, motion, createStrip });
+	const source = presentation.createStrip ?? null;
+	const createStrip = source ?? ((viewport) => new CellStrip(viewport, { motion }));
+	return Object.freeze({ name: presentation.name, motion, source, createStrip });
 }
 
 export class Workspace extends EventTarget {
@@ -43,7 +44,7 @@ export class Workspace extends EventTarget {
 		this.element.classList.add(`supermax-presentation-${this.presentation.name}`);
 		this.element.addEventListener("focusin", this.onFocusIn);
 		this.onKeydown = (event) => {
-			if (event.key === "ArrowLeft" && event.altKey && !event.ctrlKey && !event.metaKey) {
+			if (event.key === "ArrowLeft" && event.altKey && !event.ctrlKey && !event.metaKey && !event.target.closest?.("input, textarea, select, [contenteditable]")) {
 				event.preventDefault();
 				this.requestBack();
 			}
@@ -115,7 +116,7 @@ export class Workspace extends EventTarget {
 
 	setPresentation(presentation) {
 		const next = normalizePresentation(presentation);
-		if (next.name === this.presentation.name && next.createStrip === this.presentation.createStrip) return;
+		if (next.name === this.presentation.name && next.motion === this.presentation.motion && next.source === this.presentation.source) return;
 		const activeElement = this.document.activeElement;
 		const focused = activeElement?.closest?.(".supermax-cell")?.dataset.occurrence ?? null;
 		this.closePeek();
@@ -204,11 +205,24 @@ export class Workspace extends EventTarget {
 		const cell = chain?.cells.find((candidate) => candidate.occurrence === occurrenceId);
 		if (cell && !cell.visible) {
 			const index = chain.cells.indexOf(cell);
-			const wanted = chain.cells.length - 1 - index;
-			this.reveal(chainRoot.id, wanted - chain.revealOffset);
+			const nearest = this.navigator.revealOffsets.get(chainRoot.id) ?? 0;
+			let offset = nearest;
+			for (let candidate = nearest; candidate <= chain.cells.length - 1 - index; candidate += 1) {
+				this.navigator.revealOffsets.set(chainRoot.id, candidate);
+				offset = candidate;
+				if (this.navigator.layout().chains.get(chainRoot.id)?.cells[index]?.visible) break;
+			}
+			this.navigator.revealOffsets.set(chainRoot.id, nearest);
+			this.reveal(chainRoot.id, offset - nearest);
+		}
+		const target = this.findCell(occurrenceId);
+		if (target?.compact) {
+			this.peeks.open(occurrenceId);
+			this.peeks.focus();
+			return true;
 		}
 		this.focusCell(occurrenceId);
-		return this.findCell(occurrenceId)?.inView ?? false;
+		return target?.full ?? false;
 	}
 
 	collapsedRowFor(occurrenceId) {
@@ -600,6 +614,7 @@ export class Workspace extends EventTarget {
 			if (this.peek?.occurrence === occurrenceId) this.closePeek();
 			this.protectFocus([entry.element], entry.parent);
 			this.cells.delete(occurrenceId);
+			if (entry.element.classList.contains("is-split")) this.dividers.dispose(entry.body.firstElementChild);
 			this.afterExit(entry.element, () => entry.slot.dispose());
 		}
 		for (const [rowId, entry] of this.rows) {

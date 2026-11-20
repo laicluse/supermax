@@ -38,6 +38,7 @@ export class Navigator {
 		this.destinations[id] = { ...definition, provisional: false };
 		const completed = [];
 		const rejected = [];
+		const closed = [];
 		for (const occurrence of [...this.occurrences.values()]) {
 			if (occurrence.destination !== id) continue;
 			occurrence.title = definition.title;
@@ -53,7 +54,7 @@ export class Navigator {
 				}
 				for (const childId of occurrence.children) {
 					const child = childId ? this.get(childId) : null;
-					if (child) this.removeSubtree(child);
+					if (child) closed.push(...this.removeSubtree(child));
 				}
 				occurrence.children = [];
 				this.dropEmptyGroups();
@@ -66,11 +67,12 @@ export class Navigator {
 			if (occurrence.awaiting !== id || occurrence.children[0]) continue;
 			const group = this.groupOf(occurrence);
 			if (!group) continue;
+			occurrence.awaiting = null;
 			const before = occurrence.children.length;
 			this.openDefaults(occurrence, group);
 			if (occurrence.children.length > before) completed.push(occurrence.children[0]);
 		}
-		return { completed, rejected };
+		return { completed, rejected, closed };
 	}
 
 	provisional(id, hint) {
@@ -270,7 +272,7 @@ export class Navigator {
 		const root = this.get(group.root);
 		const focusAfterClose = root.parent ?? this.root.id;
 		const closed = this.closeSubtree(root);
-		this.focus(focusAfterClose);
+		this.focus(focusAfterClose, { resetReveal: false });
 		return { ok: true, closed, title: group.title, focus: this.focused };
 	}
 

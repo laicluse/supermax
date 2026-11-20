@@ -39,6 +39,7 @@ export class NoticeBoard {
 
 	dismissAll(state = "dismissed") {
 		for (const id of [...this.notices.keys()]) this.dismiss(id, state);
+		this.ids.clear();
 	}
 
 	render() {

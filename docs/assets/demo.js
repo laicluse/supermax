@@ -599,17 +599,16 @@ class Session {
 			frame.workspace.dismissAll();
 			frame.workspace.replay([]);
 		}
-		const kept = [];
+		this.log = [];
 		for (const action of log) {
 			await this.settleDefaults();
 			if (this.replaying !== token) return;
 			const results = this.frames.map((frame) => frame.workspace.apply(action, { animate: false }));
-			if (results.some((result) => result.ok && !result.noop)) kept.push(action);
+			if (results.some((result) => result.ok && !result.noop)) this.log.push(action);
 		}
 		await this.settleDefaults();
 		if (this.replaying !== token) return;
 		this.replaying = null;
-		this.log = kept;
 		const unchanged = encodeLog(this.log) === location.hash.replace(/^#/, "");
 		this.record(mode === "push" && unchanged ? "replace" : mode);
 	}

@@ -26,6 +26,7 @@ export class PeekController {
 		const definition = workspace.navigator.definitionOf(occurrence.destination);
 		const overlay = workspace.create("div", "supermax-peek");
 		overlay.setAttribute("role", "dialog");
+		overlay.tabIndex = -1;
 		overlay.setAttribute("aria-label", `${occurrence.title}, peek`);
 		const header = workspace.create("header", "supermax-peek-title");
 		header.append(workspace.document.createTextNode(occurrence.title));

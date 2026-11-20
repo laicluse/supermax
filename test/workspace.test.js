@@ -335,12 +335,16 @@ test("a peek shows a compact cell's own content without touching history", async
 	await page.click(rail);
 	await page.waitForTimeout(250);
 	assert.equal(await page.locator(inFrame("a", ".supermax-peek")).count(), 1, "a mouse click on the rail keeps a hovered peek open");
+	await page.click(inFrame("a", ".supermax-peek .picture"));
+	await page.waitForTimeout(250);
+	assert.equal(await page.locator(inFrame("a", ".supermax-peek")).count(), 1, "a click on plain content inside the peek keeps it open");
 	const tap = () => page.locator(rail).evaluate((element) => element.dispatchEvent(new PointerEvent("click", { pointerType: "touch", detail: 1, bubbles: true })));
 	await tap();
 	await page.waitForSelector(inFrame("a", ".supermax-peek"), { state: "detached" });
 	await tap();
 	await page.waitForSelector(inFrame("a", ".supermax-peek"));
 	assert.equal(await page.locator(inFrame("b", ".supermax-peek")).count(), 0, "the peek is local to its frame");
+	await page.focus(inFrame("a", ".supermax-peek .caption"));
 	await page.keyboard.press("Escape");
 	await page.waitForSelector(inFrame("a", ".supermax-peek"), { state: "detached" });
 	await page.click(inFrame("a", `[data-occurrence="${coast.row("thumbnails")}"] .supermax-rail`));
@@ -626,12 +630,22 @@ test("notices stay with their cell, move to the workspace when the source is out
 	await settle();
 	assert.equal(await page.locator(exportNotice).isVisible(), true, "a workspace notice stays visible above a modal");
 	assert.equal(await page.evaluate(() => document.activeElement?.closest(".supermax-modal") !== null), true, "the modal keeps focus");
-	for (let step = 0; step < 8 && !(await page.evaluate(() => document.activeElement?.closest(".supermax-notice") !== null)); step += 1) await page.keyboard.press("Tab");
-	assert.equal(await page.evaluate(() => document.activeElement?.closest(".supermax-notice") !== null), true, "Tab reaches the notice from the modal");
-	for (let step = 0; step < 3 && !(await page.evaluate(() => document.activeElement?.closest(".supermax-modal") !== null)); step += 1) await page.keyboard.press("Tab");
-	assert.equal(await page.evaluate(() => document.activeElement?.closest(".supermax-modal") !== null), true, "Tab past the last notice control returns into the modal, never behind it");
-	for (let step = 0; step < 8 && !(await page.evaluate(() => document.activeElement?.closest(".supermax-notice") !== null)); step += 1) await page.keyboard.press("Shift+Tab");
-	assert.equal(await page.evaluate(() => document.activeElement?.closest(".supermax-notice") !== null), true, "Shift+Tab reaches the notice the other way round");
+	const trapped = () => page.evaluate(() => { const active = document.activeElement; const frame = active?.closest('.frame[data-frame="a"]'); return !!frame && !!(active.closest(".supermax-modal") || active.closest(".supermax-notices")); });
+	const cycle = await page.evaluate(() => { const frame = document.querySelector('.frame[data-frame="a"]'); const selector = "a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex='-1'])"; return [...frame.querySelector(".supermax-modal").querySelectorAll(selector), ...frame.querySelector(".supermax-notices").querySelectorAll(selector)].filter((element) => element.offsetParent !== null).length; });
+	const startedAt = await page.evaluate(() => document.activeElement?.className);
+	let reachedNotice = false;
+	for (let step = 0; step < cycle; step += 1) {
+		await page.keyboard.press("Tab");
+		assert.equal(await trapped(), true, `Tab press ${step + 1} stays inside the modal or its notices`);
+		reachedNotice = reachedNotice || await page.evaluate(() => document.activeElement?.closest(".supermax-notice") !== null);
+	}
+	assert.equal(reachedNotice, true, "one full cycle visits the notice");
+	assert.equal(await page.evaluate(() => document.activeElement?.className), startedAt, "and returns to where it started");
+	for (let step = 0; step < cycle; step += 1) {
+		await page.keyboard.press("Shift+Tab");
+		assert.equal(await trapped(), true, `Shift+Tab press ${step + 1} stays inside the modal or its notices`);
+	}
+	assert.equal(await page.evaluate(() => document.activeElement?.className), startedAt, "Shift+Tab cycles the same ring backwards");
 	await page.focus(`${exportNotice} .supermax-notice-dismiss`);
 	await page.keyboard.press("Escape");
 	assert.equal(await page.locator(exportNotice).count(), 0, "Escape on a notice dismisses that notice");
@@ -728,6 +742,7 @@ test("a twenty-cell chain stays navigable in both presentations", async () => {
 	assert.equal(await page.locator(inFrame("a", '[data-occurrence="albums/depth:1/depth:2/depth:3"]')).evaluate((element) => getComputedStyle(element).visibility === "visible" && element.getBoundingClientRect().width > 0), true, "Show reveals a cell hidden far to the left");
 	assert.equal(await activeOccurrence(), "albums/depth:1/depth:2/depth:3", "and focuses it");
 	assert.equal(await page.locator(inFrame("a", '[data-notice="deep-three"]')).count(), 0, "the notice retires once its source is reached");
+	assert.ok((await page.locator(inFrame("a", '[data-occurrence^="albums/depth:1"]')).evaluateAll((elements) => elements.filter((element) => getComputedStyle(element).visibility === "visible" && element.getBoundingClientRect().width > 0).length)) > 1, "Show moves the window only as far as it must, keeping neighbours in view");
 	await page.click(inFrame("a", ".supermax-back"));
 	await settle();
 	assert.equal((await groups("a")).length, 18);
@@ -765,10 +780,14 @@ test("a layout definition that fails shows its error with Retry, and a prefetch 
 	await page.click(inFrame("a", ".supermax-crumb:has-text('Coast')"));
 	await settle();
 	assert.equal(await activeOccurrence(), coast.album, "a crumb in the title context focuses that ancestor");
+	await page.focus(inFrame("a", `[data-occurrence="${coast.photo("people", "b")}"] .caption`));
+	await page.keyboard.press("Alt+ArrowLeft");
+	await settle();
+	assert.deepEqual(await groups("a"), ["Coast", "Photo B", "Metadata B"], "inside a text field Alt+ArrowLeft stays a text shortcut");
 	await page.focus(`${cell}`);
 	await page.keyboard.press("Alt+ArrowLeft");
 	await settle();
-	assert.deepEqual(await groups("a"), ["Coast", "Photo B"], "Alt+ArrowLeft is Back");
+	assert.deepEqual(await groups("a"), ["Coast", "Photo B"], "Alt+ArrowLeft on a cell is Back");
 });
 
 test("reset restores both frames and clears the URL", async () => {

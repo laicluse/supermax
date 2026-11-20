@@ -197,6 +197,9 @@ scenario("reveal shifts the row window and never changes what is open", () => {
 	assert.equal(narrow.layout().chain.cells[1].rows.rows[0].chain.revealOffset, 1, "a row focus keeps the window");
 	narrow.open("detail:a", { from: item("list", "a") });
 	assert.equal(narrow.layout().chain.cells[1].rows.rows[0].chain.revealOffset, 0, "an opening in the row resets the window");
+	narrow.reveal(row("list"), 1);
+	narrow.back();
+	assert.equal(narrow.layout().chain.cells[1].rows.rows[0].chain.revealOffset, 1, "a Back keeps the revealed window");
 });
 
 scenario("a revealed outer chain does not change which defaults open", () => {
@@ -269,7 +272,12 @@ scenario("a dragged size is a session preference inside min and max, and rows fo
 	assert.equal(instance.layout().chain.cells[1].rows.rows[0].height, 150, "session sizes are part of the snapshot");
 	instance.setSize(item("list", "a"), 150, "width");
 	instance.open("item:b", { from: `${item("list", "a")}/detail:a` });
-	const sizedChain = () => instance.layout().chain.cells[1].rows.rows[0].chain;
+	const compactCount = () => instance.layout().chain.cells[1].rows.rows[0].chain.cells.filter((cell) => cell.compact).length;
+	instance.resize({ width: 400, height: 500 });
+	const withSession = compactCount();
+	instance.setSize(item("list", "a"), null, "width");
+	assert.equal(compactCount(), withSession, "a session size never changes what goes compact, since compaction counts definition minima");
+	instance.resize({ width: 1000, height: 500 });
 	instance.back();
 	instance.open("item:b", { from: row("list") });
 	instance.setSize(item("list", "b"), 190);

@@ -128,4 +128,7 @@ Supermax is package-manager agnostic. The package is developed with pnpm as the 
 ```sh
 corepack pnpm run build:docs
 corepack pnpm run check
+corepack pnpm run test:browser:fold
 ```
+
+The last line runs the browser suite under the fold presentation; `check` runs it under the default presentation only.
