@@ -55,6 +55,7 @@ export class Workspace extends EventTarget {
 
 		this.overlayRoot = overlayRoot;
 		this.element = element;
+		element.supermaxWorkspace = this;
 		this.navigator = navigator;
 		this.content = content;
 		this.onIntent = onIntent;
@@ -940,6 +941,7 @@ export class Workspace extends EventTarget {
 		this.folds?.destroy();
 		this.layout = null;
 		this.element.classList.remove("has-modal");
+		if (this.element.supermaxWorkspace === this) delete this.element.supermaxWorkspace;
 		this.observer?.disconnect();
 		this.time.removeEventListener("change", this.onTimeScale);
 		this.document.defaultView.removeEventListener("resize", this.onViewportChange);
