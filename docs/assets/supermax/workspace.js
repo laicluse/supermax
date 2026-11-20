@@ -125,10 +125,12 @@ export class Workspace extends EventTarget {
 
 	reveal(chainRootId, delta) {
 		this.navigator.reveal(chainRootId, delta);
-		this.render({ animate: true });
-		const chain = this.findChain(chainRootId);
+		const before = this.navigator.layout();
+		const chain = this.findChainIn(before.chain, chainRootId);
 		const visible = chain ? chain.cells.filter((cell) => cell.visible) : [];
 		const target = delta > 0 ? visible[0] : visible[visible.length - 1];
+		if (target) this.navigator.focus(target.occurrence, { resetReveal: false });
+		this.render({ animate: true });
 		if (target) this.focusCell(target.occurrence);
 	}
 
@@ -179,7 +181,11 @@ export class Workspace extends EventTarget {
 	}
 
 	findChain(chainRootId) {
-		for (const node of this.walk()) if (node.kind === "chain" && node.chain.root === chainRootId) return node.chain;
+		return this.findChainIn(this.layout.chain, chainRootId);
+	}
+
+	findChainIn(root, chainRootId) {
+		for (const node of this.walk(root)) if (node.kind === "chain" && node.chain.root === chainRootId) return node.chain;
 		return null;
 	}
 
@@ -222,10 +228,10 @@ export class Workspace extends EventTarget {
 		} finally {
 			this.rendering = false;
 		}
+		this.dispatchEvent(new CustomEvent("render", { detail: { layout } }));
 		const target = this.pendingFocus;
 		this.pendingFocus = null;
 		if (target) this.focusCell(target);
-		this.dispatchEvent(new CustomEvent("render", { detail: { layout } }));
 	}
 
 	renderNavbar() {

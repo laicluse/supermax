@@ -148,7 +148,7 @@ function layoutRows(model, split, width, height) {
 	const pinnedId = rowContaining(model, split, model.focused) ?? roots[roots.length - 1].id;
 	const { rowTab } = model.chrome;
 	const floors = new Map();
-	for (let pass = 0; pass <= roots.length; pass += 1) {
+	for (let pass = 0; ; pass += 1) {
 		const allocation = allocateRows(roots, definition, floors, height, rowTab, pinnedId);
 		let overflow = false;
 		let grown = false;
@@ -170,10 +170,8 @@ function layoutRows(model, split, width, height) {
 			if (chain?.overflow) overflow = true;
 			return { occurrence: root.id, title: root.title, height: collapsed ? rowTab : rowHeight, collapsed, focused: pinned, chain };
 		});
-		if (grown && pass < roots.length) continue;
-		return { rows, overflow, contentHeight: rows.reduce((sum, row) => sum + row.height, 0) };
+		if (!grown || pass === roots.length) return { rows, overflow, contentHeight: rows.reduce((sum, row) => sum + row.height, 0) };
 	}
-	return { rows: [], overflow: true, contentHeight: 0 };
 }
 
 function allocateRows(roots, definition, floors, height, rowTab, pinnedId) {
