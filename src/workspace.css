@@ -379,21 +379,18 @@
 }
 
 .supermax-reveal {
-	flex: 0 1 auto;
+	flex: none;
 	min-width: 0;
-	padding: 2px 8px;
+	padding: 1px 9px 3px;
+	line-height: 1;
 	border: 1px solid var(--supermax-line, #d6dde5);
 	border-radius: 999px;
 	background: var(--supermax-surface, #ffffff);
 	color: var(--supermax-ink, #16202c);
 	font: inherit;
-	font-size: 12px;
+	font-size: 16px;
 	cursor: pointer;
-	white-space: nowrap;
-	overflow: hidden;
-	text-overflow: ellipsis;
 }
-.supermax-reveal.is-left::before { content: "‹ "; }
 .supermax-chain > .supermax-reveal.is-floating { position: absolute; bottom: 8px; z-index: 4; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.16); }
 .supermax-chain > .supermax-reveal.is-floating.is-left { left: 6px; }
 .supermax-chain > .supermax-reveal.is-floating.is-right { right: 6px; margin-left: 0; }
@@ -413,4 +410,3 @@
 }
 .supermax-peek-expand + .supermax-peek-close { margin-left: 4px; }
 .supermax-reveal.is-right { margin-left: auto; }
-.supermax-reveal.is-right::after { content: " ›"; }

@@ -100,7 +100,30 @@ export class Workspace extends EventTarget {
 	}
 
 	requestBack() {
-		return this.intent({ type: "back" });
+		this.closePeek();
+		if (this.modal) {
+			this.closeModal("back");
+			return { ok: true, noop: true };
+		}
+		const destination = this.backDestination();
+		if (!destination) return { ok: false, reason: "nothing-hidden" };
+		this.goTo(destination.id);
+		return { ok: true, destination: destination.id };
+	}
+
+	backDestination(layout = this.layout ?? this.navigator.layout()) {
+		let current = this.navigator.get(this.navigator.focused) ?? this.navigator.root;
+		while (current) {
+			const root = chainRootOf(this.navigator, current);
+			const chain = layout.chains.get(root.id);
+			const first = chain ? chain.cells.findIndex((cell) => cell.visible) : -1;
+			if (first > 0) {
+				const cell = chain.cells[first - 1];
+				return { id: cell.occurrence, title: cell.title, chain: root.id };
+			}
+			current = root.parent ? this.navigator.get(root.parent) : null;
+		}
+		return null;
 	}
 
 	intent(action) {
@@ -158,11 +181,14 @@ export class Workspace extends EventTarget {
 	}
 
 	openModal(definition, options = {}) {
-		return this.modalHost.open(definition, options);
+		const modal = this.modalHost.open(definition, options);
+		this.renderNavbar();
+		return modal;
 	}
 
 	closeModal(reason = "close") {
 		this.modalHost.close(reason);
+		this.renderNavbar();
 	}
 
 	closePeek() {
@@ -414,6 +440,7 @@ export class Workspace extends EventTarget {
 		try {
 			layout = this.navigator.layout();
 			this.layout = layout;
+			this.backTo = this.backDestination(layout);
 			const animating = animate && !this.reducedMotion.matches;
 			const rootViewport = this.renderChain(layout.chain, this.body, animating);
 			rootViewport.style.height = `${layout.overflow ? layout.contentHeight : layout.chain.height}px`;
@@ -434,11 +461,12 @@ export class Workspace extends EventTarget {
 	}
 
 	renderNavbar() {
-		const next = this.navigator.nextBack();
-		this.backButton.disabled = !next;
+		const next = this.modal ? null : this.backTo;
+		this.backButton.disabled = !next && !this.modal;
 		this.backTarget.hidden = !next;
 		this.backTarget.textContent = next ? next.title : "";
-		this.backButton.setAttribute("aria-label", next ? `Back closes ${next.title}` : "Back: nothing to close");
+		this.backLabel.textContent = next ? "Back to" : "Back";
+		this.backButton.setAttribute("aria-label", next ? `Back to ${next.title}` : "Back");
 		const info = this.navigator.focusInfo();
 		this.titleText.textContent = info.title;
 		this.titleContext.replaceChildren(...info.trail.flatMap((step, index) => {
@@ -475,7 +503,7 @@ export class Workspace extends EventTarget {
 			if (cell.rows) this.renderRows(cell, animating);
 		}
 		const visible = chain.cells.filter((cell) => cell.visible);
-		this.placeReveal(entry.left, chain.hiddenLeft, visible[0], "prepend", entry.viewport);
+		this.placeReveal(entry.left, chain.root === this.backTo?.chain ? null : chain.hiddenLeft, visible[0], "prepend", entry.viewport);
 		this.placeReveal(entry.right, chain.hiddenRight, visible[visible.length - 1], "append", entry.viewport);
 		this.dividers.sync(entry.viewport, "vertical", this.widthDividers(chain, visible));
 		return entry.viewport;
@@ -524,8 +552,9 @@ export class Workspace extends EventTarget {
 	placeReveal(button, title, cell, position, viewport) {
 		button.hidden = !title;
 		if (!title) return;
-		button.textContent = title;
+		button.textContent = button.classList.contains("is-left") ? "‹" : "›";
 		button.setAttribute("aria-label", `Show ${title}`);
+		button.title = `Show ${title}`;
 		const header = cell && !cell.compact ? this.cells.get(cell.occurrence)?.header : null;
 		const floating = !!cell && cell.compact;
 		const host = header ?? (floating ? viewport : this.navbarLeft);

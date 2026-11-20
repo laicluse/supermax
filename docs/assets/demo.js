@@ -159,19 +159,29 @@ function renderSpec(occurrence, definition) {
 	return spec;
 }
 
+const specFit = new ResizeObserver((entries) => {
+	for (const entry of entries) fitSpec(entry.target.querySelector(":scope > * > .cell-spec"));
+});
+
+function fitSpec(spec) {
+	if (!spec) return;
+	const body = spec.closest(".supermax-cell-body");
+	if (!body) return;
+	spec.hidden = false;
+	if (body.scrollHeight > body.clientHeight || body.scrollWidth > body.clientWidth) spec.hidden = true;
+}
+
 function updateSpecs(root, layout) {
-	requestAnimationFrame(() => {
-		for (const spec of root.querySelectorAll(".cell-spec")) {
-			const cell = layout.cells.get(spec.dataset.specFor);
-			if (!cell) continue;
-			const state = cell.compact ? "compact" : cell.visible ? (cell.sized ? "dragged" : "allocated") : "hidden";
-			spec.querySelector(".cell-spec-width").textContent = `${Math.round(cell.width)} px`;
-			spec.querySelector(".cell-spec-state").textContent = state;
-			spec.hidden = false;
-			const body = spec.closest(".supermax-cell-body");
-			if (body && (body.scrollHeight > body.clientHeight || body.scrollWidth > body.clientWidth)) spec.hidden = true;
-		}
-	});
+	for (const spec of root.querySelectorAll(".cell-spec")) {
+		const cell = layout.cells.get(spec.dataset.specFor);
+		if (!cell) continue;
+		const state = cell.compact ? "compact" : cell.visible ? (cell.sized ? "dragged" : "allocated") : "hidden";
+		spec.querySelector(".cell-spec-width").textContent = `${Math.round(cell.width)} px`;
+		spec.querySelector(".cell-spec-state").textContent = state;
+		const body = spec.closest(".supermax-cell-body");
+		if (body) specFit.observe(body);
+		requestAnimationFrame(() => fitSpec(spec));
+	}
 }
 
 function prefetchOnHover(button, id) {
