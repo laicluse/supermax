@@ -93,13 +93,14 @@ export class ModalHost {
 	}
 
 	// The closed dialog shrinks back into its source cell as a closing cell folds away, while the workspace already takes input.
-	leave(modal, reason) {
+	leave(modal, reason, removed = () => {}) {
 		const workspace = this.workspace;
 		const view = workspace.document.defaultView;
 		const { element, dialog } = modal;
 		modal.entrance?.finish();
 		if (reason === "destroyed" || view.matchMedia("(prefers-reduced-motion: reduce)").matches) {
 			element.remove();
+			removed();
 			return;
 		}
 		element.inert = true;
@@ -117,7 +118,8 @@ export class ModalHost {
 			view.requestAnimationFrame(follow);
 		};
 		if (cell && modal.originLayer) view.requestAnimationFrame(follow);
-		exit.finished.then(() => element.remove(), () => element.remove());
+		const remove = () => { element.remove(); removed(); };
+		exit.finished.then(remove, remove);
 	}
 
 	size(dialog, bounds) {
@@ -211,8 +213,9 @@ export class ModalHost {
 		this.current = null;
 		this.resizeObserver?.disconnect();
 		this.resizeObserver = null;
-		modal.slot.dispose();
-		this.leave(modal, reason);
+		modal.slot.cancel();
+		modal.slot.leave();
+		this.leave(modal, reason, () => modal.slot.dispose());
 		workspace.body.inert = false;
 		workspace.notices.render();
 		workspace.element.classList.remove("has-modal");

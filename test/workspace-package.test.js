@@ -268,3 +268,21 @@ test("a render that turns a widening back narrows the cell's content with its ro
 	const [, , last, settled] = result;
 	assert.ok(Math.abs(last - settled) <= 2, `the content's width at the end of the motion is its settled width, not a jump: ${result.join(", ")}px`);
 });
+
+test("a closing modal keeps its content until it has gone, and tells the content to stop writing at once", async () => {
+	const result = await page.evaluate(async () => {
+		const events = [];
+		const modal = window.workspace.openModal({ title: "Edit", content: () => {
+			const element = document.createElement("p");
+			element.textContent = "Draft";
+			return { element, leave: () => events.push(["leave", document.contains(element)]), dispose: () => events.push(["dispose", document.querySelector(".supermax-modal-layer") !== null]) };
+		} }, { from: null });
+		await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+		window.workspace.closeModal("close");
+		events.push(["closed"]);
+		document.getAnimations().forEach((animation) => animation.finish());
+		await new Promise((resolve) => setTimeout(resolve, 50));
+		return { events, modal: !!modal };
+	});
+	assert.deepEqual(result.events, [["leave", true], ["closed"], ["dispose", false]], "leave runs while the dialog is still there, dispose only once it is gone");
+});

@@ -11,8 +11,12 @@ export class ContentSlot {
 		this.retry = null;
 	}
 
-	dispose() {
+	cancel() {
 		this.generation += 1;
+	}
+
+	dispose() {
+		this.cancel();
 		this.handle.header?.remove();
 		this.handle.dispose?.();
 		this.handle = {};
