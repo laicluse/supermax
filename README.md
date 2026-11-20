@@ -2,6 +2,16 @@
 
 Framework-free cell layout and navigation primitives for workspaces that open content below and to the right.
 
+## Install
+
+The package is not on the npm registry. Install it from GitHub and pin a commit of `master`, for example the 2.0.0 merge:
+
+```bash
+corepack pnpm add github:laicluse/supermax#beaf89b
+```
+
+Any package manager that installs from a git reference works the same way.
+
 ## Upgrading from v1
 
 Read [Migrating from v1 to v2](docs/migrating-to-v2.md) before accepting a major dependency update. It covers retained primitives, removed contracts, changed behavior, the optional Workspace adoption, and verification. The [changelog](CHANGELOG.md) identifies the upgrade entry point. Upgrading the package does not require replacing an existing allocator or strip with a Workspace.
@@ -295,7 +305,7 @@ The first update and reduced-motion updates paint immediately; `update(entries, 
 
 `update(entries, { participants = [] })` also accepts synchronous content participants `{ prepare, animate? }`. `prepare()` runs after capturing drawn geometry and before applying the target. On an animated commit, `animate(register)` can add effects with `register(element, keyframes)`; the strip supplies its room timing, tracks cancellation and includes them in `finished`. Immediate updates run only `prepare`. Workspace uses this contract for variant changes; a custom presentation strip must honour it as well. Application content uses the higher-level `transition` hook above.
 
-Every duration comes from `TIMING`, and `new CellStrip(viewport, { time })` takes the `TimeScale` that multiplies them; a workspace passes its own. An animated update from rest moves rooms only after `settle` milliseconds (`STRIP_TIMING.settle` by default), so updates that follow each other closely move each room once, by the net change; a target that moves less than `STILL` pixels is taken without motion. `strip.depart(ids, { after, toward })` folds those cells away inside their rooms after `after` milliseconds while the rooms stay, `strip.stay(ids)` folds them back, and the next `update` keeps or replaces whatever departed.
+Every duration comes from `TIMING`, and `new CellStrip(viewport, { time })` takes the `TimeScale` that multiplies them; a workspace passes its own. An animated update from rest moves rooms only after `settle` milliseconds (`STRIP_TIMING.settle` by default; `STRIP_TIMING` and `STILL` come from `@laicluse/supermax/cell-strip`), so updates that follow each other closely move each room once, by the net change; a target that moves less than `STILL` pixels is taken without motion. `strip.depart(ids, { after, toward })` folds those cells away inside their rooms after `after` milliseconds while the rooms stay, `strip.stay(ids)` folds them back, and the next `update` keeps or replaces whatever departed.
 
 Keep cell IDs stable when replacing content. Removed cells become inert immediately but remain mounted through their exit, marked with `data-supermax-exiting`; do not remove them before calling `update`. Hidden ancestors likewise become inert immediately and become visually hidden only after their transition. Hidden entries between visible entries occupy zero width in the settled strip; leading hidden ancestors retain their widths for the strip offset. Existing `display: contents` wrappers inside the public `strip.strip` element are preserved. Headers and bodies can share the same cell element to move together. Call `destroy()` when disposing the host; it removes the strip and restores the viewport's previous overflow style.
 
