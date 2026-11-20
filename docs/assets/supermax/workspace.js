@@ -476,7 +476,10 @@ export class Workspace extends EventTarget {
 			const shift = (rect) => new DOMRect(rect.left - base.left, rect.top - base.top, rect.width, rect.height);
 			return links.map((link) => ({ ...link, from: shift(link.from), to: shift(link.to) }));
 		};
-		if (modal) this.origin({ kind: "modal", layer: modal.originLayer, links: local(modal.originLayer, [this.originLink("modal", modal.dialog, modal.source)].filter(Boolean)) });
+		if (modal) {
+			const entering = modal.entrance ? modal.entrance.effect.getComputedTiming().progress ?? 1 : null;
+			this.origin({ kind: "modal", layer: modal.originLayer, links: local(modal.originLayer, [this.originLink("modal", modal.dialog, modal.source)].filter(Boolean)), entering });
+		}
 		const bubbles = new Map();
 		for (const notice of modal ? [] : this.notices.notices.values()) {
 			if (notice.host === this.notices.region || notice.entering || bubbles.has(notice.source)) continue;

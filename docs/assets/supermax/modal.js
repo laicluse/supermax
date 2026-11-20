@@ -3,6 +3,7 @@
 
 import { ContentSlot } from "./content-slot.js";
 import { focusables } from "./focus.js";
+import { STRIP_TIMING } from "./cell-strip.js";
 
 const MODAL_BOUNDS = Object.freeze({ min: 280, max: 720, preferred: 440, minHeight: 160, maxHeight: Infinity, preferredHeight: null });
 
@@ -62,10 +63,42 @@ export class ModalHost {
 		workspace.element.append(element);
 		workspace.element.classList.add("has-modal");
 		this.place();
+		this.appear(modal);
 		modal.retry();
 		this.focus();
 		workspace.dispatchEvent(new CustomEvent("modal", { detail: { state: "open", title: definition.title, source: modal.source } }));
 		return modal;
+	}
+
+	// The dialog grows out of its source cell as a plane, on a new cell's timeline, while the frustum follows it.
+	appear(modal) {
+		const workspace = this.workspace;
+		const view = workspace.document.defaultView;
+		const cell = modal.source && workspace.findCell(modal.source)?.full ? workspace.cells.get(modal.source)?.element : null;
+		if (!cell || view.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+		const from = cell.getBoundingClientRect();
+		const to = modal.dialog.getBoundingClientRect();
+		if (to.width === 0 || to.height === 0) return;
+		const { dialog } = modal;
+		dialog.style.animation = "none";
+		dialog.style.transformOrigin = "0 0";
+		const scale = `scale(${from.width / to.width}, ${from.height / to.height})`;
+		modal.entrance = dialog.animate([
+			{ transform: `translate(${from.left - to.left}px, ${from.top - to.top}px) ${scale}`, opacity: 0 },
+			{ transform: "none", opacity: 1 },
+		], { duration: STRIP_TIMING.duration, easing: "cubic-bezier(0.2, 0, 0, 1)" });
+		for (const part of dialog.children) part.animate([{ opacity: 0, offset: 0 }, { opacity: 0, offset: 0.55 }, { opacity: 1, offset: 1 }], { duration: STRIP_TIMING.duration });
+		const follow = () => {
+			if (this.current !== modal) return;
+			workspace.drawOrigins();
+			if (modal.entrance?.playState === "running") view.requestAnimationFrame(follow);
+		};
+		view.requestAnimationFrame(follow);
+		modal.entrance.finished.then(() => {
+			dialog.style.removeProperty("transform-origin");
+			modal.entrance = null;
+			workspace.scheduleOrigins();
+		}, () => {});
 	}
 
 	size(dialog, bounds) {
@@ -79,6 +112,7 @@ export class ModalHost {
 
 	pin(dialog, layer) {
 		if (dialog.classList.contains("is-placed")) return;
+		for (const animation of dialog.getAnimations({ subtree: true })) animation.finish();
 		const box = dialog.getBoundingClientRect();
 		const base = layer.getBoundingClientRect();
 		dialog.style.left = `${box.left - base.left}px`;

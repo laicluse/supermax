@@ -21,10 +21,10 @@
 	--supermax-notice-error-ink: light-dark(#b4261b, #ff9b8d);
 	--supermax-notice-action-surface: light-dark(#edf4fc, #182436);
 	--supermax-notice-action-ink: light-dark(#0b63c4, #8bbaff);
-	--supermax-origin-top: rgba(0, 0, 0, 0.04);
-	--supermax-origin-left: rgba(0, 0, 0, 0.08);
-	--supermax-origin-right: rgba(0, 0, 0, 0.1);
-	--supermax-origin-bottom: rgba(0, 0, 0, 0.13);
+	--supermax-origin-top: light-dark(rgba(0, 0, 0, 0.04), rgba(255, 255, 255, 0.13));
+	--supermax-origin-left: light-dark(rgba(0, 0, 0, 0.08), rgba(255, 255, 255, 0.1));
+	--supermax-origin-right: light-dark(rgba(0, 0, 0, 0.1), rgba(255, 255, 255, 0.08));
+	--supermax-origin-bottom: light-dark(rgba(0, 0, 0, 0.13), rgba(255, 255, 255, 0.04));
 	--supermax-origin-edge: transparent;
 }
 

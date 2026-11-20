@@ -233,6 +233,44 @@ test("a modal sits front and centre in its own viewport and a frustum links it t
 	assert.equal(await page.locator(inFrame("a", ".supermax-origin.is-modal")).count(), 0, "closing removes the frustum with the modal");
 });
 
+test("a modal grows out of its source cell in a new cell's time while its frustum follows", async () => {
+	await openDemo([open("album:coast", "albums"), open("coast:photo:b", coast.row("map"))]);
+	const midway = await page.evaluate((photo) => {
+		const workspace = window.supermaxDemo.frames[0].workspace;
+		const source = document.querySelector(`.frame[data-frame="a"] [data-occurrence="${photo}"]`);
+		source.querySelector(".caption-edit").click();
+		const { dialog, entrance } = workspace.modal;
+		const final = { width: dialog.offsetWidth };
+		entrance.pause();
+		entrance.currentTime = 100;
+		workspace.drawOrigins();
+		const now = dialog.getBoundingClientRect();
+		const cell = source.getBoundingClientRect();
+		const frustum = workspace.modal.originLayer.querySelector(".supermax-frustum");
+		return { duration: entrance.effect.getTiming().duration, cell: cell.width, now: now.width, final: final.width, opacity: Number(frustum.style.opacity) };
+	}, coast.photo("map", "b"));
+	assert.equal(midway.duration, 200, "the same 200ms as a new cell");
+	assert.ok(midway.now > Math.min(midway.cell, midway.final) && midway.now < Math.max(midway.cell, midway.final), "halfway the plane sits between the source cell and the modal");
+	assert.ok(midway.opacity > 0 && midway.opacity < 1, "and its frustum is fading in with it");
+	await settle();
+});
+
+test("in dark mode the frustum is lighter than what lies behind it, still lit from above", async () => {
+	await page.emulateMedia({ colorScheme: "dark" });
+	try {
+		await openDemo([open("album:coast", "albums"), open("coast:photo:b", coast.row("map"))]);
+		await page.click(inFrame("a", `[data-occurrence="${coast.photo("map", "b")}"] .caption-edit`));
+		await settle();
+		await page.waitForFunction(() => document.querySelector('.frame[data-frame="a"] .supermax-origin.is-modal .supermax-frustum-face'));
+		const fills = await page.evaluate(() => Object.fromEntries([...document.querySelectorAll('.frame[data-frame="a"] .supermax-origin.is-modal .supermax-frustum-face')].map((face) => [face.dataset.side, getComputedStyle(face).fill])));
+		const white = (fill) => { const [r, g, b, a] = fill.match(/[\d.]+/g).map(Number); return r === 255 && g === 255 && b === 255 ? a : -1; };
+		assert.ok(Object.values(fills).length > 0 && Object.values(fills).every((fill) => white(fill) > 0), `every face is a light veil: ${JSON.stringify(fills)}`);
+		if (fills.top && fills.bottom) assert.ok(white(fills.top) > white(fills.bottom), "the top face catches the most light");
+	} finally {
+		await page.emulateMedia({ colorScheme: "light" });
+	}
+});
+
 test("a modal opens at its preferred size, moves by its header and resizes only within its bounds and its viewport", async () => {
 	await openDemo([open("album:coast", "albums")]);
 	await page.evaluate(() => window.supermaxDemo.frames[0].workspace.openModal({ title: "Sized", min: 300, max: 520, preferred: 480, minHeight: 200, preferredHeight: 260, content: () => ({ element: document.createElement("p") }) }, {}));

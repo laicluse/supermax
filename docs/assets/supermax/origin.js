@@ -42,7 +42,7 @@ function paint(group, from, to, progress) {
 	for (const [name, value] of [["x", far.left], ["y", far.top], ["width", far.width], ["height", far.height]]) target.setAttribute(name, String(value));
 }
 
-export function frustumOrigin({ kind, layer, links }) {
+export function frustumOrigin({ kind, layer, links, entering = null }) {
 	const document = layer.ownerDocument;
 	const view = document.defaultView;
 	const still = view.matchMedia("(prefers-reduced-motion: reduce)").matches;
@@ -51,7 +51,7 @@ export function frustumOrigin({ kind, layer, links }) {
 	layer.replaceChildren();
 	const growing = [];
 	for (const { id, from, to } of links) {
-		const start = known.get(id) ?? view.performance.now();
+		const start = entering === null ? known.get(id) ?? view.performance.now() : view.performance.now() - GROW;
 		current.set(id, start);
 		const group = document.createElementNS(SVG, "g");
 		group.setAttribute("class", `supermax-frustum is-${kind}`);
@@ -68,6 +68,7 @@ export function frustumOrigin({ kind, layer, links }) {
 		layer.append(group);
 		const progress = still ? 1 : Math.min(1, (view.performance.now() - start) / GROW);
 		paint(group, from, to, progress);
+		if (entering !== null) group.style.opacity = String(entering);
 		if (progress < 1) growing.push({ group, from, to, start });
 	}
 	starts.set(layer, current);
