@@ -1,8 +1,36 @@
+import { follow, projectionAlong, unfollow } from "./follow.js";
 import { APPEAR, DISAPPEAR } from "./motion.js";
 
 export const STRIP_TIMING = Object.freeze({ duration: 200, easing: "cubic-bezier(0.25, 0.1, 0.25, 1)" });
 
 const depthOf = (id) => String(id).split("/").length;
+
+// allow-comment: the longest run of staying boxes already in their wanted order stays put, because moving a node resets the scroll of everything inside it.
+function inOrder(positions) {
+	const tails = [];
+	const previous = new Array(positions.length).fill(-1);
+	positions.forEach((position, index) => {
+		let low = 0;
+		let high = tails.length;
+		while (low < high) {
+			const middle = (low + high) >> 1;
+			if (positions[tails[middle]] < position) low = middle + 1;
+			else high = middle;
+		}
+		if (low > 0) previous[index] = tails[low - 1];
+		tails[low] = index;
+	});
+	const run = [];
+	for (let index = tails[tails.length - 1] ?? -1; index !== -1; index = previous[index]) run.unshift(positions[index]);
+	return run;
+}
+
+function reversedEasing(easing) {
+	const curve = /^cubic-bezier\(([^)]*)\)$/.exec(easing)?.[1].split(",").map(Number);
+	if (!curve || curve.length !== 4) return easing;
+	const [x1, y1, x2, y2] = curve;
+	return `cubic-bezier(${1 - x2}, ${1 - y2}, ${1 - x1}, ${1 - y1})`;
+}
 
 function absolute(element, transform, origin) {
 	const [x, y] = origin.split(" ").map(parseFloat);
@@ -24,8 +52,11 @@ function poseMatrix(element, pose) {
 }
 
 export class CellStrip {
-	constructor(viewport, { duration = STRIP_TIMING.duration, easing = STRIP_TIMING.easing, motion = null } = {}) {
+	constructor(viewport, { duration = STRIP_TIMING.duration, easing = STRIP_TIMING.easing, motion = null, horizon = null } = {}) {
 		this.viewport = viewport;
+		this.horizon = horizon;
+		this.driven = new Set();
+		this.drivenWaiters = [];
 		this.duration = duration;
 		this.easing = easing;
 		this.motion = motion;
@@ -90,7 +121,7 @@ export class CellStrip {
 		for (const entry of leaving) {
 			const motion = this.motions.get(entry.id);
 			const paired = [...partners.values()].includes(entry);
-			if (!entry.departing) entry.overlay = paired || motion?.kind === "enter" || motion?.kind === "return";
+			if (!entry.departing) entry.overlay = paired;
 			entry.departing = true;
 		}
 
@@ -116,19 +147,29 @@ export class CellStrip {
 			for (const entry of newlyLeaving) {
 				if (entry.still) continue;
 				const motion = this.motions.get(entry.id);
-				if (motion?.kind === "enter" || motion?.kind === "return") this.tearAway(entry);
-				else this.foldAway(entry);
+				if (entry.overlay) {
+					if (motion?.kind === "enter" || motion?.kind === "return") this.tearAway(entry);
+					else this.foldAway(entry);
+				} else if (motion) this.reverse(entry, "leave");
+				else this.foldIn(entry);
 			}
-			for (const entry of returning) if (!entry.still) this.foldBack(entry);
-			for (const entry of arriving) if (!entry.still) this.foldOpen(entry, wait);
+			for (const entry of returning) {
+				if (entry.still) continue;
+				if (this.motions.get(entry.id)?.reversible) this.reverse(entry, "enter");
+				else this.foldBack(entry);
+			}
+			for (const entry of arriving) if (!entry.still) this.foldOpen(entry, wait, !partners.has(entry.id));
 		}
+		this.drive(arriving, newlyLeaving, partners);
 
-		const timing = (delay) => ({ duration: this.duration, easing: this.easing, delay, fill: "both" });
+		const closingOnly = arriving.length === 0 && returning.length === 0 && newlyLeaving.some((entry) => !entry.overlay);
+		const easing = closingOnly ? reversedEasing(this.easing) : this.easing;
+		const timing = (delay) => ({ duration: this.duration, easing, delay, fill: "both" });
 		if (startingTransform !== view.getComputedStyle(this.strip).transform) {
 			this.geometry.push(this.strip.animate([{ transform: startingTransform }, { transform: targetTransform }], timing(wait)));
 		}
 		for (const entry of this.entries) {
-			if (entry.overlay) continue;
+			if (entry.overlay || this.driven.has(entry.id)) continue;
 			const old = previous.get(entry.id);
 			const room = (record) => record.currentWidth + record.currentMargin;
 			const from = old && !old.overlay ? room(old) : partners.has(entry.id) ? room(previous.get(partners.get(entry.id).id)) : 0;
@@ -139,12 +180,79 @@ export class CellStrip {
 			if (entry.card) {
 				const card = parseFloat(box.style.width) || 0;
 				this.geometry.push(box.animate([{ marginRight: `${from - card}px` }, { marginRight: `${to - card}px` }], delay));
+				this.geometry.push(entry.element.animate([{ marginLeft: `${from - card}px` }, { marginLeft: `${to - card}px` }], delay));
 			} else {
 				this.geometry.push(box.animate([{ width: `${from}px` }, { width: `${to}px` }], delay));
 			}
 		}
 		if (!this.motion) this.slide(previous, timing(wait));
+		if (this.driven.size) {
+			this.step();
+			follow(this.strip, () => this.step());
+		}
 		return this.awaitSettled();
+	}
+
+	drive(arriving, newlyLeaving, partners) {
+		const before = this.driven;
+		this.driven = new Set(this.entries.filter((entry) => {
+			if (entry.overlay || !this.motion) return false;
+			if (entry.still) return typeof entry.follow === "function" && (before.has(entry.id) || (arriving.includes(entry) && !partners.has(entry.id)) || newlyLeaving.includes(entry));
+			return !!this.motions.get(entry.id)?.follows;
+		}).map((entry) => entry.id));
+		for (const id of before) {
+			const entry = this.entries.find((candidate) => candidate.id === id);
+			if (entry && !this.driven.has(id)) this.release(entry);
+		}
+	}
+
+	step() {
+		this.followPapers();
+		if (this.driven.size === 0) {
+			const waiters = this.drivenWaiters;
+			this.drivenWaiters = [];
+			waiters.forEach((resolve) => resolve());
+			return false;
+		}
+		return true;
+	}
+
+	followPapers() {
+		const view = this.viewport.ownerDocument.defaultView;
+		const horizon = this.horizon?.() ?? null;
+		for (const entry of this.entries) {
+			if (!this.driven.has(entry.id)) continue;
+			const box = this.boxOf(entry);
+			box.style.marginRight = "0px";
+			if (entry.still) {
+				const reach = entry.follow();
+				if (reach === null) this.release(entry);
+				else box.style.width = `${reach}px`;
+				continue;
+			}
+			if (!this.motions.has(entry.id)) {
+				this.release(entry);
+				continue;
+			}
+			const place = box.getBoundingClientRect();
+			if (horizon) box.style.perspectiveOrigin = `${horizon.x - place.left}px ${horizon.y - place.top}px`;
+			const style = view.getComputedStyle(box);
+			const vanish = horizon ? horizon.x - place.left : parseFloat(style.perspectiveOrigin);
+			const { shift, reach } = projectionAlong(entry.element, "x", { perspective: parseFloat(style.perspective), vanish });
+			entry.element.style.marginLeft = `${shift}px`;
+			box.style.width = `${reach}px`;
+		}
+	}
+
+	release(entry) {
+		this.driven.delete(entry.id);
+		entry.element.style.removeProperty("margin-left");
+		if (!entry.departing) this.boxOf(entry).style.width = `${entry.displayWidth}px`;
+	}
+
+	followed() {
+		if (this.driven.size === 0) return Promise.resolve();
+		return new Promise((resolve) => this.drivenWaiters.push(resolve));
 	}
 
 	boxOf(entry) {
@@ -170,15 +278,17 @@ export class CellStrip {
 			style.minWidth = "0";
 			style.maxWidth = "none";
 			style.height = "100%";
-			if (box !== entry.element) Object.assign(entry.element.style, { width: "100%", height: "100%", boxSizing: "border-box" });
+			const ownWidth = entry.element.style.width.endsWith("px") ? parseFloat(entry.element.style.width) : 0;
+			if (box !== entry.element) Object.assign(entry.element.style, { width: "100%", height: "100%", boxSizing: "border-box", flex: "none" });
 			entry.element.style.visibility = "";
 			if (entry.overlay) {
 				Object.assign(style, { position: "absolute", top: "0", left: `${old?.overlay ? parseFloat(style.left) : old?.currentLeft ?? 0}px`, width: `${old?.overlay ? parseFloat(style.width) : old?.currentWidth ?? entry.width}px` });
 			} else {
 				for (const property of ["position", "top", "left"]) style.removeProperty(property);
-				const kept = old?.overlay ? 0 : parseFloat(style.width) || old?.currentWidth || 0;
+				const kept = old?.overlay ? 0 : ownWidth || old?.currentWidth || 0;
 				const card = entry.card ? Math.max(kept, entry.displayWidth) : entry.displayWidth;
 				style.width = `${card}px`;
+				if (entry.card) entry.element.style.width = `${card}px`;
 				if (entry.card) style.marginRight = `${entry.displayWidth - card}px`;
 				else style.removeProperty("margin-right");
 			}
@@ -197,7 +307,13 @@ export class CellStrip {
 		for (const [parent, boxes] of siblings) {
 			const currentOrder = [...parent.children].filter((box) => boxes.includes(box));
 			if (boxes.every((box, index) => box === currentOrder[index])) continue;
-			for (let index = boxes.length - 2; index >= 0; index -= 1) parent.insertBefore(boxes[index], boxes[index + 1]);
+			const anchors = currentOrder.filter((box) => this.entries.some((entry) => !entry.departing && this.boxOf(entry) === box));
+			const staying = inOrder(anchors.map((box) => boxes.indexOf(box))).map((position) => boxes[position]);
+			const end = currentOrder[currentOrder.length - 1].nextSibling;
+			for (let index = boxes.length - 1; index >= 0; index -= 1) {
+				if (staying.includes(boxes[index])) continue;
+				parent.insertBefore(boxes[index], boxes[index + 1] ?? end);
+			}
 		}
 	}
 
@@ -216,18 +332,33 @@ export class CellStrip {
 		return { axis: entry.axis ?? "chain" };
 	}
 
-	foldOpen(entry, delay) {
+	foldOpen(entry, delay, follows) {
 		const pose = this.motion.open(entry.element, this.axisOf(entry));
 		entry.element.style.transformOrigin = pose.origin;
 		const animation = entry.element.animate([{ transform: pose.transform, "--supermax-shade": pose.shade ?? 1 }, { transform: "none", "--supermax-shade": 0 }], { duration: this.duration, delay, easing: APPEAR.easing, fill: "both" });
-		this.track(entry, "enter", animation);
+		this.track(entry, "enter", animation, follows, true);
+	}
+
+	foldIn(entry) {
+		const pose = this.motion.open(entry.element, this.axisOf(entry));
+		entry.element.style.transformOrigin = pose.origin;
+		const animation = entry.element.animate([{ transform: pose.transform, "--supermax-shade": pose.shade ?? 1 }, { transform: "none", "--supermax-shade": 0 }], { duration: this.duration, easing: APPEAR.easing, fill: "both", direction: "reverse" });
+		this.track(entry, "leave", animation, true, true);
+	}
+
+	reverse(entry, kind) {
+		const motion = this.motions.get(entry.id);
+		motion.animation.reverse();
+		motion.kind = kind;
+		motion.follows = true;
+		motion.reversible = true;
 	}
 
 	foldAway(entry) {
 		const pose = this.motion.close(entry.element, this.axisOf(entry));
 		entry.element.style.transformOrigin = pose.origin;
 		const animation = entry.element.animate([{ transform: "none", "--supermax-shade": 0 }, { transform: pose.transform, "--supermax-shade": pose.shade ?? 1 }], { duration: this.duration, easing: DISAPPEAR.easing, fill: "forwards" });
-		this.track(entry, "leave", animation);
+		this.track(entry, "leave", animation, !entry.overlay);
 	}
 
 	tearAway(entry) {
@@ -245,11 +376,11 @@ export class CellStrip {
 		this.motions.get(entry.id)?.animation.cancel();
 		entry.element.style.transformOrigin = "0 0";
 		const animation = entry.element.animate([{ transform: from.matrix.toString(), "--supermax-shade": from.shade }, { transform: new DOMMatrix().toString(), "--supermax-shade": 0 }], { duration: this.duration, easing: APPEAR.easing, fill: "both" });
-		this.track(entry, "return", animation);
+		this.track(entry, "return", animation, true);
 	}
 
-	track(entry, kind, animation) {
-		const motion = { kind, animation };
+	track(entry, kind, animation, follows = false, reversible = false) {
+		const motion = { kind, animation, follows, reversible };
 		this.motions.set(entry.id, motion);
 		animation.finished.then(() => {
 			if (this.motions.get(entry.id) !== motion) return;
@@ -264,6 +395,8 @@ export class CellStrip {
 	}
 
 	drop(entry) {
+		this.driven.delete(entry.id);
+		entry.element.style.removeProperty("margin-left");
 		const box = this.boxOf(entry);
 		box.remove();
 		for (const property of ["position", "top", "left", "margin-right"]) box.style.removeProperty(property);
@@ -273,7 +406,7 @@ export class CellStrip {
 
 	awaitSettled() {
 		const running = () => [...this.geometry, ...[...this.motions.values()].map((motion) => motion.animation)];
-		if (running().length === 0) {
+		if (running().length === 0 && this.driven.size === 0) {
 			this.settle();
 			this.finished = Promise.resolve();
 			return this.finished;
@@ -282,9 +415,9 @@ export class CellStrip {
 		const token = Symbol("update");
 		this.token = token;
 		this.finished = new Promise((resolve) => { this.resolveFinished = resolve; });
-		const wait = () => Promise.all(running().map((animation) => animation.finished.catch(() => null))).then(() => {
+		const wait = () => Promise.all([...running().map((animation) => animation.finished.catch(() => null)), this.followed()]).then(() => {
 			if (this.token !== token) return;
-			if (running().some((animation) => animation.playState === "running" || animation.pending)) return wait();
+			if (this.driven.size || running().some((animation) => animation.playState === "running" || animation.pending)) return wait();
 			this.settle();
 			this.resolveFinished?.();
 			this.resolveFinished = null;
@@ -300,7 +433,11 @@ export class CellStrip {
 			else if (!entry.departing) {
 				entry.element.style.visibility = entry.visible ? "" : "hidden";
 				const box = this.boxOf(entry);
-				if (entry.card) box.style.width = `${entry.displayWidth}px`;
+				if (entry.card) {
+					box.style.width = `${entry.displayWidth}px`;
+					entry.element.style.width = `${entry.displayWidth}px`;
+					entry.element.style.removeProperty("margin-left");
+				}
 				box.style.removeProperty("margin-right");
 			}
 		}
@@ -314,6 +451,10 @@ export class CellStrip {
 
 	sync(entries) {
 		this.cancelGeometry();
+		unfollow(this.strip);
+		for (const entry of this.entries) entry.element.style.removeProperty("margin-left");
+		this.driven = new Set();
+		this.step();
 		for (const motion of this.motions.values()) motion.animation.cancel();
 		this.motions = new Map();
 		for (const entry of this.entries) {

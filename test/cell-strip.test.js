@@ -159,6 +159,37 @@ try {
 	assert.equal(reduced.board.visibility, "hidden");
 	assert.equal(await page.evaluate(() => document.getAnimations().length), 0);
 	await page.evaluate(() => strip.destroy());
+	await page.emulateMedia({ reducedMotion: "no-preference" });
+	const scroll = await page.evaluate(async () => {
+		const { ORIGAMI_PRESENTATION } = await import("/origami.js");
+		const { CellStrip } = await import("/cell-strip.js");
+		const viewport = document.createElement("div");
+		viewport.style.cssText = "width:900px;height:300px";
+		document.body.append(viewport);
+		const folding = new CellStrip(viewport, { motion: ORIGAMI_PRESENTATION.motion });
+		const make = (id) => {
+			const element = document.createElement("section");
+			element.style.overflowY = "auto";
+			const tall = document.createElement("div");
+			tall.style.height = "2000px";
+			element.append(tall);
+			return element;
+		};
+		const parent = make("parent");
+		const first = make("first");
+		const second = make("second");
+		await folding.update([{ id: "a/parent", element: parent, width: 300, visible: true }, { id: "a/parent/x", element: first, width: 300, visible: true }]);
+		parent.scrollTop = 120;
+		folding.update([{ id: "a/parent", element: parent, width: 300, visible: true }, { id: "a/parent/y", element: second, width: 300, visible: true }], { animate: true });
+		const during = parent.scrollTop;
+		document.getAnimations().forEach((animation) => animation.finish());
+		await folding.finished;
+		const result = { during, after: parent.scrollTop };
+		folding.destroy();
+		viewport.remove();
+		return result;
+	});
+	assert.deepEqual(scroll, { during: 120, after: 120 }, "a replacement beside a cell never moves that cell, so it keeps its scroll position");
 	console.log("Cell strip browser scenarios passed");
 } finally {
 	await browser.close();

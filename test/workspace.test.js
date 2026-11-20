@@ -466,25 +466,32 @@ test("an elastic cell in view takes the space the others leave, and without one 
 	assert.ok(wide.every((row) => row.photo > 360), "because the photo grows past its preferred width");
 	const narrow = await rows("b");
 	assert.ok(narrow.every((row) => row.photo === null), "the narrow frame shows no photo in its rows");
-	assert.ok(narrow[0].gap > 0 && narrow[2].gap > 0, `a selector narrower than its row, without an elastic cell beside it, leaves the canvas: ${JSON.stringify(narrow)}`);
-	assert.equal(narrow[1].gap, 0, "while the map, whose own max is wider than the row, fills it");
+	assert.ok(narrow.every((row) => row.gap === 0), `there each elastic selector fills its row: ${JSON.stringify(narrow)}`);
 	assert.deepEqual(warnings, [], "and nothing is drawn past a max, so nothing warns");
+	await openDemo([open("depth:1", "albums")]);
+	await resize([[1600, 640], [420, 640]]);
+	const gap = await page.evaluate(() => {
+		const chain = document.querySelector('.frame[data-frame="a"] .supermax-body > .supermax-chain');
+		const cells = [...chain.querySelectorAll(".supermax-cell")].filter((cell) => cell.getBoundingClientRect().width > 0);
+		return Math.round(chain.getBoundingClientRect().right - cells.at(-1).getBoundingClientRect().right);
+	});
+	assert.ok(gap > 0, `a chain without an elastic cell in view leaves the canvas: ${gap}px`);
 });
 
 test("a host that shows the canvas keeps cells at their maximum and centres them", async () => {
 	await page.goto("about:blank");
-	await page.goto(`${server.url}/?delay=0&spare=center${PRESENTATION === "origami" ? "" : `&presentation=${PRESENTATION}`}#${encodeLog([open("album:coast", "albums")])}`);
+	await page.goto(`${server.url}/?delay=0&spare=center${PRESENTATION === "origami" ? "" : `&presentation=${PRESENTATION}`}#${encodeLog([open("depth:1", "albums")])}`);
 	await page.waitForFunction(() => window.supermaxDemo?.frames.length === 2);
 	await settle();
+	await resize([[1600, 640], [420, 640]]);
 	const row = await page.evaluate(() => {
-		const chain = document.querySelector(`.frame[data-frame="b"] .supermax-row[data-row$="coast:thumbnails"] .supermax-chain`);
-		const cell = [...chain.querySelectorAll(".supermax-cell")].find((candidate) => candidate.getBoundingClientRect().width > 0);
+		const chain = document.querySelector('.frame[data-frame="a"] .supermax-body > .supermax-chain');
+		const cells = [...chain.querySelectorAll(".supermax-cell")].filter((candidate) => candidate.getBoundingClientRect().width > 0);
 		const outer = chain.getBoundingClientRect();
-		const inner = cell.getBoundingClientRect();
-		return { width: inner.width, left: inner.left - outer.left, right: outer.right - inner.right };
+		return { width: cells.at(-1).getBoundingClientRect().width, left: cells[0].getBoundingClientRect().left - outer.left, right: outer.right - cells.at(-1).getBoundingClientRect().right };
 	});
-	assert.equal(Math.round(row.width), 360, "the cell stays at its max");
-	assert.ok(row.left > 4 && Math.abs(row.left - row.right) < 1, "with the canvas showing equally on both sides");
+	assert.equal(Math.round(row.width), 240, "the cell stays at its max");
+	assert.ok(row.left > 4 && Math.abs(row.left - row.right) < 1, `with the canvas showing equally on both sides: ${JSON.stringify(row)}`);
 });
 
 const folds = (frameKey) => page.evaluate((key) => document.getAnimations()
@@ -685,6 +692,172 @@ test("a cell that shrinks keeps its layout until the transition ends, and slides
 	assert.deepEqual(during, [before, before, before], "and lays out at its old width for the whole transition");
 });
 
+test("neighbours that move together stay joined at their shared edge, opening and closing, across and down", { skip: PRESENTATION !== "origami" }, async () => {
+	const seams = (pairs, times) => page.evaluate(async ({ pairs, times }) => {
+		const moments = [];
+		for (const time of times) {
+		document.getAnimations().forEach((animation) => { animation.pause(); animation.currentTime = time; });
+		await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+		const visible = (element) => {
+			const rect = element.getBoundingClientRect();
+			let { left, right, top, bottom } = rect;
+			for (let node = element.parentElement; node && !node.classList.contains("frame"); node = node.parentElement) {
+				const style = getComputedStyle(node);
+				const box = node.getBoundingClientRect();
+				const inset = /inset\(([^)]*)\)/.exec(style.clipPath)?.[1].split(" ").map(parseFloat);
+				const [insetTop = 0, insetRight = insetTop, insetBottom = insetTop, insetLeft = insetRight] = inset ?? [];
+				if (inset || style.overflowX !== "visible") {
+					left = Math.max(left, box.left + (inset ? insetLeft : 0));
+					right = Math.min(right, box.right - (inset ? insetRight : 0));
+				}
+				if (inset || style.overflowY !== "visible") {
+					top = Math.max(top, box.top + (inset ? insetTop : 0));
+					bottom = Math.min(bottom, box.bottom - (inset ? insetBottom : 0));
+				}
+			}
+			return { left, right, top, bottom };
+		};
+		const gaps = () => pairs.map(([before, after, axis]) => {
+			const first = visible(document.querySelector(before));
+			const second = visible(document.querySelector(after));
+			return Math.round((axis === "x" ? second.left - first.right : second.top - first.bottom) * 10) / 10;
+		});
+		moments.push(gaps());
+		}
+		return moments;
+	}, { pairs, times });
+	const play = () => page.evaluate(async () => {
+		document.getAnimations().forEach((animation) => animation.finish());
+		await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+	});
+	const cellIn = (id) => inFrame("a", `[data-occurrence="${id}"]`);
+	await openDemo([open("album:coast", "albums"), open("coast:photo:c", coast.row("thumbnails"))]);
+	await resize([[1400, 640], [420, 640]]);
+	const across = [[cellIn(coast.row("thumbnails")), cellIn(coast.photo("thumbnails", "c")), "x"], [cellIn(coast.photo("thumbnails", "c")), cellIn(coast.metadata("thumbnails", "c")), "x"]];
+	const joined = (moments) => moments.every((gaps) => gaps.every((gap) => gap > -1 && gap < 2));
+	await closeNewest("a");
+	const closing = await seams(across, [40, 100, 160]);
+	assert.ok(joined(closing), `closing: each folding paper starts one gutter from where its neighbour ends: ${JSON.stringify(closing)}`);
+	await play();
+	await settle();
+	await page.evaluate(() => window.supermaxDemo.prepare("coast:photo:c"));
+	await page.evaluate((selector) => document.querySelector(selector).click(), `${cellIn(coast.row("thumbnails"))} .thumb[data-destination="coast:photo:c"]`);
+	const edges = await page.evaluate(async (selector) => {
+		const cell = document.querySelector(selector);
+		const moments = [];
+		for (const time of [40, 100, 160]) {
+			document.getAnimations().forEach((animation) => { animation.pause(); animation.currentTime = time; });
+			await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+			const room = cell.parentElement.getBoundingClientRect();
+			moments.push(Math.round(room.left + room.width + parseFloat(getComputedStyle(cell.parentElement).marginRight) - cell.getBoundingClientRect().right) || 0);
+		}
+		return moments;
+	}, cellIn(coast.row("thumbnails")));
+	assert.deepEqual(edges, [0, 0, 0], "the shrinking cell moves with that edge as a whole, its own right edge on it, never cut off");
+	const opening = await seams(across, [40, 100, 160]);
+	assert.ok(joined(opening), `opening: the same: ${JSON.stringify(opening)}`);
+	await play();
+	await settle();
+	while ((await groups("a")).length > 0) { await closeNewest("a"); await settle(); }
+	await page.evaluate(() => window.supermaxDemo.prepare("album:coast"));
+	await page.evaluate(() => document.querySelector('.frame[data-frame="a"] .album-item[data-destination="album:coast"]').click());
+	const down = [[cellIn(coast.row("thumbnails")), cellIn(coast.row("map")), "y"], [cellIn(coast.row("map")), cellIn(coast.row("people")), "y"]];
+	const gutter = await seams(down, [100]);
+	assert.ok(joined(gutter), `opening rows: each folding row starts one gutter below the one above: ${JSON.stringify(gutter)}`);
+	const later = await seams(down, [40, 160]);
+	assert.ok(joined(later), `at every moment: ${JSON.stringify(later)}`);
+	await play();
+	await settle();
+	await closeNewest("a");
+	const folding = await seams(down, [40, 100, 160]);
+	assert.ok(joined(folding), `and while the rows fold away: ${JSON.stringify(folding)}`);
+	await play();
+	await settle();
+});
+
+test("a row that stays but changes height moves its content with its bottom edge, never cut off and never laid out again", { skip: PRESENTATION !== "origami" }, async () => {
+	await openDemo([open("album:coast", "albums")]);
+	await resize([[860, 470], [360, 640]]);
+	const rows = [coast.row("thumbnails"), coast.row("map"), coast.row("people")];
+	const shown = () => page.evaluate((ids) => ids.filter((id) => !document.querySelector(`.frame[data-frame="a"] .supermax-row[data-row="${id}"]`).classList.contains("is-hidden")), rows);
+	const before = await shown();
+	await page.evaluate((row) => window.supermaxDemo.frames[0].workspace.goTo(row), coast.row("thumbnails"));
+	const after = await shown();
+	const staying = before.filter((id) => after.includes(id));
+	assert.ok(staying.length > 0, `some row stays in view: ${before} then ${after}`);
+	const moments = await page.evaluate(async ({ ids, leaving }) => {
+		const result = [];
+		for (const time of [60, 140]) {
+			document.getAnimations().forEach((animation) => { animation.pause(); animation.currentTime = time; });
+			await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+			result.push(ids.map((id) => {
+				const row = document.querySelector(`.frame[data-frame="a"] .supermax-row[data-row="${id}"]`);
+				return Math.round(row.querySelector(".supermax-row-chain").getBoundingClientRect().bottom - row.getBoundingClientRect().bottom) || 0;
+			}));
+			result.push(leaving.map((id) => getComputedStyle(document.querySelector(`.frame[data-frame="a"] .supermax-row[data-row="${id}"] .supermax-row-chain`)).visibility));
+		}
+		return result;
+	}, { ids: staying, leaving: before.filter((id) => !after.includes(id)) });
+	await page.evaluate(() => document.getAnimations().forEach((animation) => animation.play()));
+	await settle();
+	const hiding = before.filter((id) => !after.includes(id));
+	assert.ok(hiding.length > 0, "a row also gives way");
+	assert.deepEqual(moments, [staying.map(() => 0), hiding.map(() => "visible"), staying.map(() => 0), hiding.map(() => "visible")], "the content of each staying row ends on its bottom edge at every moment, and the row that gives way stays painted while it closes");
+});
+
+test("closing without a replacement plays the opening backwards, and clicking back and forth reverses the same motion", { skip: PRESENTATION !== "origami" }, async () => {
+	await openDemo([open("album:coast", "albums"), open("coast:photo:c", coast.row("thumbnails"))]);
+	await resize([[1400, 640], [420, 640]]);
+	await closeNewest("a");
+	await page.evaluate(() => document.getAnimations().forEach((animation) => animation.finish()));
+	await settle();
+	const cells = [coast.row("thumbnails"), coast.photo("thumbnails", "c"), coast.metadata("thumbnails", "c")].map((id) => inFrame("a", `[data-occurrence="${id}"]`));
+	const pose = (times) => page.evaluate(async ({ selectors, times }) => {
+		const moments = [];
+		for (const time of times) {
+			document.getAnimations().forEach((animation) => { animation.pause(); animation.currentTime = time; });
+			await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+			moments.push(selectors.map((selector) => {
+				const rect = document.querySelector(selector).getBoundingClientRect();
+				return [Math.round(rect.left), Math.round(rect.right), Math.round(rect.top)];
+			}));
+		}
+		return moments;
+	}, { selectors: cells, times });
+	const finish = () => page.evaluate(async () => {
+		document.getAnimations().forEach((animation) => animation.finish());
+		await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+	});
+	await page.evaluate(() => window.supermaxDemo.prepare("coast:photo:c"));
+	await page.evaluate((selector) => document.querySelector(selector).click(), `${cells[0]} .thumb[data-destination="coast:photo:c"]`);
+	const opening = await pose([50, 100, 150]);
+	await finish();
+	await settle();
+	await closeNewest("a");
+	const closing = await pose([150, 100, 50]);
+	const near = (a, b) => a.every((cell, index) => cell.every((value, axis) => Math.abs(value - b[index][axis]) <= 2));
+	assert.ok(opening.every((moment, index) => near(moment, closing[index])), `each moment of the close mirrors the opening: ${JSON.stringify({ opening, closing })}`);
+	await finish();
+	await settle();
+	await page.evaluate((selector) => document.querySelector(selector).click(), `${cells[0]} .thumb[data-destination="coast:photo:c"]`);
+	const motion = () => page.locator(cells[1]).evaluate(async (cell) => {
+		await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+		const animation = cell.getAnimations().find((candidate) => candidate.effect.getKeyframes().some((frame) => String(frame.transform ?? "").includes("rotate")));
+		window.pingPong ??= animation;
+		return { same: animation === window.pingPong, rate: animation.playbackRate, time: Math.round(animation.currentTime) };
+	});
+	await page.evaluate(() => document.getAnimations().forEach((animation) => { animation.pause(); animation.currentTime = 100; }));
+	assert.deepEqual(await motion(), { same: true, rate: 1, time: 100 }, "halfway through opening");
+	await closeNewest("a");
+	const back = await motion();
+	assert.ok(back.same && back.rate === -1 && Math.abs(back.time - 100) <= 50, `Back halfway reverses the opening from where it is: ${JSON.stringify(back)}`);
+	await page.evaluate((selector) => document.querySelector(selector).click(), `${cells[0]} .thumb[data-destination="coast:photo:c"]`);
+	const again = await motion();
+	assert.ok(again.same && again.rate === 1 && Math.abs(again.time - 100) <= 80, `and opening again reverses it once more: ${JSON.stringify(again)}`);
+	await finish();
+	await settle();
+});
+
 test("clicks faster than a stroke tear the earlier cells off from where they are, and nothing jumps", { skip: PRESENTATION !== "origami" }, async () => {
 	await openDemo([open("album:coast", "albums")]);
 	await page.evaluate(() => Promise.all(["b", "c", "d"].map((id) => window.supermaxDemo.prepare(`coast:photo:${id}`))));
@@ -739,7 +912,7 @@ test("going back to a cell that is still folding away brings the same cell back 
 	assert.equal((await groups("a")).at(-1), "Photo A", "and the click on it is the newest group");
 });
 
-test("origami folds a cell open from its parent's edge and away on the far edge, the whole cell shading to the canvas with the fold", { skip: PRESENTATION !== "origami" }, async () => {
+test("origami folds a cell open from its parent's edge and back onto it when it closes, a replaced cell folding away on its far edge, the whole cell shading to the canvas with the fold", { skip: PRESENTATION !== "origami" }, async () => {
 	await openDemo(THREE_ROWS);
 	const motion = () => page.evaluate(() => {
 		const cells = [...document.querySelectorAll('.frame[data-frame="a"] .supermax-cell')];
@@ -754,6 +927,7 @@ test("origami folds a cell open from its parent's edge and away on the far edge,
 				leaving: cell.hasAttribute("data-supermax-exiting"),
 				origin: cell.style.transformOrigin,
 				easing: fold.effect.getTiming().easing,
+				direction: fold.effect.getTiming().direction,
 				delay: fold.effect.getTiming().delay,
 				end: fold.effect.getComputedTiming().endTime,
 				transforms: fold.effect.getKeyframes().map((frame) => frame.transform),
@@ -782,9 +956,9 @@ test("origami folds a cell open from its parent's edge and away on the far edge,
 	await settle();
 	await page.evaluate(() => window.supermaxDemo.dispatch({ type: "close" }, window.supermaxDemo.frames[0].workspace));
 	const closing = (await motion()).find((animation) => animation.leaving && animation.cell === "coast:history:a");
-	assert.equal(closing?.origin, "right center", "a closed cell folds away on its far edge");
-	assert.equal(closing.transforms.at(-1), "rotateY(-90deg)");
-	wholeCell(closing, "the closing cell", "ease-in");
+	assert.equal(closing?.origin, "left center", "a closed cell folds back onto the edge it opened from");
+	assert.deepEqual([closing.transforms[0], closing.direction], ["rotateY(90deg)", "reverse"], "by playing its opening backwards, so its ease-out runs as an ease-in");
+	wholeCell(closing, "the closing cell", "ease-out");
 	await settle();
 	await page.click(inFrame("a", `[data-occurrence="${coast.row("thumbnails")}"] .thumb[data-destination="coast:photo:b"]`));
 	const turning = await motion();

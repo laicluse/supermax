@@ -1,6 +1,7 @@
 import { CellStrip, STRIP_TIMING } from "./cell-strip.js";
 import { ContentSlot } from "./content-slot.js";
 import { DividerLayer } from "./dividers.js";
+import { follow, projectionAlong, unfollow } from "./follow.js";
 import { chainRootOf, isSplit } from "./layout.js";
 import { ModalHost } from "./modal.js";
 import { NoticeBoard } from "./notices.js";
@@ -15,7 +16,7 @@ function normalizePresentation(presentation) {
 	if (!/^[a-z][a-z0-9-]*$/.test(presentation.name)) throw new TypeError("presentation name must be a lowercase identifier");
 	const motion = presentation.motion ?? null;
 	const source = presentation.createStrip ?? null;
-	const createStrip = source ?? ((viewport) => new CellStrip(viewport, { motion }));
+	const createStrip = source ?? ((viewport, workspace) => new CellStrip(viewport, { motion, horizon: () => workspace.horizon() }));
 	return Object.freeze({ name: presentation.name, motion, source, createStrip });
 }
 
@@ -42,6 +43,7 @@ export class Workspace extends EventTarget {
 		this.document = element.ownerDocument;
 		this.cells = new Map();
 		this.leavingCells = new Map();
+		this.closingRows = [];
 		this.chains = new Map();
 		this.rows = new Map();
 		this.notices = new NoticeBoard(this);
@@ -288,11 +290,14 @@ export class Workspace extends EventTarget {
 		Promise.all([...this.chains.values()].map((entry) => entry.strip.finished)).then(() => this.scheduleOrigins());
 	}
 
-	placeHorizon() {
+	horizon() {
 		const view = this.document.defaultView;
 		const root = this.overlayRoot === this.document.body ? new DOMRect(0, 0, view.innerWidth, view.innerHeight) : this.overlayRoot.getBoundingClientRect();
-		const x = root.left + root.width / 2;
-		const y = root.top + root.height * HORIZON;
+		return { x: root.left + root.width / 2, y: root.top + root.height * HORIZON };
+	}
+
+	placeHorizon() {
+		const { x, y } = this.horizon();
 		for (const entry of this.chains.values()) {
 			const box = entry.viewport.getBoundingClientRect();
 			entry.viewport.style.perspectiveOrigin = `${Math.round(x - box.left)}px ${Math.round(y - box.top)}px`;
@@ -384,6 +389,7 @@ export class Workspace extends EventTarget {
 			visible: cell.visible,
 			axis: inRow && index === 0 ? "row" : "chain",
 			still: !!cell.rows,
+			follow: cell.rows ? () => this.reachOfRows(this.cells.get(cell.occurrence) ?? this.leavingCells.get(cell.occurrence)) : undefined,
 		}));
 		for (const cell of chain.cells) this.peeks.apply(cell);
 		entry.strip.update(entries, { animate: animating, arrive: created && this.wasRendered && animating });
@@ -471,31 +477,90 @@ export class Workspace extends EventTarget {
 				entry = { element, chain, height: null, animation: null };
 				this.rows.set(row.occurrence, entry);
 			}
+			const leading = row === cell.rows.rows.find((candidate) => candidate.visible);
+			entry.leading = leading;
 			this.setRowHeight(entry, row.height, animating);
 			entry.element.classList.toggle("is-hidden", !row.visible);
-			const leading = row === cell.rows.rows.find((candidate) => candidate.visible);
 			entry.element.classList.toggle("is-leading", leading);
 			entry.chain.inert = !row.visible;
-			entry.chain.style.visibility = row.visible ? "" : "hidden";
+			if (row.visible) entry.chain.style.visibility = "";
+			else if (entry.slide) entry.slide.finished.then(() => { if (entry.element.classList.contains("is-hidden")) entry.chain.style.visibility = "hidden"; }, () => {});
+			else entry.chain.style.visibility = "hidden";
 			if (row.visible) {
-				entry.chain.style.height = leading ? `${row.height}px` : `calc(${row.height}px - var(--supermax-gutter, 0px))`;
+				this.sizeRowChain(entry, entry.paper);
 				this.renderChain(row.chain, entry.chain, animating, { inRow: true });
+				this.followRow(entry, row.occurrence, this.chains.get(row.chain.root)?.strip);
 			}
 		}
 		this.dividers.sync(host, "horizontal", this.heightDividers(cell.rows.rows, cell.rows.contentHeight));
 	}
 
+	followRow(entry, rowId, strip) {
+		if (!strip?.motions.get(rowId)?.follows) return;
+		entry.animation?.cancel();
+		entry.animation = null;
+		const view = this.document.defaultView;
+		follow(entry.element, () => {
+			const cell = (this.cells.get(rowId) ?? this.leavingCells.get(rowId))?.element;
+			if (!strip.motions.has(rowId) || !cell?.isConnected) {
+				cell?.style.removeProperty("margin-top");
+				if (entry.height !== null) entry.element.style.height = `${entry.height}px`;
+				return false;
+			}
+			const gutter = parseFloat(view.getComputedStyle(entry.element).borderTopWidth) || 0;
+			entry.followed = cell;
+			const room = cell.parentElement;
+			const place = room.getBoundingClientRect();
+			const horizon = this.horizon();
+			room.style.perspectiveOrigin = `${horizon.x - place.left}px ${horizon.y - place.top}px`;
+			const { shift, reach } = projectionAlong(cell, "y", { perspective: parseFloat(view.getComputedStyle(room).perspective), vanish: horizon.y - place.top });
+			cell.style.marginTop = `${shift}px`;
+			entry.element.style.height = `${reach + gutter}px`;
+			return true;
+		});
+	}
+
+	reachOfRows(entry) {
+		const rows = entry ? [...entry.body.querySelector(".supermax-rows")?.children ?? []] : [];
+		const strips = rows.map((row) => row.querySelector(":scope > .supermax-row-chain > .supermax-chain > .supermax-strip")).filter(Boolean);
+		if (!strips.some((strip) => strip.getAnimations({ subtree: true }).some((animation) => animation.playState !== "finished"))) return null;
+		const view = this.document.defaultView;
+		const footprint = (strip) => [...strip.children].reduce((sum, box) => {
+			const style = view.getComputedStyle(box);
+			return style.position === "absolute" ? sum : sum + box.offsetWidth + (parseFloat(style.marginRight) || 0);
+		}, parseFloat(strip.style.marginLeft) || 0);
+		return Math.max(0, ...strips.map(footprint));
+	}
+
 	setRowHeight(entry, height, animating) {
+		unfollow(entry.element);
+		entry.followed?.style.removeProperty("margin-top");
+		entry.followed = null;
 		const previous = animating && entry.height !== null ? entry.element.offsetHeight : null;
 		entry.height = height;
 		entry.animation?.cancel();
+		entry.slide?.cancel();
 		entry.animation = null;
+		entry.slide = null;
+		entry.paper = height;
 		entry.element.style.height = `${height}px`;
 		if (!animating || previous === null || Math.abs(previous - height) < 0.5) return;
-		entry.animation = entry.element.animate(
-			[{ height: `${previous}px` }, { height: `${height}px` }],
-			STRIP_TIMING,
-		);
+		const paper = Math.max(previous, height);
+		entry.paper = paper;
+		entry.animation = entry.element.animate([{ height: `${previous}px` }, { height: `${height}px` }], STRIP_TIMING);
+		entry.slide = entry.chain.animate([{ marginTop: `${previous - paper}px` }, { marginTop: `${height - paper}px` }], { ...STRIP_TIMING, fill: "both" });
+		const slide = entry.slide;
+		slide.finished.then(() => {
+			if (entry.slide !== slide) return;
+			slide.cancel();
+			entry.slide = null;
+			entry.paper = entry.height;
+			this.sizeRowChain(entry, entry.height);
+		}, () => {});
+	}
+
+	sizeRowChain(entry, height) {
+		entry.chain.style.height = entry.leading ? `${height}px` : `calc(${height}px - var(--supermax-gutter, 0px))`;
 	}
 
 	pruneClosed() {
@@ -514,7 +579,9 @@ export class Workspace extends EventTarget {
 		for (const [rowId, entry] of this.rows) {
 			if (this.navigator.get(rowId)) continue;
 			this.rows.delete(rowId);
+			const strip = this.chains.get(rowId)?.strip;
 			this.afterExit(entry.element, () => entry.element.remove());
+			this.closingRows.push({ entry, rowId, strip });
 		}
 		for (const [chainRootId, entry] of this.chains) {
 			if (this.navigator.get(chainRootId)) continue;
@@ -525,6 +592,7 @@ export class Workspace extends EventTarget {
 				entry.viewport.remove();
 			}));
 		}
+		for (const { entry, rowId, strip } of this.closingRows.splice(0)) this.followRow(entry, rowId, strip);
 	}
 
 	afterExit(element, dispose) {
