@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { after, before, beforeEach, test } from "node:test";
 import { chromium } from "playwright";
 import { albums, depthCount, depthId, paths } from "../docs/assets/album.js";
-import { encodeLog } from "../docs/assets/deeplink.js";
+import { appendAction, decodeLog, encodeLog } from "../docs/assets/deeplink.js";
 import { serveDocs } from "./serve-docs.js";
 
 const coast = paths(albums[0]);
@@ -122,6 +122,31 @@ test("frames diverge on what closing the newest group closes and the demo does n
 	assert.equal(await activeOccurrence(), coast.row("thumbnails"), "closing returns focus to the selector of the closed group");
 });
 
+test("the log forgets an open that a later open replaced, with everything under it, but never across a Back step", () => {
+	const map = coast.row("map");
+	const build = (actions) => actions.reduce(appendAction, []);
+	const opened = (log) => log.map((action) => (action.type === "close" ? "b" : action.destination));
+	assert.deepEqual(opened(build([open("album:coast", "albums"), open("coast:photo:b", map), open("coast:metadata:b", coast.photo("map", "b")), open("coast:photo:c", map), open("coast:photo:a", map)])), ["album:coast", "coast:photo:a"], "B, its metadata and C gave way to A");
+	assert.deepEqual(opened(build([open("album:coast", "albums"), open("coast:photo:b", map), { type: "close" }, open("coast:photo:a", map)])), ["album:coast", "coast:photo:b", "b", "coast:photo:a"], "an open before a Back step stays");
+	assert.deepEqual(opened(build([open("coast:photo:a", coast.row("thumbnails")), open("coast:photo:b", map)])), ["coast:photo:a", "coast:photo:b"], "opens in other places stay");
+});
+
+test("reloading a link with replaced steps lands on the same state and rewrites the link without them", async () => {
+	const map = coast.row("map");
+	const steps = [open("album:coast", "albums"), ...["b", "c", "d", "c", "b", "a"].map((id) => open(`coast:photo:${id}`, map))];
+	const states = async (log) => {
+		await openDemo(log);
+		return page.evaluate(() => window.supermaxDemo.frames.map((frame) => {
+			const state = frame.workspace.navigator.state();
+			return { occurrences: [...state.occurrences].sort(), groups: state.groups.map((group) => `${group.title}: ${[...group.members].sort().join(" ")}`) };
+		}));
+	};
+	const replayed = await states(steps);
+	const rewritten = decodeLog(await page.evaluate(() => location.hash));
+	assert.deepEqual(rewritten.map((action) => action.destination), ["album:coast", "coast:photo:a"]);
+	assert.deepEqual(await states([steps[0], steps.at(-1)]), replayed, "the short link restores the same cells and Back steps in both frames");
+});
+
 test("a deeplink opens three rows in both frames; a fresh navigation replays it and a reload restores it", async () => {
 	await openDemo(THREE_ROWS);
 	for (const key of ["a", "b"]) assert.deepEqual(await groups(key), ["Coast", "Photo A", "Photo B", "Photo C"], `frame ${key}`);
@@ -133,8 +158,9 @@ test("a deeplink opens three rows in both frames; a fresh navigation replays it 
 	await page.goto(url);
 	await page.waitForFunction(() => window.supermaxDemo?.frames.length === 2);
 	await settle();
-	assert.deepEqual(await state("a"), live.a, "a fresh navigation replays the wide frame after clicks");
-	assert.deepEqual(await state("b"), live.b, "a fresh navigation replays the narrow frame after clicks");
+	const withoutIds = (snapshot) => ({ ...snapshot, groups: snapshot.groups.map(({ id, ...group }) => group) });
+	assert.deepEqual(withoutIds(await state("a")), withoutIds(live.a), "a fresh navigation replays the wide frame after clicks");
+	assert.deepEqual(withoutIds(await state("b")), withoutIds(live.b), "a fresh navigation replays the narrow frame after clicks");
 	await page.click("[data-reset]");
 	await page.waitForFunction(() => !location.hash);
 	await resize([[600, 640], [420, 640]]);

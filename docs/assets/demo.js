@@ -1,6 +1,6 @@
 import { Navigator, ORIGAMI_PRESENTATION, SLIDE_PRESENTATION, Workspace } from "./supermax/index.js";
 import { albums, depthCount, depthId, edits, hintFor, ids, localDestinations, minViewportHeight, paths, remoteKinds } from "./album.js";
-import { decodeLog, encodeLog } from "./deeplink.js";
+import { appendAction, decodeLog, encodeLog } from "./deeplink.js";
 import { foldPresentation } from "./presentation-fold.js";
 import { fetchFromCatalog } from "./api.js";
 
@@ -606,7 +606,7 @@ class Session {
 		const originResult = origin.apply(action, { focus: true });
 		const results = [originResult, ...this.frames.filter((frame) => frame.workspace !== origin).map((frame) => this.follow(frame.workspace, action, origin, originResult))];
 		if (results.some((result) => result.ok && !result.noop)) {
-			this.log.push(action);
+			this.log = results.every((result) => result.ok) ? appendAction(this.log, action) : [...this.log, action];
 			this.record("push");
 		}
 		this.completeDefaults();
@@ -657,7 +657,7 @@ class Session {
 			await this.settleDefaults();
 			if (this.replaying !== token) return;
 			const results = this.frames.map((frame) => frame.workspace.apply(action, { animate: false }));
-			if (results.some((result) => result.ok && !result.noop)) this.log.push(action);
+			if (results.some((result) => result.ok && !result.noop)) this.log = results.every((result) => result.ok) ? appendAction(this.log, action) : [...this.log, action];
 		}
 		await this.settleDefaults();
 		if (this.replaying !== token) return;
