@@ -108,7 +108,7 @@ test("zoom retains an exit when its ancestors were already hidden", async () => 
 	}
 });
 
-test("adjacent folded cells each keep a handle and open by closing the trailing cell", async () => {
+test("adjacent folded cells share one handle that brings back the nearest, one at a time", async () => {
 	const server = await serveDocs();
 	const browser = await chromium.launch({ channel: "chrome", headless: true });
 	try {
@@ -140,41 +140,37 @@ test("adjacent folded cells each keep a handle and open by closing the trailing 
 			window.pages.addEventListener("up", (event) => window.closedByUp.push(...event.detail.closed.map((cell) => cell.id)));
 		});
 		const cues = () => page.locator(".supermax-fold-cue.is-horizontal:visible").evaluateAll((handles) => handles.map((cue) => ({ id: cue.dataset.foldOccurrence, direction: cue.dataset.direction, x: Math.round(cue.getBoundingClientRect().left), y: Math.round(cue.getBoundingClientRect().top), bottom: Math.round(cue.getBoundingClientRect().bottom) })));
-		const stacked = await cues();
-		assert.deepEqual(stacked.map((cue) => [cue.id, cue.direction]), [["mode/a", "right"], ["mode/a/b", "right"]], "every folded cell on the seam has a handle of its own");
-		assert.equal(stacked[0].x, stacked[1].x, "the handles share their seam");
-		assert.ok(stacked[0].bottom <= stacked[1].y, `the handles follow each other along the seam in reading order: ${JSON.stringify(stacked)}`);
+		assert.deepEqual((await cues()).map((cue) => [cue.id, cue.direction]), [["mode/a/b", "right"]], "the run of folds shows one handle, for the fold nearest the open cell");
 		const drag = async (id, distance) => {
 			const box = await page.locator(`.supermax-fold-cue[data-fold-occurrence="${id}"]`).boundingBox();
 			await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
 			await page.mouse.down();
 			await page.mouse.move(box.x + box.width / 2 + distance, box.y + box.height / 2, { steps: 8 });
 		};
-		await drag("mode/a", 60);
+		await drag("mode/a/b", 60);
 		assert.equal(await page.evaluate(() => !!window.pages.navigator.get("mode/a/b/c")), true, "a drag closes nothing before it is released");
 		await page.keyboard.press("Escape");
 		await page.waitForFunction(() => !window.pages.folds.drag);
-		assert.deepEqual((await cues()).map((cue) => cue.id), ["mode/a", "mode/a/b"], "a cancelled drag returns to the folds it started from");
+		assert.deepEqual((await cues()).map((cue) => cue.id), ["mode/a/b"], "a cancelled drag returns to the handle it started from");
 		assert.equal(await page.evaluate(() => window.pages.findCell("mode/a/b/c").full), true);
+		await drag("mode/a/b", 220);
+		await page.mouse.up();
+		await page.waitForFunction(() => window.pages.findCell("mode/a/b")?.full && !window.pages.folds.drag);
+		assert.deepEqual(await page.evaluate(() => window.closedByUp), ["mode/a/b/c"], "the trailing cell closes, as it does for Show");
+		assert.equal(await page.evaluate(() => window.pages.findCell("mode/a").folded), true, "the fold before it stays folded");
+		assert.deepEqual((await cues()).map((cue) => [cue.id, cue.direction]), [["mode/a", "right"]], "the handle now names the next fold back");
 		await drag("mode/a", 220);
 		await page.mouse.up();
 		await page.waitForFunction(() => window.pages.findCell("mode/a")?.full && !window.pages.folds.drag);
-		assert.deepEqual(await page.evaluate(() => window.closedByUp), ["mode/a/b/c"], "the trailing cell closes, as it does for Show");
-		assert.deepEqual((await cues()).map((cue) => [cue.id, cue.direction]), [["mode/a/b", "left"]], "the fold that lay under it moves aside and keeps its handle");
-		const edge = await page.evaluate(() => document.querySelector('.supermax-fold-cue[data-fold-occurrence="mode/a/b"]').getBoundingClientRect().right);
-		assert.ok(Math.abs(edge - 241) < 1.5, `a fold after the last cell lies on that cell's trailing gutter: ${edge}`);
-		await drag("mode/a/b", -220);
-		await page.mouse.up();
-		await page.waitForFunction(() => window.pages.findCell("mode/a/b")?.full && !window.pages.folds.drag);
-		assert.equal(await page.evaluate(() => window.pages.findCell("mode/a").folded), true, "with nothing after it to close, the cell before it folds");
-		assert.equal(await page.evaluate(() => window.pages.navigator.groups.length), 2);
+		assert.deepEqual(await page.evaluate(() => window.closedByUp), ["mode/a/b/c", "mode/a/b"]);
+		assert.deepEqual(await cues(), []);
 	} finally {
 		await browser.close();
 		await server.close();
 	}
 });
 
-test("a seam too short for its handles keeps the ones nearest the open cell, and a drag keeps what changed meanwhile", async () => {
+test("a run of folds on a short seam shows its one handle, and a drag keeps what changed meanwhile", async () => {
 	const server = await serveDocs();
 	const browser = await chromium.launch({ channel: "chrome", headless: true });
 	try {
@@ -195,8 +191,7 @@ test("a seam too short for its handles keeps the ones nearest the open cell, and
 		});
 		const cues = await page.locator(".supermax-fold-cue").evaluateAll((handles) => handles.filter((cue) => !cue.hidden).map((cue) => ({ id: cue.dataset.foldOccurrence, top: cue.getBoundingClientRect().top, bottom: cue.getBoundingClientRect().bottom })));
 		const folded = ["mode/a", "mode/a/b", "mode/a/b/c", "mode/a/b/c/d"];
-		assert.ok(cues.length >= 1 && cues.length < folded.length, `not every handle fits a 40px seam: ${JSON.stringify(cues)}`);
-		assert.deepEqual(cues.map((cue) => cue.id), folded.slice(-cues.length), "the handles nearest the open cell stay");
+		assert.deepEqual(cues.map((cue) => cue.id), folded.slice(-1), "only the fold nearest the open cell has a handle");
 		assert.ok(cues.every((cue) => cue.top >= -.5 && cue.bottom <= 40.5), `every handle that shows lies on the seam: ${JSON.stringify(cues)}`);
 		const nearest = cues.at(-1).id;
 		const box = await page.locator(`.supermax-fold-cue[data-fold-occurrence="${nearest}"]`).boundingBox();
@@ -765,20 +760,31 @@ test("dragging folds follows the pointer and settles beyond the directional gold
 					const box = await cue.boundingBox();
 					const occurrence = await cue.getAttribute("data-fold-occurrence");
 					const start = { x: box.x + box.width / 2, y: box.y + box.height / 2 };
-					const target = await page.evaluate(({ occurrence, axis }) => {
+					const target = await page.evaluate(({ occurrence, axis, direction }) => {
 						const workspace = window.workspace;
 						const previous = workspace.navigator.snapshot();
+						const before = workspace.navigator.layout();
 						workspace.navigator.unfold(occurrence, axis);
 						const layout = workspace.navigator.layout();
 						workspace.navigator.restore(previous);
-						return axis === "horizontal" ? layout.chain.cells.find((cell) => cell.occurrence === occurrence).width : layout.chain.cells.find((cell) => cell.rows).rows.rows.find((row) => row.occurrence === occurrence).height;
-					}, { occurrence, axis });
+						const items = (state) => axis === "horizontal" ? state.chain.cells : state.chain.cells.find((cell) => cell.rows).rows.rows;
+						const size = axis === "horizontal" ? "width" : "height";
+						const seam = (state) => {
+							const chain = items(state);
+							const index = chain.findIndex((item) => item.occurrence === occurrence);
+							return chain.slice(0, index + (["right", "down"].includes(direction) ? 1 : 0)).reduce((total, item) => total + item[size], 0);
+						};
+						return { extent: items(layout).find((item) => item.occurrence === occurrence)[size], travel: Math.abs(seam(layout) - seam(before)) };
+					}, { occurrence, axis, direction });
 					const sign = ["left", "up"].includes(direction) ? -1 : 1;
 					await page.mouse.move(start.x, start.y);
 					await page.mouse.down();
-					await page.mouse.move(start.x + (axis === "horizontal" ? sign * target * fraction : 0), start.y + (axis === "vertical" ? sign * target * fraction : 0), { steps: 8 });
+					await page.mouse.move(start.x + (axis === "horizontal" ? sign * target.travel * fraction : 0), start.y + (axis === "vertical" ? sign * target.travel * fraction : 0), { steps: 8 });
+					const moved = await cue.boundingBox();
+					const displacement = axis === "horizontal" ? moved.x - box.x : moved.y - box.y;
+					assert.ok(Math.abs(displacement - sign * target.travel * fraction) < 3, `${presentation} ${direction}: handle stays under the pointer`);
 					const extent = await page.locator(`[${axis === "horizontal" ? "data-occurrence" : "data-row"}="${occurrence}"]`).evaluate((element, axis) => element.getBoundingClientRect()[axis === "horizontal" ? "width" : "height"], axis);
-					assert.ok(Math.abs(extent - target * fraction) < 3, `${presentation} ${direction}: content follows the pointer, got ${extent} of ${target}`);
+					assert.ok(Math.abs(extent - target.extent * fraction) < 3, `${presentation} ${direction}: content follows the drag progress, got ${extent} of ${target.extent}`);
 					const seam = await page.evaluate(({ occurrence, axis, direction }) => {
 						const cue = document.querySelector(`.supermax-fold-cue.is-${axis}[data-fold-occurrence="${occurrence}"]`);
 						const element = document.querySelector(`[${axis === "horizontal" ? "data-occurrence" : "data-row"}="${occurrence}"]`);
@@ -1158,6 +1164,48 @@ test("a fold drag leaves the styles of the content inside its cells alone", asyn
 	}
 });
 
+test("a fold handle stays under the pointer when preceding cells unfold together", async () => {
+	const server = await serveDocs();
+	const browser = await chromium.launch({ channel: "chrome", headless: true });
+	try {
+		const page = await browser.newPage();
+		await page.goto(`${server.url}/blank`);
+		await page.addStyleTag({ url: `${server.url}/src/workspace.css` });
+		await page.evaluate(async () => {
+			const { Navigator, Workspace } = await import("/src/index.js");
+			const host = document.createElement("div");
+			host.style.cssText = "position:relative;width:900px;height:500px";
+			document.body.append(host);
+			const navigator = new Navigator({ root: "rail", minViewportHeight: 200, destinations: {
+				rail: { title: "Rail", min: 50, max: 50, overflow: { mode: "keep" } },
+				a: { title: "Mailboxes", min: 120, preferred: 200, max: 200 },
+				b: { title: "Conversations", min: 120, preferred: 300, max: 300 },
+				c: { title: "Message", min: 300, preferred: 700, max: "*" },
+			} });
+			window.workspace = new Workspace(host, { navigator, content: () => ({ element: document.createElement("div") }) });
+			window.workspace.sync(["rail", "a", "b", "c"], { origin: null, animate: false });
+		});
+		assert.equal(await page.locator(".supermax-cell.is-folded").count(), 2);
+		const cue = page.locator('.supermax-fold-cue[data-fold-occurrence="rail/a/b"]');
+		const box = await cue.boundingBox();
+		const start = { x: box.x + box.width / 2, y: box.y + box.height / 2 };
+		await page.mouse.move(start.x, start.y);
+		await page.mouse.down();
+		for (const delta of [20, 60, 100, 60, 20]) {
+			await page.mouse.move(start.x + delta, start.y);
+			const moved = await cue.boundingBox();
+			assert.ok(Math.abs(moved.x - box.x - delta) <= 2, `pointer moved ${delta}px, handle moved ${moved.x - box.x}px`);
+		}
+		await page.keyboard.press("Escape");
+		await page.mouse.up();
+		await page.waitForFunction(() => !window.workspace.folds.drag);
+		assert.equal(await page.locator(".supermax-cell.is-folded").count(), 2);
+	} finally {
+		await browser.close();
+		await server.close();
+	}
+});
+
 test("a completed fold drag carries its handle into the next fold", async () => {
 	const server = await serveDocs();
 	const browser = await chromium.launch({ channel: "chrome", headless: true });
@@ -1251,6 +1299,71 @@ test("clicking a row's fold handle animates the handle handoff", async () => {
 			const changingCorners = ["leftRadius", "rightRadius"].filter((corner) => Math.abs(motion.start[corner] - motion.end[corner]) > 1);
 			assert.ok(changingCorners.some((corner) => motion.middle[corner] > Math.min(motion.start[corner], motion.end[corner]) + 0.1 && motion.middle[corner] < Math.max(motion.start[corner], motion.end[corner]) - 0.1), `${axis}: corner radius has an intermediate shape: ${JSON.stringify(motion)}`);
 		}
+	} finally {
+		await browser.close();
+		await server.close();
+	}
+});
+
+test("a fold drag passes through the frames of the transition Show plays", async () => {
+	const server = await serveDocs();
+	const browser = await chromium.launch({ channel: "chrome", headless: true });
+	try {
+		const open = async () => {
+			const page = await browser.newPage();
+			await page.goto(`${server.url}/blank`);
+			await page.addStyleTag({ url: `${server.url}/src/workspace.css` });
+			await page.evaluate(async () => {
+				const { Navigator, Workspace } = await import("/src/index.js");
+				document.body.style.margin = "0";
+				const host = document.createElement("div");
+				host.style.cssText = "position:relative;width:1000px;height:400px";
+				document.body.append(host);
+				const navigator = new Navigator({ root: "rail", minViewportHeight: 200, destinations: {
+					rail: { title: "Rail", min: 50, max: 50, overflow: { mode: "keep" } },
+					lists: { title: "Lists", min: 120, preferred: 300, max: 300, header: "title" },
+					thread: { title: "Thread", header: "title", rows: [{ destination: "details", minHeight: 150, maxHeight: "*", preferredHeight: 250 }, { destination: "files", minHeight: 80, maxHeight: 80 }] },
+					details: { title: "Details", min: 250, preferred: 300, max: 400 },
+					files: { title: "Files", min: 250, preferred: 300, max: "*" },
+					message: { title: "Message", min: 300, preferred: 400, max: "*" },
+				} });
+				window.workspace = new Workspace(host, { navigator, content: () => ({ element: document.createElement("div") }) });
+				window.workspace.sync(["rail", "lists", "thread"], { origin: null, animate: false });
+				window.workspace.navigate("message", { from: "rail/lists/thread/details", origin: null });
+				for (const animation of document.getAnimations()) animation.finish();
+				window.frame = () => [...document.querySelectorAll(".supermax-cell, .supermax-row, .supermax-cell-body, .supermax-cell-title, .supermax-row-chain")].map((element) => {
+					const box = element.getBoundingClientRect();
+					const veil = element.querySelector(":scope > .supermax-veil");
+					return [box.left, box.top, box.width, box.height].map(Math.round).concat(getComputedStyle(veil ?? element).opacity).join(",");
+				}).join(" | ");
+			});
+			return page;
+		};
+		const moments = [0, .2, .4, .6, .8, 1];
+		const shown = await open();
+		const byShow = await shown.evaluate(async (moments) => {
+			const { FoldDrag } = await import("/src/fold-drag.js");
+			const { workspace } = window;
+			workspace.requestUp();
+			const animations = FoldDrag.prototype.motionAnimations.call({ workspace });
+			for (const animation of animations) animation.pause();
+			const timings = animations.map((animation) => animation.effect.getComputedTiming());
+			const from = Math.min(...timings.map((timing) => timing.delay));
+			const until = Math.max(...timings.map((timing) => timing.endTime));
+			return moments.map((moment) => {
+				for (const animation of animations) animation.currentTime = from + moment * (until - from);
+				for (const { strip } of workspace.chains.values()) strip.step();
+				return window.frame();
+			});
+		}, moments);
+		const dragged = await open();
+		const box = await dragged.locator(".supermax-fold-cue:visible").boundingBox();
+		await dragged.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+		await dragged.mouse.down();
+		await dragged.mouse.move(box.x + box.width / 2 + 6, box.y + box.height / 2, { steps: 2 });
+		const byDrag = await dragged.evaluate((moments) => moments.map((moment) => { window.workspace.folds.drag.seek(moment); return window.frame(); }), moments);
+		assert.notEqual(byShow[0], byShow.at(-1), "the transition moves the cells");
+		for (const [index, moment] of moments.entries()) assert.equal(byDrag[index], byShow[index], `the drag at ${moment} of the way shows the frame Show plays there`);
 	} finally {
 		await browser.close();
 		await server.close();

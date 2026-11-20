@@ -66,13 +66,14 @@ test("an opened cell gives way only after a cell that can hide has done so", () 
 	assert.equal(picture(model), "A B [C] (D) E");
 });
 
-test("every folded cell is its own page that opens toward the trailing side", () => {
+test("folded cells before the open one open toward the trailing side and share the handle of the nearest", () => {
 	const model = chain(450);
 	assert.equal(picture(model), "[A] [B] [C] D E");
 	for (const name of ["a", "b", "c"]) {
 		const cell = model.layout().cells.get(id(name));
 		assert.equal(cell.foldDirection, "right");
 		assert.equal(cell.foldOpening, "right");
+		assert.equal(cell.foldHandle, id("c"));
 		assert.equal(model.layout().access.get(id(name)).kind, "back");
 	}
 });
@@ -86,7 +87,19 @@ test("a folded row opens by making the rows after it give way, and comes back th
 	assert.deepEqual(model.layout().access.get("menu/work/three"), { kind: "fold", occurrence: "menu/work/three", axis: "vertical" });
 	model.unfold("menu/work/three", "vertical");
 	assert.equal(rows(model), "[One] Two Three");
+	model.rowStarts.set("menu/work", "menu/work/one");
+	model.resize({ width: 400, height: 150 });
+	assert.equal(rows(model), "One [Two] [Three]");
+	assert.deepEqual(model.layout().access.get("menu/work/three"), { kind: "fold", occurrence: "menu/work/two", axis: "vertical" }, "a fold behind another is reached through the run's handle");
 	assert.equal(model.state().occurrences.length, 5);
+});
+
+test("the handle of a run brings back the nearest fold and then names the one before it", () => {
+	const model = chain(450, rail);
+	assert.equal(model.layout().cells.get(id("b")).foldHandle, id("c"));
+	assert.deepEqual(model.unfold(id("c"), "horizontal").map((cell) => cell.id), [id("e")]);
+	assert.equal(picture(model), "A [B] C D");
+	assert.equal(model.layout().cells.get(id("b")).foldHandle, id("b"));
 });
 
 test("Show and a fold handle reach the same layout", () => {

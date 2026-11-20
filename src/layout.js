@@ -370,15 +370,25 @@ function layoutWorkspaceFor(model) {
 	return layout;
 }
 
-// allow-comment: a fold lies collapsed on its leading edge. Before the active member it opens toward the trailing side, where the members after it give way; after the active member nothing follows it to yield, so it opens toward the leading side.
+// allow-comment: a fold lies collapsed on its leading edge. Before the active member it opens toward the trailing side, where the members after it give way; after the active member nothing follows it to yield, so it opens toward the leading side. Adjacent folds share one handle, which names the fold nearest the active member; the others follow as that one opens.
 function planFolds(members, focus, axis) {
 	const focused = members.findIndex((member) => member.occurrence === focus && member.visible && !member.folded);
 	const active = focused >= 0 ? focused : members.findLastIndex((member) => member.visible && !member.folded);
 	const [backward, forward] = axis === "horizontal" ? ["left", "right"] : ["up", "down"];
-	for (const [index, member] of members.entries()) if (member.folded) {
-		member.foldDirection = index < active ? forward : backward;
-		member.foldOpening = member.foldDirection;
+	let run = [];
+	const close = () => {
+		const handle = run.length && (run[0].foldDirection === forward ? run.at(-1) : run[0]).occurrence;
+		for (const member of run) member.foldHandle = handle;
+		run = [];
+	};
+	for (const [index, member] of members.entries()) {
+		if (member.folded) {
+			member.foldDirection = index < active ? forward : backward;
+			member.foldOpening = member.foldDirection;
+			run.push(member);
+		} else if (member.visible) close();
 	}
+	close();
 }
 
 function accessRoutes(model, layout) {
@@ -390,7 +400,7 @@ function accessRoutes(model, layout) {
 		for (let member = occurrence; !route && member; member = model.get(member.parent)) {
 			for (const [axis, placement] of [["vertical", layout.rows.get(member.id)], ["horizontal", layout.cells.get(member.id)]]) {
 				if (!placement?.folded || !placement.inView) continue;
-				if (["left", "up"].includes(placement.foldDirection)) route = { kind: "fold", occurrence: member.id, axis };
+				if (["left", "up"].includes(placement.foldDirection)) route = { kind: "fold", occurrence: placement.foldHandle, axis };
 				else if (back) route = { kind: "back", occurrence: back.id };
 				break;
 			}

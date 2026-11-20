@@ -117,7 +117,7 @@ test("Show never strands later rows without a fold handle", async () => {
 	}
 });
 
-test("folded rows on one seam each keep a handle and open by dragging", async () => {
+test("folded rows after the open one share a handle and open one at a time by dragging", async () => {
 	await openDemo([open("album:coast", "albums")]);
 	await page.evaluate(() => window.supermaxDemo.resize([[960, 640], [401, 292]]));
 	await page.waitForFunction(() => window.supermaxDemo.frames[1].workspace.layout.height === 292);
@@ -128,8 +128,7 @@ test("folded rows on one seam each keep a handle and open by dragging", async ()
 	await page.waitForTimeout(100);
 	const folded = inFrame("b", ".supermax-fold-cue.is-vertical:visible");
 	const initialCues = await page.locator(folded).evaluateAll((cues) => cues.map((cue) => ({ id: cue.dataset.foldOccurrence, direction: cue.dataset.direction, y: cue.getBoundingClientRect().y, left: cue.getBoundingClientRect().left, right: cue.getBoundingClientRect().right, parent: cue.parentElement.className })));
-	assert.deepEqual(initialCues.map((cue) => cue.id), [coast.row("map"), coast.row("people")], `every folded row after the open one presents a handle: ${JSON.stringify(initialCues)}`);
-	assert.ok(initialCues[0].y === initialCues[1].y && initialCues[0].right <= initialCues[1].left, `the handles follow each other along their shared seam: ${JSON.stringify(initialCues)}`);
+	assert.deepEqual(initialCues.map((cue) => cue.id), [coast.row("map")], `the run of folded rows presents one handle, for the row nearest the open one: ${JSON.stringify(initialCues)}`);
 	const dragOpen = async (id) => {
 		const cue = page.locator(inFrame("b", `.supermax-fold-cue.is-vertical[data-fold-occurrence="${id}"]`));
 		const box = await cue.boundingBox();
@@ -145,7 +144,7 @@ test("folded rows on one seam each keep a handle and open by dragging", async ()
 	await dragOpen(coast.row("map"));
 	await settle();
 	assert.equal(await page.locator(inFrame("b", `.supermax-row[data-row="${coast.row("map")}"]`)).evaluate((row) => row.classList.contains("is-folded")), false);
-	assert.ok((await page.locator(folded).evaluateAll((cues) => cues.map((cue) => cue.dataset.foldOccurrence))).includes(coast.row("people")), "the row after it keeps its handle once the row opens");
+	assert.ok((await page.locator(folded).evaluateAll((cues) => cues.map((cue) => cue.dataset.foldOccurrence))).includes(coast.row("people")), "the handle names the row after it once the row opens");
 	await dragOpen(coast.row("people"));
 	assert.equal(await page.locator(inFrame("b", `.supermax-row[data-row="${coast.row("people")}"]`)).evaluate((row) => row.classList.contains("is-folded")), false, "the following row opens through the same drag gesture");
 });

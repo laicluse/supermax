@@ -7,8 +7,6 @@ import { FoldDrag } from "./fold-drag.js";
 import { EASING, TIMING } from "./motion.js";
 
 
-const STACK_GAP = 4;
-const TOUCH_TARGET = 44;
 const CORNERS = ["borderTopLeftRadius", "borderTopRightRadius", "borderBottomRightRadius", "borderBottomLeftRadius"];
 
 function handleShape(cue) {
@@ -81,7 +79,6 @@ export class FoldController {
 		const gutter = parseFloat(workspace.document.defaultView.getComputedStyle(workspace.element).getPropertyValue("--supermax-gutter")) || 0;
 		const previous = this.visibleCues ?? new Map();
 		const visible = new Map();
-		const seams = new Map();
 		for (const [cue, { entry, occurrence, axis }] of this.entries) {
 			if (!workspace.navigator.get(occurrence)) {
 				cue.hidden = true;
@@ -92,7 +89,7 @@ export class FoldController {
 				continue;
 			}
 			const state = axis === "horizontal" ? workspace.findCell(occurrence) : workspace.findRow(occurrence);
-			const shown = !!state && (this.drag?.active ? this.drag.visible.has(cue) : state.folded && state.inView) && entry.element.isConnected;
+			const shown = !!state && (this.drag?.active ? this.drag.visible.has(cue) : this.offers(state)) && entry.element.isConnected;
 			cue.hidden = !shown;
 			cue.inert = !shown || !!this.drag?.active && this.drag.cue !== cue;
 			if (!shown) continue;
@@ -117,46 +114,19 @@ export class FoldController {
 			cue.dataset.edge = edge;
 			if (edge) seam = (horizontal ? bounds.right : bounds.bottom) - gutter;
 			const group = horizontal ? entry.element.closest(".supermax-strip") : entry.element.parentElement;
-			let bySeam = seams.get(group);
-			if (!bySeam) seams.set(group, bySeam = new Map());
-			const key = `${axis}:${direction}:${Math.round(seam)}`;
-			if (!bySeam.has(key)) bySeam.set(key, []);
-			bySeam.get(key).push({ cue, entry, occurrence, axis, state, box, direction, horizontal, seam, group });
-		}
-		// allow-comment: folds that lie on one seam each keep a handle of their own, in reading order along that seam, each in a slot as long as its touch target. A seam too short for all of them keeps the handles nearest the open surface; the others follow as those open.
-		const reach = workspace.document.defaultView.matchMedia("(any-pointer: coarse)").matches ? TOUCH_TARGET : 0;
-		for (const bySeam of seams.values()) for (let stack of bySeam.values()) {
-			const { box, horizontal, direction: opening } = stack[0];
 			const length = horizontal ? box.height : box.width;
-			let sizes, slots, along;
-			for (;;) {
-				const available = Math.max(0, (length - 2 * gutter - STACK_GAP * (stack.length - 1)) / stack.length);
-				for (const { cue, entry, occurrence, axis } of stack) {
-					const currentTitle = workspace.navigator.get(occurrence).title;
-					const key = `${currentTitle}|${available}`;
-					if (entry.foldState !== key) { entry.foldPart.update({ title: currentTitle, occurrence, axis, available }); entry.foldState = key; }
-					cue.title = workspace.strings.unfold(currentTitle); cue.setAttribute("aria-label", cue.title);
-				}
-				sizes = stack.map(({ cue }) => ({ width: cue.offsetWidth, height: cue.offsetHeight }));
-				slots = sizes.map((size) => Math.max(horizontal ? size.height : size.width, reach));
-				along = slots.reduce((sum, slot) => sum + slot, 0) + STACK_GAP * (stack.length - 1);
-				if (along <= length || stack.length === 1) break;
-				const nearestLast = opening === "right" || opening === "down";
-				const farthest = nearestLast ? stack[0] : stack.at(-1);
-				farthest.cue.hidden = true;
-				farthest.cue.inert = true;
-				stack = nearestLast ? stack.slice(1) : stack.slice(0, -1);
-			}
-			let offset = (horizontal ? box.top : box.left) + (length - along) / 2;
-			for (const [index, { cue, axis, direction, seam, group }] of stack.entries()) {
-				const { width, height } = sizes[index];
-				const centred = offset + (slots[index] - (horizontal ? height : width)) / 2;
-				const x = horizontal ? seam + (direction === "left" ? gutter - width : 0) : centred;
-				const y = horizontal ? centred : seam + (direction === "up" ? gutter - height : 0);
-				offset += slots[index] + STACK_GAP;
-				Object.assign(cue.style, { left: `${x - origin.left}px`, top: `${y - origin.top}px` });
-				visible.set(cue, { group, axis, direction, rect: cue.getBoundingClientRect(), shape: handleShape(cue) });
-			}
+			const available = Math.max(0, length - 2 * gutter);
+			const currentTitle = workspace.navigator.get(occurrence).title;
+			const key = `${currentTitle}|${available}`;
+			if (entry.foldState !== key) { entry.foldPart.update({ title: currentTitle, occurrence, axis, available }); entry.foldState = key; }
+			cue.title = workspace.strings.unfold(currentTitle); cue.setAttribute("aria-label", cue.title);
+			const width = cue.offsetWidth;
+			const height = cue.offsetHeight;
+			const centred = (horizontal ? box.top : box.left) + (length - (horizontal ? height : width)) / 2;
+			const x = horizontal ? seam + (direction === "left" ? gutter - width : 0) : centred;
+			const y = horizontal ? centred : seam + (direction === "up" ? gutter - height : 0);
+			Object.assign(cue.style, { left: `${x - origin.left}px`, top: `${y - origin.top}px` });
+			visible.set(cue, { group, axis, direction, rect: cue.getBoundingClientRect(), shape: handleShape(cue) });
 		}
 		if (!this.drag?.active || this.drag.settling) this.separateOpposing(visible);
 		this.visibleCues = visible;
@@ -176,6 +146,11 @@ export class FoldController {
 			const mark = cue.querySelector(".supermax-fold-mark");
 			if (prior.shape && next.shape && mark) mark.animate([prior.shape, next.shape], timing);
 		}
+	}
+
+	// allow-comment: a run of adjacent folds shows one handle, for the fold the layout names; it opens like Show, one surface at a time.
+	offers(state) {
+		return !!state?.folded && state.inView && state.foldHandle === state.occurrence;
 	}
 
 	separateOpposing(visible) {

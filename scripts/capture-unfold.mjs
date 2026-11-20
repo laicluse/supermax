@@ -32,7 +32,7 @@ try {
 	const picture = () => page.evaluate(() => window.workspace.layout.chain.cells.map((cell) => cell.folded ? `[${cell.title}]` : cell.full ? cell.title : `(${cell.title})`).join(" "));
 	assert.equal(await picture(), "Mode [Mailboxes] [Conversations] Message Attachment");
 	await page.screenshot({ path: capture("unfold-start") });
-	const box = await page.locator('.supermax-fold-cue[data-fold-occurrence="rail/mailboxes"]').boundingBox();
+	const box = await page.locator('.supermax-fold-cue[data-fold-occurrence="rail/mailboxes/conversations"]').boundingBox();
 	await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
 	await page.mouse.down();
 	await page.mouse.move(box.x + box.width / 2 + 125, box.y + box.height / 2, { steps: 10 });
@@ -40,7 +40,7 @@ try {
 	await page.mouse.move(box.x + box.width / 2 + 220, box.y + box.height / 2, { steps: 6 });
 	await page.mouse.up();
 	await page.waitForFunction(() => !window.workspace.folds.drag);
-	assert.equal(await picture(), "Mode Mailboxes [Conversations] Message");
+	assert.equal(await picture(), "Mode [Mailboxes] Conversations Message");
 	await page.screenshot({ path: capture("unfold-released") });
 	assert.deepEqual(errors, []);
 } finally {

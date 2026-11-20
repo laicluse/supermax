@@ -7,7 +7,7 @@ Every completed layout contains an `access` map with one entry for every open oc
 | Kind | Available route |
 | --- | --- |
 | `visible` | The cell has a positive allocated width. If its minimum exceeds the viewport, the workspace supplies scrolling. |
-| `fold` | Open the named fold on the given axis. It has a handle of its own. |
+| `fold` | Open the named fold on the given axis through its handle. |
 | `back` | Use the layout's Back/Show target to move toward earlier content. |
 | `zoom-out` | Leave zoom using the Show control, then continue with the ordinary layout's route. |
 
@@ -17,7 +17,7 @@ Configuration rejects non-finite or contradictory sizes before opening content. 
 
 Each chain and each set of rows is a finite ordered sequence with one selected member. Zoom and the ordinary window select that member in a single precedence order; a fold a user opened does not, it only folds after the others. Allocation preserves it. Members before it may be hidden behind Back; members at or after it must be allocated or folded. A later suffix is never dropped to make an earlier selection fit.
 
-Every fold after the selection has a `fold` route that names the fold itself. The model does not know how long a handle is drawn: on a seam too short for every handle, the handles nearest the selection show and the route of a fold beyond them is reached by opening those first. A fold before the selection has the Back route, which opens it the way its handle does, including when two small touch targets would overlap.
+Adjacent folds share one handle, for the fold nearest the selection; the layout names it in `foldHandle` on every fold of that run. Every fold after the selection has a `fold` route that names that handle's fold, so a fold behind another is reached by opening the ones before it first. A fold before the selection has the Back route, which opens it the way its handle does, including when two small touch targets would overlap.
 
 Back and a fold handle share one procedure. Back considers hidden descendants before their enclosing ancestors. It retains the selected positions of other scopes and proceeds toward earlier context. It may close a visible trailing subtree to free room, but never a subtree containing a cell that was hidden before the action. If that closure would discard hidden content, it preserves that subtree and allocates the requested context with folds or scrolling. A cell that becomes visible only transiently during the calculation does not count as having been shown to the user.
 

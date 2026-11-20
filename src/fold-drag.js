@@ -1,6 +1,7 @@
 import { TIMING } from "./motion.js";
 
 const OPEN_THRESHOLD = (Math.sqrt(5) - 1) / 2;
+const SAMPLES = 48;
 
 export class FoldDrag {
 	constructor(controller, cue, event) {
@@ -52,21 +53,42 @@ export class FoldDrag {
 	begin() {
 		const { workspace, record } = this;
 		for (const animation of this.motionAnimations()) animation.finish();
-		const before = record.entry.element.getBoundingClientRect()[this.horizontal ? "width" : "height"];
 		this.trial = workspace.rehearse(() => workspace.navigator.unfold(record.occurrence, record.axis));
 		workspace.element.classList.add("is-fold-dragging");
 		this.rendering = true;
 		workspace.navigator.preview(this.trial, () => workspace.render({ animate: true }));
 		this.rendering = false;
-		const state = this.horizontal ? workspace.findCell(record.occurrence) : workspace.findRow(record.occurrence);
-		this.distance = Math.max(1, state[this.horizontal ? "width" : "height"] - before);
+		// allow-comment: the drag is the transition Show plays, untouched: every stroke keeps its delay, duration and easing, and the pointer takes the place of the clock. Only the wait before the first stroke is skipped.
 		this.animations = this.motionAnimations();
-		for (const animation of this.animations) {
-			animation.pause();
-			animation.effect.updateTiming({ easing: "linear", delay: 0, fill: "both" });
-		}
+		for (const animation of this.animations) animation.pause();
+		const timings = this.animations.map((animation) => animation.effect.getComputedTiming());
+		this.from = timings.length ? Math.min(...timings.map((timing) => timing.delay)) : 0;
+		this.until = timings.length ? Math.max(...timings.map((timing) => timing.endTime)) : 1;
 		this.active = true;
+		this.chart();
 		this.seek(0);
+	}
+
+	// allow-comment: the handle rides the edge of the cell it opens, which the transition moves on its own curve. Sampling that travel once lets the pointer pick the moment of the transition at which the handle lies under it.
+	chart() {
+		const place = () => this.cue.getBoundingClientRect()[this.horizontal ? "left" : "top"];
+		this.seek(0);
+		const start = place();
+		let reached = 0;
+		this.travel = Array.from({ length: SAMPLES + 1 }, (unused, index) => {
+			this.seek(index / SAMPLES);
+			reached = Math.max(reached, (place() - start) * this.sign);
+			return reached;
+		});
+		this.distance = Math.max(1, reached);
+	}
+
+	progressAt(distance) {
+		if (distance <= 0) return 0;
+		if (distance >= this.distance) return 1;
+		const index = this.travel.findIndex((reached) => reached >= distance);
+		const before = this.travel[index - 1];
+		return (index - 1 + (distance - before) / (this.travel[index] - before)) / SAMPLES;
 	}
 
 	update(event) {
@@ -74,12 +96,13 @@ export class FoldDrag {
 		const distance = (this.coordinate(event) - this.start) * this.sign;
 		if (!this.active && Math.abs(distance) < 4) return;
 		if (!this.active) this.begin();
-		this.seek(Math.min(1, Math.max(0, distance / this.distance)));
+		this.reach = Math.min(1, Math.max(0, distance / this.distance));
+		this.seek(this.progressAt(distance));
 	}
 
 	seek(progress) {
 		this.progress = progress;
-		for (const animation of this.animations) animation.currentTime = progress * animation.effect.getTiming().duration;
+		for (const animation of this.animations) animation.currentTime = this.from + progress * (this.until - this.from);
 		for (const { strip } of this.workspace.chains.values()) strip.step();
 		this.controller.place();
 	}
@@ -93,7 +116,7 @@ export class FoldDrag {
 			return;
 		}
 		this.update(event);
-		this.settle(this.progress > OPEN_THRESHOLD);
+		this.settle(this.reach > OPEN_THRESHOLD);
 	}
 
 	settle(open) {
@@ -105,7 +128,7 @@ export class FoldDrag {
 		if (open) {
 			this.visible = new Set([...this.controller.entries].filter(([, { occurrence, axis }]) => {
 				const state = axis === "horizontal" ? this.workspace.findCell(occurrence) : this.workspace.findRow(occurrence);
-				return state?.folded && state.inView;
+				return this.controller.offers(state);
 			}).map(([cue]) => cue));
 			this.controller.place();
 		}
