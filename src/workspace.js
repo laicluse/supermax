@@ -571,7 +571,7 @@ export class Workspace extends EventTarget {
 			const state = { occurrence: id, title: occurrence.title, navigationText: next ? (named ? next.title : this.strings.back()) : "", actions: { navigation: { offered, label: next ? (this.upDestination.zoomOnly ? this.strings.zoomOut() : this.strings.up(next.title)) : this.strings.back() } } };
 			entry.chromePart.update(state);
 			const cell = this.layout?.cells.get(id);
-			const paintState = { ...state, split: entry.element.classList.contains("is-split"), folded: !!cell?.folded, visible: !!cell?.full, width: cell?.width, height: cell?.height, headerHeight: entry.header ? this.navigator.chrome.header : 0, variant: cell?.variant, rowVariant: cell?.rowVariant };
+			const paintState = { ...state, split: entry.element.classList.contains("is-split"), folded: !!cell?.folded, visible: !!cell?.full, width: cell?.width, height: cell?.height, headerHeight: entry.header ? this.navigator.chrome.header : 0, variant: entry.variantState?.variant ?? cell?.variant, rowVariant: entry.variantState?.rowVariant ?? cell?.rowVariant };
 			entry.element.toggleAttribute("data-supermax-conceal", !!this.presentation.motion?.concealContent);
 			entry.materialPart.update(paintState); entry.veilPart.update(paintState);
 			if (offered) this.upButton = entry.chromePart.actions.navigation.element;
@@ -597,7 +597,7 @@ export class Workspace extends EventTarget {
 			axis: inRow && index === 0 ? "row" : "chain",
 			row,
 			still: !!cell.rows,
-			variantChanged: this.cells.get(cell.occurrence)?.variantState && (this.cells.get(cell.occurrence).variantState.variant !== (cell.variant ?? null) || this.cells.get(cell.occurrence).variantState.rowVariant !== (cell.rowVariant ?? null)),
+			variantChanged: !!this.cells.get(cell.occurrence)?.variantState && (this.cells.get(cell.occurrence).variantState.variant !== this.shownForm(cell).variant || this.cells.get(cell.occurrence).variantState.rowVariant !== this.shownForm(cell).rowVariant),
 			follow: cell.rows ? () => this.reachOfRows(this.cells.get(cell.occurrence) ?? this.leavingCells.get(cell.occurrence)) : undefined,
 		}));
 		for (const cell of chain.cells) this.folds.apply(this.cells.get(cell.occurrence), cell.folded, cell.foldOpening);
@@ -615,10 +615,17 @@ export class Workspace extends EventTarget {
 	}
 
 
+	// allow-comment: the allocator picks the preferred form for a cell it does not show, so a cell that folds keeps the form it was last seen in.
+	shownForm(cell) {
+		const before = this.cells.get(cell.occurrence)?.variantState;
+		if (cell.full || !before) return { variant: cell.variant ?? null, rowVariant: cell.rowVariant ?? null };
+		return { variant: before.variant, rowVariant: before.rowVariant };
+	}
+
 	variantParticipant(cell) {
 		const entry = this.cells.get(cell.occurrence);
 		const from = entry.variantState ?? null;
-		const to = Object.freeze({ variant: cell.variant ?? null, rowVariant: cell.rowVariant ?? null, width: cell.width, height: cell.height });
+		const to = Object.freeze({ ...this.shownForm(cell), width: cell.width, height: cell.height });
 		const changed = from && (from.variant !== to.variant || from.rowVariant !== to.rowVariant);
 		const running = [...entry.variantAnimations ?? []].some((animation) => animation.playState !== "idle" && animation.playState !== "finished");
 		if (!changed && !running && from) { entry.variantState = to; return null; }
@@ -739,7 +746,7 @@ export class Workspace extends EventTarget {
 			this.setRowHeight(entry, row.height, animating, strip, exchangingFold);
 			entry.element.classList.toggle("is-hidden", !row.visible);
 			entry.element.classList.toggle("is-leading", leading);
-			entry.chain.inert = !row.visible || row.folded;
+			if (!this.folds.drag?.rendering) entry.chain.inert = !row.visible || row.folded;
 			if (row.visible) entry.chain.style.visibility = "";
 			else if (entry.slide) entry.slide.finished.then(() => { if (entry.element.classList.contains("is-hidden")) entry.chain.style.visibility = "hidden"; }, () => {});
 			else entry.chain.style.visibility = "hidden";

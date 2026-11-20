@@ -35,6 +35,20 @@
 	height: 100%;
 	perspective: var(--supermax-perspective);
 }
+/* allow-comment: the strip sets the cell gutter on a room as cells open and fold; inherited, it would restyle the room's whole content each time, so only the shell's own path to its readers inherits it. */
+@property --supermax-cell-gutter {
+	syntax: "<length>";
+	inherits: false;
+	initial-value: 0px;
+}
+.supermax-room > .supermax-cell,
+.supermax-cell > :is(.supermax-material, .supermax-veil, .supermax-cell-title, .supermax-cell-body),
+.supermax-cell.is-split > .supermax-cell-body > .supermax-rows,
+.supermax-cell.is-split > .supermax-cell-body > .supermax-rows > .supermax-row,
+.supermax-cell.is-split > .supermax-cell-body > .supermax-rows > .supermax-row > .supermax-row-chain,
+.supermax-cell[data-supermax-variant-paper] > .supermax-cell-body > [data-supermax-content] {
+	--supermax-cell-gutter: inherit;
+}
 .supermax-room {
 	contain: paint;
 	overflow: clip;
@@ -62,7 +76,17 @@
 .supermax-cell.is-split > .supermax-cell-body {
 	overflow: hidden;
 }
+/* allow-comment: an inherited property set on the cell would restyle its whole content at every variant change; the path to the content inherits it explicitly instead. */
+@property --supermax-variant-width {
+	syntax: "<length>";
+	inherits: false;
+	initial-value: 0px;
+}
+.supermax-cell[data-supermax-variant-paper] > .supermax-cell-body {
+	--supermax-variant-width: inherit;
+}
 .supermax-cell[data-supermax-variant-paper] > .supermax-cell-body > [data-supermax-content] {
+	--supermax-variant-width: inherit;
 	width: calc(var(--supermax-variant-width) - var(--supermax-cell-gutter, 0px)) !important;
 	max-width: none !important;
 	flex: none !important;

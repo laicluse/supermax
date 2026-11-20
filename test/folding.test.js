@@ -1026,6 +1026,116 @@ test("a fold between two full cells opens toward the neighbour that yields, with
 	}
 });
 
+test("a cell that folds keeps the responsive form it was last shown in", async () => {
+	const server = await serveDocs();
+	const browser = await chromium.launch({ channel: "chrome", headless: true });
+	try {
+		const page = await browser.newPage({ viewport: { width: 1000, height: 800 } });
+		await page.goto(`${server.url}/blank`);
+		await page.addStyleTag({ url: `${server.url}/src/workspace.css` });
+		await page.evaluate(async () => {
+			const { Navigator, Workspace } = await import("/src/index.js");
+			document.body.style.margin = "0";
+			const host = document.createElement("div");
+			host.style.cssText = "position:fixed;left:0;top:0;width:1000px;height:800px";
+			document.body.append(host);
+			const navigator = new Navigator({ root: "modes", minViewportHeight: 320, destinations: {
+				modes: { title: "Modes", min: 52, max: 52, overflow: { mode: "keep" } },
+				mailboxes: { title: "Mailboxes", min: 208, max: 320, preferred: 256 },
+				nav: { title: "Nav", min: 208, max: 320, preferred: 240, variants: [{ id: "labels", when: { minWidth: 208 } }, { id: "icons", min: 72, preferred: 72, max: 72 }] },
+				list: { title: "List", min: 320, max: "*", preferred: 400 },
+				detail: { title: "Detail", min: 320, max: 640, preferred: 320, overflow: { mode: "keep" } },
+				messages: { title: "Messages", min: 320, max: "*", preferred: 800, overflow: { mode: "keep" } },
+			} });
+			window.forms = new Workspace(host, { navigator, content: () => ({ element: document.createElement("div") }) });
+			window.forms.sync(["modes", "mailboxes", "nav", "list", "detail", "messages"], { origin: null, animate: false });
+			navigator.focusFold("modes/mailboxes/nav", "horizontal");
+			window.forms.render({ animate: false });
+		});
+		const nav = page.locator('[data-occurrence="modes/mailboxes/nav"]');
+		assert.equal(await nav.getAttribute("data-variant"), "icons");
+		const box = await page.locator('.supermax-fold-cue[data-fold-occurrence="modes/mailboxes/nav/list"]').boundingBox();
+		await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+		await page.mouse.down();
+		await page.mouse.move(box.x + box.width / 2 - 120, box.y + box.height / 2, { steps: 8 });
+		assert.ok(await nav.evaluate((element) => element.classList.contains("is-folded")), "Nav folds while List opens");
+		assert.equal(await nav.getAttribute("data-variant"), "icons", "Nav folds in the form it was shown in");
+		await page.mouse.up();
+		await page.evaluate(() => { window.forms.navigator.focusFold("modes/mailboxes/nav/list", "horizontal"); window.forms.render({ animate: false }); });
+		assert.ok(await nav.evaluate((element) => element.classList.contains("is-folded")));
+		assert.equal(await nav.getAttribute("data-variant"), "icons", "a settled fold keeps that form too");
+	} finally {
+		await browser.close();
+		await server.close();
+	}
+});
+
+test("a fold drag leaves the styles of the content inside its cells alone", async () => {
+	const server = await serveDocs();
+	const browser = await chromium.launch({ channel: "chrome", headless: true });
+	try {
+		const page = await browser.newPage({ viewport: { width: 700, height: 1000 } });
+		await page.goto(`${server.url}/blank`);
+		await page.addStyleTag({ url: `${server.url}/src/workspace.css` });
+		await page.addStyleTag({ url: `${server.url}/src/default-renderer.css` });
+		await page.evaluate(async () => {
+			const { Navigator, Workspace } = await import("/src/index.js");
+			document.body.style.margin = "0";
+			const host = document.createElement("div");
+			host.style.cssText = "position:fixed;left:0;top:0;width:580px;height:1000px";
+			document.body.append(host);
+			const navigator = new Navigator({ root: "mode", minViewportHeight: 320, destinations: {
+				mode: { title: "Mode", min: 52, max: 52, overflow: { mode: "keep" } },
+				nav: { title: "Nav", min: 208, max: 208 },
+				parent: { title: "Parent", min: 320, max: "*", preferred: 400 },
+				child: { title: "Child", min: 320, max: "*", preferred: 400 },
+			} });
+			window.quiet = new Workspace(host, { navigator, content: (occurrence) => {
+				const element = document.createElement("div");
+				element.append(Object.assign(document.createElement("span"), { className: "deep", textContent: occurrence.title }));
+				return { element };
+			} });
+			window.quiet.sync(["mode", "nav", "parent", "child"], { origin: null, animate: false });
+			navigator.focusFold("mode/nav", "horizontal");
+			window.quiet.render({ animate: false });
+		});
+		const box = await page.locator('.supermax-fold-cue[data-fold-occurrence="mode/nav/parent"]').boundingBox();
+		await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+		await page.mouse.down();
+		await page.mouse.move(box.x + box.width / 2 + 100, box.y + box.height / 2, { steps: 5 });
+		const during = await page.evaluate(() => {
+			const cell = document.querySelector('[data-occurrence="mode/nav/parent"]');
+			const deep = cell.querySelector(".deep");
+			return {
+				room: getComputedStyle(cell.parentElement).getPropertyValue("--supermax-cell-gutter"),
+				cell: getComputedStyle(cell).getPropertyValue("--supermax-cell-gutter"),
+				deepGutter: getComputedStyle(deep).getPropertyValue("--supermax-cell-gutter"),
+				deepPaper: getComputedStyle(deep).getPropertyValue("--supermax-fold-paper-width"),
+				paper: cell.hasAttribute("data-supermax-fold-paper"),
+				parentInert: cell.querySelector(".supermax-cell-body").inert,
+				childInert: document.querySelector('[data-occurrence="mode/nav/parent/child"] .supermax-cell-body').inert,
+			};
+		});
+		assert.equal(during.room, "1px", `the opening cell's room carries the gutter: ${JSON.stringify(during)}`);
+		assert.equal(during.cell, "1px", `the shell's own elements still read it: ${JSON.stringify(during)}`);
+		assert.equal(during.deepGutter, "0px", `content does not inherit the gutter, so changing it restyles no content: ${JSON.stringify(during)}`);
+		assert.ok(during.paper && during.deepPaper === "0px", `content does not inherit the fold paper width: ${JSON.stringify(during)}`);
+		assert.deepEqual([during.parentInert, during.childInert], [true, false], "inert keeps its resting state until the drag settles");
+		await page.mouse.move(box.x + box.width / 2 + 300, box.y + box.height / 2, { steps: 5 });
+		await page.mouse.up();
+		await page.waitForFunction(() => window.quiet.findCell("mode/nav/parent")?.full && !window.quiet.folds.drag);
+		const settled = await page.evaluate(() => {
+			const parent = document.querySelector('[data-occurrence="mode/nav/parent"] .supermax-cell-body');
+			const child = document.querySelector('[data-occurrence="mode/nav/parent/child"]');
+			return { parentInert: parent.inert, childInert: child.querySelector(".supermax-cell-body").inert, childBodyPointer: getComputedStyle(child.querySelector(".supermax-cell-body")).pointerEvents };
+		});
+		assert.deepEqual(settled, { parentInert: false, childInert: true, childBodyPointer: "auto" }, "the settled render makes the folded body inert, which keeps pointers out without restyling its content");
+	} finally {
+		await browser.close();
+		await server.close();
+	}
+});
+
 test("a completed fold drag carries its handle into the next fold", async () => {
 	const server = await serveDocs();
 	const browser = await chromium.launch({ channel: "chrome", headless: true });
