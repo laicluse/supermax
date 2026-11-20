@@ -107,7 +107,7 @@ function allocateChain(model, cells, width) {
 	});
 	const hard = sessionsHold(bounds, width);
 	const configs = cells.map((occurrence, index) => ({ id: occurrence.id, title: occurrence.title, keep: !!model.definitionOf(occurrence.destination).keep, ...sessionBounds(bounds[index], bounds[index].session, hard) }));
-	const allocation = new CellCollection(configs).distribute(width);
+	const allocation = new CellCollection(configs).distribute(width, null, { spare: model.spareSpace });
 	return { allocation, compact };
 }
 
@@ -191,6 +191,7 @@ function layoutChain(model, chainRoot, width, height, containerInView) {
 		width,
 		height,
 		contentWidth: Math.max(width, contentWidth),
+		spare: Math.max(0, width - contentWidth),
 		cells: layoutCells,
 		revealOffset: offset,
 		overflow,
@@ -206,7 +207,7 @@ function layoutRows(model, split, width, height, containerInView) {
 		const shown = roots.map((root, index) => index).filter((index) => index < roots.length - hiddenAtEnd || definition[index].keep);
 		const bounds = shown.map((index) => ({ min: definition[index].minHeight, max: definition[index].maxHeight, preferred: definition[index].preferredHeight ?? null, session: model.sizeOf(roots[index].id, "height") }));
 		const hard = sessionsHold(bounds, budget);
-		const allocation = new CellCollection(shown.map((index, position) => ({ id: roots[index].id, title: roots[index].title, keep: !!definition[index].keep, ...sessionBounds(bounds[position], bounds[position].session, hard) }))).distribute(budget);
+		const allocation = new CellCollection(shown.map((index, position) => ({ id: roots[index].id, title: roots[index].title, keep: !!definition[index].keep, ...sessionBounds(bounds[position], bounds[position].session, hard) }))).distribute(budget, null, { spare: model.spareSpace });
 		return new Map(allocation.cells.map((cell) => [cell.config.id, cell]));
 	};
 	const startIndex = roots.findIndex((root) => root.id === model.rowStarts.get(split.id));
@@ -235,5 +236,5 @@ function layoutRows(model, split, width, height, containerInView) {
 		};
 	});
 	const contentHeight = rows.reduce((sum, row) => sum + row.height, 0);
-	return { rows, overflow: overflow || contentHeight > budget, contentHeight };
+	return { rows, overflow: overflow || contentHeight > budget, contentHeight, spare: Math.max(0, budget - contentHeight) };
 }

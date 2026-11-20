@@ -308,20 +308,37 @@ test("cells stand one gutter apart over the canvas, and rows never run past thei
 	assert.equal(geometry.radius, "0px", "no rounded rectangles");
 });
 
-test("a chain whose cells all reach their maximum ends in empty surface, not canvas", async () => {
+test("a chain whose cells all reach their maximum stretches its largest cell to the edge and warns once", async () => {
+	const warnings = [];
+	const collect = (message) => { if (message.type() === "warning" && message.text().startsWith("Supermax:")) warnings.push(message.text()); };
+	page.on("console", collect);
 	await openDemo([open("album:coast", "albums")]);
-	const ends = await page.evaluate(() => [...document.querySelectorAll('.frame[data-frame="b"] .supermax-row .supermax-chain')].map((chain) => {
-		const strip = chain.querySelector(".supermax-strip");
-		const box = chain.getBoundingClientRect();
-		const spare = box.right - strip.getBoundingClientRect().right;
-		const hit = document.elementFromPoint(box.right - 2, box.top + box.height / 2);
-		return { spare, hit: hit === strip, fill: getComputedStyle(strip, "::after").backgroundColor, surface: (() => { const probe = chain.appendChild(document.createElement("i")); probe.style.background = "var(--supermax-surface)"; const color = getComputedStyle(probe).backgroundColor; probe.remove(); return color; })() };
-	}).filter((end) => end.spare > 4));
-	assert.ok(ends.length > 0, "frame B has a row whose cells stop short of its edge");
-	for (const end of ends) {
-		assert.ok(end.hit, "the strip owns the space after its last cell");
-		assert.equal(end.fill, end.surface, "that space shows the surface token");
-	}
+	page.off("console", collect);
+	const rows = await page.evaluate(() => [...document.querySelectorAll('.frame[data-frame="b"] .supermax-row .supermax-chain')].map((chain) => {
+		const cells = [...chain.querySelectorAll(".supermax-cell")].filter((cell) => cell.getBoundingClientRect().width > 0 && getComputedStyle(cell).visibility !== "hidden");
+		return { gap: chain.getBoundingClientRect().right - cells.at(-1).getBoundingClientRect().right, last: cells.at(-1).dataset.occurrence.split("/").pop() };
+	}));
+	assert.deepEqual(rows.map((row) => row.last), ["coast:thumbnails", "coast:map", "coast:people"]);
+	for (const row of rows) assert.ok(Math.abs(row.gap) < 0.5, `${row.last} reaches the edge of its row`);
+	const thumbnails = warnings.filter((warning) => warning.includes('"Thumbnails"'));
+	assert.equal(thumbnails.length, 1, "one warning names the cell drawn past its max");
+	assert.match(thumbnails[0], /past its max of 360px/);
+});
+
+test("a host that shows the canvas keeps cells at their maximum and centres them", async () => {
+	await page.goto("about:blank");
+	await page.goto(`${server.url}/?delay=0&spare=center${PRESENTATION === "origami" ? "" : `&presentation=${PRESENTATION}`}#${encodeLog([open("album:coast", "albums")])}`);
+	await page.waitForFunction(() => window.supermaxDemo?.frames.length === 2);
+	await settle();
+	const row = await page.evaluate(() => {
+		const chain = document.querySelector(`.frame[data-frame="b"] .supermax-row[data-row$="coast:thumbnails"] .supermax-chain`);
+		const cell = [...chain.querySelectorAll(".supermax-cell")].find((candidate) => candidate.getBoundingClientRect().width > 0);
+		const outer = chain.getBoundingClientRect();
+		const inner = cell.getBoundingClientRect();
+		return { width: inner.width, left: inner.left - outer.left, right: outer.right - inner.right };
+	});
+	assert.equal(Math.round(row.width), 360, "the cell stays at its max");
+	assert.ok(row.left > 4 && Math.abs(row.left - row.right) < 1, "with the canvas showing equally on both sides");
 });
 
 test("origami folds a new cell open, folds a closed one back in reverse, and turns a replaced cell over", { skip: PRESENTATION !== "origami" }, async () => {

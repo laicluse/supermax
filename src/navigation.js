@@ -26,9 +26,13 @@ export function validateDestinations(destinations, { minViewportHeight, chrome =
 }
 const GENERIC_CELL = { min: 200, max: 320 };
 
+const SPARE_SPACE = Object.freeze(["stretch", "start", "center", "end"]);
+
 export class Navigator {
-	constructor({ destinations, root, minViewportHeight, chrome = {} }) {
+	constructor({ destinations, root, minViewportHeight, chrome = {}, spareSpace = "stretch" }) {
 		if (!Number.isFinite(minViewportHeight)) throw new TypeError("minViewportHeight must be a finite number of pixels");
+		if (!SPARE_SPACE.includes(spareSpace)) throw new TypeError(`spareSpace must be one of ${SPARE_SPACE.join(", ")}`);
+		this.spareSpace = spareSpace;
 		this.destinations = Object.assign(Object.create(null), destinations);
 		this.rootDestination = root;
 		this.minViewportHeight = minViewportHeight;

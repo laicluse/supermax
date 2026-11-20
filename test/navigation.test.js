@@ -137,6 +137,7 @@ scenario("an impossible split is a configuration error for the developer before 
 	assert.ok(verdict.outer.rows[0].problems.includes("split-row"));
 	assert.throws(() => new Navigator({ destinations: { ...destinations, over: invalidSplits.over }, root: "root", minViewportHeight, chrome }), (error) => error instanceof SupermaxConfigurationError && /over, row 0 \(List\): exceeds-supported-height; needs 301px of 300px/.test(error.message), "the navigator refuses an impossible configuration when it is created and names the split, the row and the numbers");
 	assert.throws(() => new Navigator({ destinations, root: "root" }), TypeError, "a missing minimum height is a configuration error");
+	assert.throws(() => new Navigator({ destinations, root: "root", minViewportHeight, chrome, spareSpace: "middle" }), /spareSpace must be one of stretch, start, center, end/, "an unknown spare-space mode is a configuration error");
 });
 
 scenario("a split cannot open inside a row, and a row cannot be a split", () => {

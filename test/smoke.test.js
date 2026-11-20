@@ -35,8 +35,10 @@ assert.equal(result.rightmostHiddenTitle, "Epics");
 assert.equal(result.cells[2].actual + result.cells[3].actual, 20);
 
 result = new CellCollection(configs.slice(0, 2)).distribute(20);
-assert.deepEqual(result.cells.map((cell) => cell.actual), [4, 6]);
-assert.equal(result.spareColumns, 10);
+assert.deepEqual(result.cells.map((cell) => cell.actual), [4, 16], "with every cell at its max, the largest takes the rest");
+const roomy = [{ id: "list", title: "List", min: 4, max: 10 }, { id: "detail", title: "Detail", min: 4, max: 5 }];
+assert.deepEqual(new CellCollection(roomy).distribute(20).cells.map((cell) => cell.actual), [15, 5], "the largest cell stretches, wherever it stands in the chain");
+assert.deepEqual(new CellCollection(roomy).distribute(20, null, { spare: "center" }).cells.map((cell) => cell.actual), [10, 5], "showing the canvas keeps every cell at its max");
 
 const kept = configs.map((config) => (config.id === "vault" ? { ...config, keep: true } : config));
 result = new CellCollection(kept).distribute(19);

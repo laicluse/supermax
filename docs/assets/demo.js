@@ -415,9 +415,17 @@ class Session {
 			context: document.querySelector("[data-context]"),
 			requests: document.querySelector("[data-requests]"),
 			presentation: document.querySelector("[data-presentation]"),
+			spare: document.querySelector("[data-spare]"),
 		};
 		this.controls.context.addEventListener("change", () => this.setContext(this.controls.context.value));
 		this.controls.presentation.addEventListener("change", () => this.setPresentation(this.controls.presentation.value));
+		const spare = new URLSearchParams(location.search).get("spare");
+		if ([...this.controls.spare.options].some((option) => option.value === spare)) this.controls.spare.value = spare;
+		this.controls.spare.addEventListener("change", () => {
+			const query = new URLSearchParams(location.search);
+			query.set("spare", this.controls.spare.value);
+			location.search = query.toString();
+		});
 		this.frames = frames.map((frame) => this.buildFrame(frame));
 		this.presentations = presentations;
 		const query = new URLSearchParams(location.search);
@@ -572,7 +580,7 @@ class Session {
 		document.querySelector("[data-frames]").append(wrapper);
 		const definitions = localDestinations();
 		definitions.albums.compact = { min: 48, content: renderAlbumIcons };
-		const model = new Navigator({ destinations: definitions, root: "albums", minViewportHeight });
+		const model = new Navigator({ destinations: definitions, root: "albums", minViewportHeight, spareSpace: this.controls.spare.value });
 		const workspace = new Workspace(root, { navigator: model, content: renderContent, overlayRoot: box, onIntent: (action, origin) => this.dispatch(action, origin) });
 		workspace.addEventListener("change", () => this.completeDefaults());
 		workspace.addEventListener("up", () => this.record("push"));

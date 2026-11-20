@@ -24,6 +24,10 @@ function normalizePresentation(presentation) {
 	return Object.freeze({ name: presentation.name, motion, source, createStrip });
 }
 
+// How far spare space pushes the cells in from the start; stretch leaves none.
+const ALIGN = Object.freeze({ stretch: 0, start: 0, center: 0.5, end: 1 });
+const JUSTIFY = Object.freeze({ stretch: "flex-start", start: "flex-start", center: "center", end: "flex-end" });
+
 export class Workspace extends EventTarget {
 	constructor(element, { navigator, content, onIntent = null, presentation = ORIGAMI_PRESENTATION, strings = {}, origin = frustumOrigin, overlayRoot = element.ownerDocument.body, noticePlacement = "source", noticeIcon = defaultNoticeIcon }) {
 		super();
@@ -33,6 +37,7 @@ export class Workspace extends EventTarget {
 		this.noticePlacement = noticePlacement;
 		if (origin !== null && typeof origin !== "function") throw new TypeError("origin must be a function that draws links, or null to draw none");
 		this.strings = resolveStrings(strings);
+		this.pastMaxWarned = new Set();
 		this.origin = origin;
 		this.overlayRoot = overlayRoot;
 		this.element = element;
@@ -405,6 +410,7 @@ export class Workspace extends EventTarget {
 		try {
 			layout = this.navigator.layout();
 			this.layout = layout;
+			this.warnPastMax(layout);
 			this.upDestination = this.navigator.upTarget(layout);
 			const animating = animate && !this.reducedMotion.matches;
 			const rootViewport = this.renderChain(layout.chain, this.body, animating);
@@ -481,6 +487,19 @@ export class Workspace extends EventTarget {
 		this.notices.veil();
 	}
 
+	warnPastMax(layout) {
+		const past = [
+			...[...layout.cells.values()].filter((cell) => cell.visible && !cell.compact && cell.width > cell.max + 0.5).map((cell) => [cell, "wider", cell.width, cell.max]),
+			...[...layout.rows.values()].filter((row) => row.visible && row.height > row.maxHeight + 0.5).map((row) => [row, "taller", row.height, row.maxHeight]),
+		];
+		for (const [item, direction, size, max] of past) {
+			const key = `${direction}:${item.occurrence.split("/").pop()}`;
+			if (this.pastMaxWarned.has(key)) continue;
+			this.pastMaxWarned.add(key);
+			console.warn(`Supermax: "${item.title}" is drawn ${Math.round(size)}px ${direction === "wider" ? "wide" : "tall"}, past its max of ${max}px, because the cells beside it cannot fill the space. Raise a max to keep this configuration within its bounds.`);
+		}
+	}
+
 	renderNavbar() {
 		const next = this.upDestination;
 		this.upButton.hidden = !next;
@@ -517,6 +536,7 @@ export class Workspace extends EventTarget {
 		for (const cell of chain.cells) this.peeks.apply(cell);
 		this.protectFocus(entries.filter((cell) => !cell.visible).map((cell) => cell.element));
 		entry.strip.update(entries, { animate: animating });
+		entry.strip.strip.style.marginLeft = `${chain.spare * ALIGN[this.navigator.spareSpace]}px`;
 		for (const cell of chain.cells) {
 			if (cell.rows) this.renderRows(cell, animating);
 		}
@@ -589,6 +609,7 @@ export class Workspace extends EventTarget {
 
 	renderRows(cell, animating) {
 		const host = this.cells.get(cell.occurrence).body.firstElementChild;
+		host.style.justifyContent = JUSTIFY[this.navigator.spareSpace];
 		for (const row of cell.rows.rows) {
 			let entry = this.rows.get(row.occurrence);
 			if (!entry) {

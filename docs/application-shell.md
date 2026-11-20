@@ -73,7 +73,7 @@ Creation is navigation as well as an action: a collection-level **New** control 
 
 ## Widths express content semantics
 
-`min` is the smallest width at which a cell remains useful. `max` is the widest width at which more space still improves that content. Neither value describes a target viewport or a page-wide container. The allocator combines the bounds; the host must not add a global maximum width around the chain. The allocator itself is unit-free: a host may measure in columns, the workspace measures in pixels.
+`min` is the smallest width at which a cell remains useful. `max` is the widest width at which more space still improves that content. Neither value describes a target viewport or a page-wide container. The allocator combines the bounds; the host must not add a global maximum width around the chain. When every visible cell has reached its `max` and the viewport is still larger, the navigator's `spareSpace` option decides. The default, `"stretch"`, draws the cell with the largest `max` past it, so the workspace stays filled; rows do the same in height. The workspace then warns once per cell in the console, because the configuration cannot fill a viewport of that size within its bounds; raising a `max` resolves it. `"start"`, `"center"` and `"end"` keep every cell at its max and show the canvas beside the chain, or above and below the rows, with the content aligned that way. The allocator itself is unit-free: a host may measure in columns, the workspace measures in pixels.
 
 Use these as starting ranges in pixels, then verify against real content:
 
