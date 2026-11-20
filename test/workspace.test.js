@@ -209,7 +209,7 @@ test("the up control names the nearest hidden parent, closes what falls off the 
 	assert.deepEqual([await backButton("b"), await groups("b")], [before.b, before.bGroups], "the other frame keeps its window and its cells");
 	assert.equal((await backButton("a")).label, "Show Depth 14");
 	assert.equal(await page.locator(inFrame("a", ".supermax-title-text")).textContent(), "Depth 19", "the title names the deepest cell still open");
-	assert.equal(await page.locator(inFrame("a", ".supermax-crumb")).last().textContent(), "Depth 18");
+	assert.equal(await page.locator(inFrame("a", ".supermax-navbar .supermax-title")).evaluate((title) => title.innerText.trim()), "Depth 19", "the title says only what is in view, with no trail of where it came from");
 	const edges = await page.evaluate((id) => {
 		const frame = document.querySelector('.frame[data-frame="a"]');
 		return { menu: frame.querySelector('[data-occurrence="albums"]').getBoundingClientRect().right, revealed: frame.querySelector(`[data-occurrence="${id}"]`).getBoundingClientRect().left };
@@ -1118,6 +1118,24 @@ test("zooming a cell hides the cells before it, keeps what follows, and Show zoo
 	assert.deepEqual(await shown(), before, "bringing everything back, with nothing closed");
 });
 
+test("in zoom the Show control names only what zooming out brings back, because zooming out is the inverse of zooming in", async () => {
+	await openDemo([open("album:coast", "albums"), open("coast:photo:c", coast.row("thumbnails"))]);
+	await resize([[1400, 640], [420, 640]]);
+	const photo = coast.photo("thumbnails", "c");
+	const visibleTitles = () => page.evaluate(() => [...document.querySelectorAll('.frame[data-frame="b"] .supermax-cell')].filter((cell) => getComputedStyle(cell).visibility === "visible" && cell.getBoundingClientRect().width > 0).map((cell) => cell.getAttribute("aria-label")));
+	const before = await visibleTitles();
+	await page.evaluate((photo) => window.supermaxDemo.frames[1].workspace.zoom(photo), photo);
+	await settle();
+	await page.evaluate(() => document.getAnimations().forEach((animation) => animation.finish()));
+	const control = await page.locator(inFrame("b", ".supermax-up")).evaluate((button) => ({ hidden: button.hidden, name: button.querySelector(".supermax-up-target")?.textContent ?? "" }));
+	await page.evaluate(() => window.supermaxDemo.frames[1].workspace.zoom(null));
+	await settle();
+	await page.evaluate(() => document.getAnimations().forEach((animation) => animation.finish()));
+	const after = await visibleTitles();
+	assert.deepEqual(after, before, "zooming out restores exactly what was in view before zooming in");
+	if (!control.hidden) assert.ok(after.includes(control.name), `the name in the Show control, ${control.name}, is a cell that zooming out brought back into view: ${after}`);
+});
+
 test("a replaced cell folds away towards where its own navigation came from, compared with where the new one came from", { skip: PRESENTATION !== "origami" }, async () => {
 	await openDemo([open("album:coast", "albums")]);
 	const folds = await page.evaluate(async () => {
@@ -1929,8 +1947,6 @@ test("a layout that fails leaves the workspace as it was, with Retry at its sour
 	const cell = inFrame("a", `[data-occurrence="${coast.metadata("people", "b")}"]`);
 	assert.equal(await page.locator(`${cell} .viewer-line`).textContent(), "Viewing as Ana", "Retry asks for the layout again and opens the destination");
 	assert.deepEqual(await groups("a"), ["Coast", "Photo B"]);
-	await page.click(inFrame("a", ".supermax-crumb:has-text('Coast')"));
-	await settle();
 });
 
 test("the demo's Speed control slows every time Supermax and the demo keep, and keeps that in the URL", async () => {

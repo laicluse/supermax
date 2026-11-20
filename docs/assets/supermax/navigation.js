@@ -461,17 +461,21 @@ export class Navigator {
 	locationInfo(layout = this.layout()) {
 		const roots = [...this.groups].reverse().map((group) => this.get(group.root)).filter(Boolean);
 		const occurrence = roots.find((root) => layout.cells.get(root.id)?.inView) ?? roots[0] ?? this.root;
-		const trail = [];
-		let current = occurrence.parent ? this.get(occurrence.parent) : null;
-		while (current) {
-			trail.unshift({ occurrence: current.id, title: current.title });
-			current = current.parent ? this.get(current.parent) : null;
-		}
-		return { occurrence: occurrence.id, title: occurrence.title, trail };
+		return { occurrence: occurrence.id, title: occurrence.title };
 	}
 
 	layout() {
 		return layoutWorkspace(this);
+	}
+
+	unzoomedLayout() {
+		const zoomed = this.zoomed;
+		this.zoomed = null;
+		try {
+			return layoutWorkspace(this);
+		} finally {
+			this.zoomed = zoomed;
+		}
 	}
 
 	snapshot() {

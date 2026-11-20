@@ -223,7 +223,7 @@ Two rules cover the cases the three-row example leaves open:
 - **Replacing content on the same slot.** Opening Photo B where Photo A was open closes Photo A and everything under it; its group disappears. Closing Photo B's group returns to the selector. Supermax does not restore the replaced content; that would be an undo system.
 - **An explicit click on content that is already open automatically.** The occurrence and the defaults under it move into a new group with that occurrence as root, so closing the newest group closes exactly what the user just chose. The defaults that moved along stay automatic, so a later click on one of them promotes it in turn. Without this rule, closing after clicking visible metadata would close the whole album, which contradicts what the user did last. Clicking content that was already opened manually changes nothing.
 
-Hiding, resizing and moving the window never create or rewrite groups. The title names where the application is: the root of the newest group that is in view, with its ancestors as links. A click in a cell or a resize leaves it where it is; after the Show control closed Depth 20 to show Depth 15, the title reads Depth 19, the deepest cell still open, and never names a cell that has gone.
+Hiding, resizing and moving the window never create or rewrite groups. The title says what is in view: the root of the newest group that is in view. It names no trail of where that came from; the Show control and Back give the way back. A click in a cell or a resize leaves it where it is; after the Show control closed Depth 20 to show Depth 15, the title reads Depth 19, the deepest cell still open, and never names a cell that has gone.
 
 ### Deep links and browser history
 

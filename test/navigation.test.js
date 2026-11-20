@@ -382,13 +382,13 @@ scenario("default chains are finite and do not repeat a destination already in t
 	assert.deepEqual(chain.slice(-2), ["Loop A", "Loop B"], "the chain stops where a destination would repeat");
 });
 
-scenario("the title names where the newest navigation went, with its ancestors as context", () => {
+scenario("the title names where the newest navigation went", () => {
 	const wide = model(1000);
-	assert.deepEqual(wide.locationInfo(), { occurrence: "root", title: "Root", trail: [] });
+	assert.deepEqual(wide.locationInfo(), { occurrence: "root", title: "Root" });
 	openGallery(wide);
-	assert.deepEqual(wide.locationInfo(), { occurrence: GALLERY, title: "Gallery", trail: [{ occurrence: "root", title: "Root" }] }, "defaults that opened along do not move the title");
+	assert.deepEqual(wide.locationInfo(), { occurrence: GALLERY, title: "Gallery" }, "defaults that opened along do not move the title");
 	wide.open("item:c", { from: row("tags") });
-	assert.deepEqual(wide.locationInfo().trail.map((step) => step.title), ["Root", "Gallery", "Tags"]);
+	assert.equal(wide.locationInfo().title, "Item C", "the title names what the newest navigation opened");
 	assert.deepEqual(wide.child(wide.get(row("tags")))?.destination, "item:c");
 	wide.closeNewestGroup();
 	assert.equal(wide.locationInfo().title, "Gallery", "closing the newest group returns the title to the one before");

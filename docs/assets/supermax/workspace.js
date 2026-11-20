@@ -96,8 +96,7 @@ export class Workspace extends EventTarget {
 		this.navbarLeft.append(this.upButton);
 		this.titleBox = this.create("div", "supermax-title");
 		this.titleText = this.create("strong", "supermax-title-text");
-		this.titleContext = this.create("span", "supermax-title-context");
-		this.titleBox.append(this.titleContext, this.titleText);
+		this.titleBox.append(this.titleText);
 		this.navbar.append(this.navbarLeft, this.titleBox);
 		this.body = this.create("div", "supermax-body");
 		this.element.replaceChildren(this.navbar, this.body);
@@ -183,10 +182,12 @@ export class Workspace extends EventTarget {
 		return true;
 	}
 
+	// allow-comment: zooming out is the inverse of zooming in, so the Show control only names the hidden parent that zooming out brings back.
 	zoomedFrom(layout) {
 		let current = this.navigator.get(this.navigator.get(this.navigator.zoomed)?.parent);
 		while (current && layout.cells.get(current.id)?.visible) current = this.navigator.get(current.parent);
-		return current ? { id: current.id, title: current.title } : null;
+		if (!current || !this.navigator.unzoomedLayout().cells.get(current.id)?.visible) return null;
+		return { id: current.id, title: current.title };
 	}
 
 	requestUp() {
@@ -532,14 +533,6 @@ export class Workspace extends EventTarget {
 		else this.upButton.removeAttribute("aria-label");
 		const info = this.navigator.locationInfo(this.layout ?? undefined);
 		this.titleText.textContent = info.title;
-		this.titleContext.replaceChildren(...info.trail.flatMap((step, index) => {
-			const crumb = this.create("button", "supermax-crumb", step.title);
-			crumb.type = "button";
-			crumb.setAttribute("aria-label", this.strings.crumb(step.title));
-			crumb.addEventListener("click", () => this.goTo(step.occurrence));
-			return index === 0 ? [crumb] : [this.create("span", "supermax-crumb-separator", "›"), crumb];
-		}));
-		this.titleContext.hidden = info.trail.length === 0;
 	}
 
 	renderChain(chain, host, animating, { inRow = false } = {}) {

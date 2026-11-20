@@ -38,7 +38,7 @@ The workspace warns once per kind in the console when a host leaves out an `orig
   - `update`: refresh after every render;
   - `leave()`: stop writing shared state the moment a cell starts to close, because it stays mounted while it folds away;
   - `dispose()`: clean up once it is gone.
-- **`setTitle(occurrence, title)`**: a title that changes after the cell opened, such as a count.
+- **Titles**: a cell's title, and with it the bar's title, names the content the cell shows, such as the vault's name, a conversation's subject or "3 open todos", never its role in the structure, such as "Viewer", "Detail" or "List". The host supplies it; declare it with the content's name, and use `setTitle(occurrence, title)` when that name or a count is known or changes after the cell opened.
 - **The `show` event**: cancelable before Show closes cells; prevent it to keep an unsaved form open. The `up` event names the closed cells in `detail.closed`, with destinations, so the host can record the step in its history.
 - **`zoom(occurrence)`**: a cell that should take the width of the cells before it, for a destination declared `zoomable: true`. Draw the toggle in the content's `header`.
 - **`openModal`**: the modal in "Control, modal or cell" below, opened with `from` set to the cell it is about.

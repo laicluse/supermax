@@ -89,14 +89,7 @@
 	padding: 0 8px;
 }
 .supermax-title-text { font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
-.supermax-title-context { font-size: 11px; color: var(--supermax-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
-.supermax-crumb { padding: 0; border: 0; background: none; color: inherit; font: inherit; cursor: pointer; }
-.supermax-crumb:hover { color: var(--supermax-accent); }
-.supermax-crumb-separator { margin: 0 4px; }
 
-@container (max-width: 560px) {
-	.supermax-title-context { display: none; }
-}
 
 .supermax-body { flex: 1; min-height: 0; overflow: hidden; }
 .supermax-body.is-overflow { overflow-y: auto; }
