@@ -31,3 +31,10 @@ assert.equal(result.cells[2].actual + result.cells[3].actual, 20);
 result = new CellCollection(configs.slice(0, 2)).distribute(20);
 assert.deepEqual(result.cells.map((cell) => cell.actual), [4, 6]);
 assert.equal(result.spareColumns, 10);
+
+result = new CellCollection(configs).distribute(14, null, { pinnedId: "epics" });
+assert.deepEqual(result.cells.map((cell) => cell.visible), [false, true, false, true]);
+assert.equal(result.hiddenCount, 2);
+
+result = new CellCollection(configs).distribute(3, null, { pinnedId: "epics" });
+assert.deepEqual(result.cells.map((cell) => cell.actual), [0, 3, 0, 0]);
