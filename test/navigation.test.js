@@ -450,3 +450,16 @@ scenario("sync brings the open chain to a list of destinations in one transactio
 	assert.equal(JSON.stringify(chain.snapshot()), before, "leaving the model as it was");
 	assert.equal(chain.sync(["inbox", "list"]).noop, true, "a list that is already open changes nothing");
 });
+
+scenario("a title can change after a cell opened, in its occurrence, its group and where the application is, without a new declaration", () => {
+	const instance = model();
+	openGallery(instance);
+	const result = instance.open("item:c", { from: row("tags") });
+	assert.equal(instance.setTitle(result.occurrence.id, "Item C, renamed"), true);
+	assert.equal(instance.get(result.occurrence.id).title, "Item C, renamed");
+	assert.equal(instance.locationInfo().title, "Item C, renamed", "the title follows the occurrence");
+	assert.deepEqual(titles(instance), ["Gallery", "Item C, renamed"], "and so does its Back group");
+	assert.equal(instance.definitionOf("item:c").title, "Item C", "while the declaration keeps its own title");
+	assert.equal(JSON.parse(JSON.stringify(instance.snapshot())).occurrences.find((occurrence) => occurrence.id === result.occurrence.id).title, "Item C, renamed", "and a snapshot keeps the new one");
+	assert.equal(instance.setTitle("nowhere", "x"), false);
+});

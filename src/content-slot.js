@@ -1,8 +1,9 @@
 export class ContentSlot {
-	constructor(workspace, { element, body, id = null, onSettled = null }) {
+	constructor(workspace, { element, body, header = null, id = null, onSettled = null }) {
 		this.workspace = workspace;
 		this.element = element;
 		this.body = body;
+		this.header = header;
 		this.id = id;
 		this.onSettled = onSettled;
 		this.handle = {};
@@ -12,8 +13,13 @@ export class ContentSlot {
 
 	dispose() {
 		this.generation += 1;
+		this.handle.header?.remove();
 		this.handle.dispose?.();
 		this.handle = {};
+	}
+
+	leave() {
+		this.handle.leave?.();
 	}
 
 	mount(title, produce, isCurrent) {
@@ -45,6 +51,7 @@ export class ContentSlot {
 		this.handle = handle;
 		this.element.classList.remove("is-loading", "is-error");
 		this.body.replaceChildren(...(handle.element ? [handle.element] : []));
+		if (handle.header && this.header) this.header.append(handle.header);
 		handle.update?.(this.id ? this.workspace.navigator.get(this.id) : null, this.workspace);
 		this.onSettled?.();
 		this.workspace.dispatchEvent(new CustomEvent("content", { detail: { occurrence: this.id, state: "loaded" } }));

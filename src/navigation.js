@@ -221,7 +221,7 @@ export class Navigator {
 		this.rowStarts.delete(occurrence.id);
 		this.sizes.width.delete(occurrence.id);
 		this.sizes.height.delete(occurrence.id);
-		closed.unshift({ id: occurrence.id, title: occurrence.title });
+		closed.unshift({ id: occurrence.id, destination: occurrence.destination, title: occurrence.title });
 		return closed;
 	}
 
@@ -233,6 +233,14 @@ export class Navigator {
 	newestGroup() {
 		const group = this.groups[this.groups.length - 1];
 		return group ? { id: group.id, title: group.title } : null;
+	}
+
+	setTitle(occurrenceId, title) {
+		const occurrence = this.get(occurrenceId);
+		if (!occurrence) return false;
+		occurrence.title = title;
+		for (const group of this.groups) if (group.root === occurrenceId) group.title = title;
+		return true;
 	}
 
 	sync(destinationIds) {

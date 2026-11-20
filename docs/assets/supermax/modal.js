@@ -36,7 +36,8 @@ export class ModalHost {
 		close.type = "button";
 		close.setAttribute("aria-label", workspace.strings.closeModal(definition.title));
 		close.addEventListener("click", () => this.close("close"));
-		header.append(titles, close);
+		const controls = workspace.create("div", "supermax-modal-controls");
+		header.append(titles, controls, close);
 		const body = workspace.create("div", "supermax-modal-body");
 		dialog.append(header, body);
 		dialog.supermaxBounds = { ...MODAL_BOUNDS, ...Object.fromEntries(Object.keys(MODAL_BOUNDS).filter((key) => definition[key] !== undefined).map((key) => [key, definition[key]])) };
@@ -49,7 +50,7 @@ export class ModalHost {
 		element.append(...(originLayer ? [originLayer] : []), dialog);
 		element.addEventListener("pointerdown", (event) => { if (event.target === element) this.close("backdrop"); });
 		const modal = { element, dialog, body, context, title: definition.title, source: source?.id ?? null, originLayer, slot: null, retry: null };
-		modal.slot = new ContentSlot(workspace, { element, body, onSettled: () => this.settled(modal) });
+		modal.slot = new ContentSlot(workspace, { element, body, header: controls, onSettled: () => this.settled(modal) });
 		modal.retry = () => modal.slot.mount(definition.title, () => definition.content(modal, workspace), () => this.current === modal);
 		this.current = modal;
 		workspace.body.inert = true;

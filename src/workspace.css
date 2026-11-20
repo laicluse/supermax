@@ -137,6 +137,9 @@
 	color: var(--supermax-muted);
 	flex: none;
 }
+.supermax-cell-title-text { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.supermax-cell-title > :not(.supermax-cell-title-text) { flex: none; }
+.supermax-modal-controls { display: flex; align-items: center; gap: 8px; margin-left: auto; }
 .supermax-cell-body { flex: 1; min-height: 0; overflow: auto; }
 .supermax-loading, .supermax-error { padding: 12px; font-size: 13px; color: var(--supermax-muted); display: flex; flex-direction: column; gap: 8px; }
 .supermax-loading { flex-direction: row; align-items: center; }

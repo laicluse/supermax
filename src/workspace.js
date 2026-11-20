@@ -114,8 +114,16 @@ export class Workspace extends EventTarget {
 		this.closePeek();
 		const target = this.navigator.upTarget(this.layout ?? undefined);
 		if (!target) return { ok: false, reason: "nothing-hidden" };
-		if (this.modal) this.closeModal("navigation");
+		const before = this.navigator.snapshot();
 		const closed = this.navigator.showByClosing(target.id);
+		const after = this.navigator.snapshot();
+		this.navigator.restore(before);
+		const shown = this.navigator.get(target.id);
+		const closing = closed.map(({ id, destination, title }) => ({ occurrence: id, destination, title }));
+		const question = new CustomEvent("show", { cancelable: true, detail: { shown: { occurrence: shown.id, destination: shown.destination, title: shown.title }, closing } });
+		if (!this.dispatchEvent(question)) return { ok: false, reason: "cancelled" };
+		this.navigator.restore(after);
+		if (this.modal) this.closeModal("navigation");
 		this.render({ animate: true });
 		this.dispatchEvent(new CustomEvent("up", { detail: { shown: target.id, closed } }));
 		return { ok: true, destination: target.id, closed };
@@ -229,6 +237,23 @@ export class Workspace extends EventTarget {
 		if (!result.ok) this.dispatchEvent(new CustomEvent("rejected", { detail: { action, result } }));
 		this.dispatchEvent(new CustomEvent("change", { detail: { action, result } }));
 		return result;
+	}
+
+	setTitle(occurrenceId, title) {
+		if (!this.navigator.setTitle(occurrenceId, title)) return false;
+		const entry = this.cells.get(occurrenceId);
+		if (entry) {
+			entry.element.setAttribute("aria-label", title);
+			if (entry.titleNode) entry.titleNode.textContent = title;
+			if (entry.rail) {
+				entry.rail.textContent = title;
+				entry.rail.setAttribute("aria-label", this.strings.peek(title));
+			}
+		}
+		this.renderNavbar();
+		this.modalHost.render();
+		this.notices.render();
+		return true;
 	}
 
 	sync(destinationIds, { animate = true } = {}) {
@@ -471,7 +496,7 @@ export class Workspace extends EventTarget {
 			element.append(header);
 		}
 		element.append(body);
-		entry = { element, body, header, titleNode, slot: new ContentSlot(this, { element, body, id: occurrenceId }), parent: occurrence.parent, rail: null };
+		entry = { element, body, header, titleNode, slot: new ContentSlot(this, { element, body, header, id: occurrenceId }), parent: occurrence.parent, rail: null };
 		if (!isSplit(definition) && definition.keep && definition.compact) this.peeks.mount(entry, occurrence, definition);
 		this.cells.set(occurrenceId, entry);
 		if (!isSplit(definition)) this.mountContent(entry, occurrence);
@@ -584,6 +609,7 @@ export class Workspace extends EventTarget {
 			if (this.peek?.occurrence === occurrenceId) this.closePeek();
 			this.cells.delete(occurrenceId);
 			this.leavingCells.set(occurrenceId, entry);
+			entry.slot.leave();
 			if (entry.element.classList.contains("is-split")) this.dividers.dispose(entry.body.firstElementChild);
 			this.afterExit(entry.element, () => {
 				if (this.leavingCells.get(occurrenceId) !== entry) return;

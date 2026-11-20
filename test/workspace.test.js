@@ -880,6 +880,113 @@ test("sync brings a workspace to a list of destinations in one render, or leaves
 	await settle();
 });
 
+test("content hears when its cell starts to leave, and again when it comes back before it is gone", { skip: PRESENTATION !== "origami" }, async () => {
+	await openDemo([open("album:coast", "albums"), open("coast:photo:c", coast.row("thumbnails"))]);
+	await closeNewest("a");
+	await page.evaluate(() => document.getAnimations().forEach((animation) => animation.finish()));
+	await settle();
+	await page.evaluate((photo) => {
+		const workspace = window.supermaxDemo.frames[0].workspace;
+		const original = workspace.content;
+		window.lifecycle = [];
+		workspace.content = (occurrence, definition, host) => {
+			const handle = original(occurrence, definition, host);
+			if (occurrence.id !== photo) return handle;
+			const wrap = (inner) => ({ ...inner, update: (current, ws) => { window.lifecycle.push(`update:${current?.id === photo}`); inner.update?.(current, ws); }, leave: () => { window.lifecycle.push("leave"); inner.leave?.(); }, dispose: () => { window.lifecycle.push("dispose"); inner.dispose?.(); } });
+			return typeof handle?.then === "function" ? handle.then(wrap) : wrap(handle);
+		};
+	}, coast.photo("thumbnails", "c"));
+	await page.evaluate(() => window.supermaxDemo.prepare("coast:photo:c"));
+	const thumb = inFrame("a", `[data-occurrence="${coast.row("thumbnails")}"] .thumb[data-destination="coast:photo:c"]`);
+	await page.evaluate((selector) => document.querySelector(selector).click(), thumb);
+	await settle();
+	await page.evaluate(() => { window.lifecycle.length = 0; document.getAnimations().forEach((animation) => animation.finish()); });
+	await closeNewest("a");
+	const leaving = await page.evaluate(() => [...window.lifecycle]);
+	await page.evaluate((selector) => document.querySelector(selector).click(), thumb);
+	const back = await page.evaluate(() => [...window.lifecycle]);
+	await closeNewest("a");
+	await page.evaluate(() => document.getAnimations().forEach((animation) => animation.finish()));
+	await page.waitForFunction(() => window.lifecycle.includes("dispose"));
+	const gone = await page.evaluate(() => [...window.lifecycle]);
+	assert.deepEqual(leaving, ["leave"], "closing tells the content at once, while its cell still folds away");
+	assert.ok(back[0] === "leave" && back.slice(1).includes("update:true") && !back.includes("dispose"), `coming back before it is gone hands the same content its occurrence again: ${JSON.stringify(back)}`);
+	assert.deepEqual(gone.slice(gone.lastIndexOf("leave")), ["leave", "dispose"], "and once it has folded away it is disposed");
+});
+
+test("content can place its own controls in the cell header, which keeps them visible and cuts the title short", async () => {
+	await openDemo([open("album:coast", "albums")]);
+	const photo = coast.photo("thumbnails", "a");
+	const result = await page.evaluate(async (photo) => {
+		const workspace = window.supermaxDemo.frames[0].workspace;
+		const original = workspace.content;
+		workspace.content = (occurrence, definition, host) => {
+			const handle = original(occurrence, definition, host);
+			if (occurrence.id !== photo) return handle;
+			const button = Object.assign(document.createElement("button"), { className: "host-search", textContent: "Search" });
+			return typeof handle?.then === "function" ? handle.then((inner) => ({ ...inner, header: button })) : { ...handle, header: button };
+		};
+		workspace.reload((occurrence) => occurrence.id === photo);
+		const cell = document.querySelector(`.frame[data-frame="a"] [data-occurrence="${photo}"]`);
+		await new Promise((resolve) => setTimeout(resolve, 50));
+		const header = cell.querySelector(":scope > .supermax-cell-title");
+		const title = header.querySelector(".supermax-cell-title-text");
+		title.textContent = "A very long photo title that cannot possibly fit in the header of this cell";
+		const button = header.querySelector(".host-search");
+		const placed = !!button && button.getBoundingClientRect().right <= header.getBoundingClientRect().right + 0.5;
+		const cut = getComputedStyle(title).textOverflow;
+		const modal = workspace.openModal({ title: "Zoom", content: () => ({ element: document.createElement("p"), header: Object.assign(document.createElement("button"), { className: "host-zoom", textContent: "Zoom" }) }) }, {});
+		await new Promise((resolve) => setTimeout(resolve, 50));
+		const inModal = !!document.querySelector('.frame[data-frame="a"] .supermax-modal-header .host-zoom');
+		workspace.closeModal("close");
+		return { placed, cut, inModal };
+	}, photo);
+	assert.deepEqual(result, { placed: true, cut: "ellipsis", inModal: true });
+	await closeNewest("a");
+	await page.evaluate(() => document.getAnimations().forEach((animation) => animation.finish()));
+	await settle();
+	assert.equal(await page.locator(inFrame("a", ".host-search")).count(), 0, "and the controls leave with their content");
+});
+
+test("a cell's title can change after it opened, in its header, its name, the rail and the navbar", async () => {
+	await openDemo([open("album:coast", "albums")]);
+	const renamed = await page.evaluate(() => {
+		const workspace = window.supermaxDemo.frames[0].workspace;
+		const album = workspace.navigator.child(workspace.navigator.root);
+		const ok = workspace.setTitle(album.id, "Coast, renamed");
+		const cell = document.querySelector(`.frame[data-frame="a"] [data-occurrence="${album.id}"]`);
+		const rail = workspace.setTitle("albums", "All albums") && document.querySelector('.frame[data-frame="a"] [data-occurrence="albums"] .supermax-cell-title-text').textContent;
+		return { ok, label: cell.getAttribute("aria-label"), navbar: document.querySelector('.frame[data-frame="a"] .supermax-title-text').textContent, rail, unknown: workspace.setTitle("nowhere", "x") };
+	});
+	assert.deepEqual(renamed, { ok: true, label: "Coast, renamed", navbar: "Coast, renamed", rail: "All albums", unknown: false });
+});
+
+test("Show asks first, so a host can keep it from closing a cell, and names the destinations it closed", async () => {
+	await openDemo(TWENTY_DEEP);
+	const asked = await page.evaluate(() => {
+		const workspace = window.supermaxDemo.frames[0].workspace;
+		const before = workspace.navigator.state().groups.length;
+		const seen = [];
+		const refuse = (event) => { seen.push(event.detail); event.preventDefault(); };
+		workspace.addEventListener("show", refuse);
+		workspace.addEventListener("up", () => seen.push("up"));
+		const result = workspace.requestUp();
+		workspace.removeEventListener("show", refuse);
+		return { result, after: workspace.navigator.state().groups.length, before, seen };
+	});
+	assert.deepEqual(asked.result, { ok: false, reason: "cancelled" }, "a host that refuses keeps Show from happening");
+	assert.equal(asked.after, asked.before, "and nothing closes");
+	assert.equal(asked.seen.length, 1, "nor does an up follow");
+	assert.deepEqual(asked.seen[0].shown, { occurrence: TWENTY_DEEP[14].from + "/depth:15", destination: "depth:15", title: "Depth 15" }, "the question names what would be shown");
+	assert.deepEqual(asked.seen[0].closing.map((entry) => entry.destination), ["depth:20"], "and what would close, by destination");
+	const done = await page.evaluate(() => new Promise((resolve) => {
+		const workspace = window.supermaxDemo.frames[0].workspace;
+		workspace.addEventListener("up", (event) => resolve(event.detail.closed.map((entry) => entry.destination)), { once: true });
+		workspace.requestUp();
+	}));
+	assert.deepEqual(done, ["depth:20"], "without a refusal it closes them and names them the same way");
+});
+
 test("clicks faster than a stroke tear the earlier cells off from where they are, and nothing jumps", { skip: PRESENTATION !== "origami" }, async () => {
 	await openDemo([open("album:coast", "albums")]);
 	await page.evaluate(() => Promise.all(["b", "c", "d"].map((id) => window.supermaxDemo.prepare(`coast:photo:${id}`))));
