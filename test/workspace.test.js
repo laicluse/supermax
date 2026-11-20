@@ -408,7 +408,7 @@ test("each frustum face fades from its modal edge towards the source, in bands p
 			const gradient = id ? layer.querySelector(`#${CSS.escape(id)}`) : null;
 			const at = (name) => Number(gradient?.getAttribute(name));
 			const stops = gradient ? [...gradient.querySelectorAll("stop")].map((stop) => ({ offset: Number(stop.getAttribute("offset")), opacity: Number(getComputedStyle(stop).stopOpacity), color: getComputedStyle(stop).stopColor })) : [];
-			return { side: face.dataset.side, modalEdge: points[0], sourceEdge: points[2], units: gradient?.getAttribute("gradientUnits"), x1: at("x1"), y1: at("y1"), x2: at("x2"), y2: at("y2"), stops, color: getComputedStyle(face).color };
+			return { side: face.dataset.side, modalEdge: points[0], sourceEdge: points[2], units: gradient?.getAttribute("gradientUnits"), x1: at("x1"), y1: at("y1"), x2: at("x2"), y2: at("y2"), stops };
 		});
 	});
 	assert.ok(faces.length > 0, "the modal has faces");
@@ -420,8 +420,8 @@ test("each frustum face fades from its modal edge towards the source, in bands p
 		const alpha = (color) => Number(color.match(/[\d.]+/g)[3] ?? 1);
 		const rgb = (color) => color.match(/[\d.]+/g).slice(0, 3).join();
 		const [near, far] = face.stops;
-		assert.ok(near?.offset === 0 && far?.offset === 1 && rgb(near.color) === rgb(face.color) && rgb(far.color) === rgb(face.color), `in the face's own colour: ${JSON.stringify(face)}`);
-		const own = alpha(face.color);
+		assert.ok(near?.offset === 0 && far?.offset === 1 && rgb(near.color) === "0,0,0" && rgb(far.color) === "0,0,0", `the default callback paints with a dark veil in light mode: ${JSON.stringify(face)}`);
+		const own = { top: 0.04, right: 0.1, bottom: 0.13, left: 0.08 }[face.side];
 		assert.ok(Math.abs(alpha(near.color) - own - 0.05) < 0.005 && Math.abs(alpha(far.color) - Math.max(0, own - 0.05)) < 0.005, `five points more opaque at the modal edge and five less at the source, ten in all: ${JSON.stringify(face)}`);
 	}
 });
@@ -434,7 +434,7 @@ test("in dark mode the frustum is lighter than what lies behind it, still lit fr
 		await page.click(inFrame("a", `[data-occurrence="${coast.photo("map", "b")}"] .caption-edit`));
 		await settle();
 		await page.waitForFunction(() => document.querySelector('.frame[data-frame="a"] .supermax-origin.is-modal .supermax-frustum-face'));
-		const fills = await page.evaluate(() => Object.fromEntries([...document.querySelectorAll('.frame[data-frame="a"] .supermax-origin.is-modal .supermax-frustum-face')].map((face) => [face.dataset.side, getComputedStyle(face).color])));
+		const fills = await page.evaluate(() => Object.fromEntries([...document.querySelectorAll('.frame[data-frame="a"] .supermax-origin.is-modal .supermax-frustum-face')].map((face) => [face.dataset.side, getComputedStyle(face.gradient.querySelector("stop")).stopColor])));
 		const white = (fill) => { const [r, g, b, a] = fill.match(/[\d.]+/g).map(Number); return r === 255 && g === 255 && b === 255 ? a : -1; };
 		assert.ok(Object.values(fills).length > 0 && Object.values(fills).every((fill) => white(fill) > 0), `every face is a light veil: ${JSON.stringify(fills)}`);
 		if (fills.top && fills.bottom) assert.ok(white(fills.top) > white(fills.bottom), "the top face catches the most light");
@@ -451,6 +451,11 @@ test("a modal whose content arrives late already stands at the height that conte
 	await page.click(inFrame("a", `[data-occurrence="${coast.photo("map", "b")}"] .caption-edit`));
 	const height = () => page.evaluate(() => window.supermaxDemo.frames[0].workspace.modal.dialog.offsetHeight);
 	assert.ok(await page.locator(inFrame("a", ".supermax-modal .supermax-loading")).count() > 0, "the content is still loading");
+	const mark = await page.locator(inFrame("a", ".supermax-modal .supermax-loading-mark")).evaluate((element) => {
+		const style = getComputedStyle(element);
+		return { stroke: style.borderTopWidth, ring: style.borderTopColor, gap: style.borderRightColor, canvas: getComputedStyle(element.closest(".frame").querySelector(".supermax-workspace")).backgroundColor };
+	});
+	assert.deepEqual(mark, { stroke: "1px", ring: mark.canvas, gap: "rgba(0, 0, 0, 0)", canvas: mark.canvas }, "the loading mark is a one-pixel open ring in canvas colour");
 	const loading = await height();
 	await settle();
 	assert.equal(await height(), loading, "the modal keeps its height when the editor arrives");
@@ -1586,7 +1591,7 @@ test("a dragged divider follows the pointer while every cell in its chain gives 
 	await page.mouse.move(held.x + held.width / 2 + 30, held.y + held.height / 2, { steps: 4 });
 	await page.mouse.move(held.x + held.width / 2 + 30, held.y + held.height / 2 + 300, { steps: 2 });
 	await page.waitForTimeout(400);
-	assert.notEqual(await hairline(), "rgba(0, 0, 0, 0)", "the divider stays lit while it is dragged, also beyond its hit area");
+	assert.equal(await hairline(), "rgba(0, 0, 0, 0)", "the divider stays visually quiet while it is dragged, also beyond its hit area");
 	await page.mouse.move(held.x + held.width / 2, held.y + held.height / 2, { steps: 4 });
 	await page.mouse.up();
 	assert.deepEqual(await widths(), [thumbnailsBefore - 20, photoBefore + 20, metadataBefore], "dragging back to where the drag started puts every cell back");
@@ -1728,7 +1733,9 @@ test("a modal knows its source, makes the cells behind it inert and closes befor
 	assert.equal(await page.locator(`${modal} .supermax-modal-title`).textContent(), "Caption for Photo A");
 	assert.equal(await page.locator(modal).getAttribute("aria-description"), "From Photo A", "the modal names its source to assistive technology");
 	assert.equal(await page.locator(`${modal} .supermax-modal-context`).count(), 0, "while the frustum shows it, without a label under the title");
-	assert.equal(await page.locator(`${modal} .supermax-loading`).textContent(), "Loading Caption for Photo A", "delayed modal content uses the loading state");
+	const loading = page.locator(`${modal} .supermax-loading`);
+	assert.equal(await loading.textContent(), "", "the spinner has no visible loading text");
+	assert.equal(await loading.getAttribute("aria-label"), "Loading Caption for Photo A", "the loading state still names its task to assistive technology");
 	await settle();
 	assert.equal(await page.locator(`${modal} .viewer-line`).textContent(), "Editing as Ana");
 	assert.equal(await page.locator(inFrame("a", ".supermax-body")).getAttribute("inert"), "", "the cells behind the modal are inert");

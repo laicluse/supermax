@@ -3,6 +3,19 @@ import { TIMING } from "./motion.js";
 const SVG = "http://www.w3.org/2000/svg";
 const starts = new WeakMap();
 let gradients = 0;
+const FACE_OPACITY = {
+	top: [0.04, 0.13],
+	right: [0.1, 0.08],
+	bottom: [0.13, 0.04],
+	left: [0.08, 0.1],
+};
+const FADE = 0.1;
+
+function faceColor(side, offset) {
+	const [light, dark] = FACE_OPACITY[side];
+	const opacity = (value) => Math.max(0, value + (offset === 0 ? FADE / 2 : -FADE / 2));
+	return `light-dark(rgb(0 0 0 / ${opacity(light)}), rgb(255 255 255 / ${opacity(dark)}))`;
+}
 
 const corners = (rect) => ({
 	topLeft: [rect.left, rect.top],
@@ -63,6 +76,7 @@ export function frustumOrigin({ kind, layer, links, entering = null, time = null
 			const face = document.createElementNS(SVG, "polygon");
 			face.setAttribute("class", `supermax-frustum-face is-${side}`);
 			face.dataset.side = side;
+			face.setAttribute("stroke", "none");
 			// allow-comment: the face fades from the modal's edge towards its source, so its bands of equal opacity run parallel to that edge.
 			face.gradient = document.createElementNS(SVG, "linearGradient");
 			face.gradient.id = `supermax-frustum-fade-${(gradients += 1)}`;
@@ -72,6 +86,7 @@ export function frustumOrigin({ kind, layer, links, entering = null, time = null
 				const stop = document.createElementNS(SVG, "stop");
 				stop.setAttribute("offset", offset);
 				stop.setAttribute("class", offset === "0" ? "supermax-frustum-near" : "supermax-frustum-far");
+				stop.style.setProperty("stop-color", faceColor(side, Number(offset)));
 				face.gradient.append(stop);
 			}
 			face.setAttribute("fill", `url(#${face.gradient.id})`);
@@ -79,6 +94,8 @@ export function frustumOrigin({ kind, layer, links, entering = null, time = null
 		}
 		const target = document.createElementNS(SVG, "rect");
 		target.setAttribute("class", "supermax-frustum-target");
+		target.setAttribute("fill", "none");
+		target.setAttribute("stroke", "none");
 		group.append(target);
 		layer.append(group);
 		const progress = still ? 1 : Math.min(1, (view.performance.now() - start) / grow);

@@ -133,6 +133,83 @@ test("origin: null draws no link, and anything else that is not a function is re
 	assert.deepEqual(result, { added: 0, refused: "TypeError" });
 });
 
+test("an origin callback owns the drawing from source and overlay rectangles", async () => {
+	const result = await page.evaluate(async () => {
+		const { Navigator, Workspace } = await import("/src/index.js");
+		const frame = document.createElement("div");
+		frame.style.cssText = "contain:layout;width:600px;height:400px";
+		const host = document.createElement("div");
+		host.style.cssText = "width:600px;height:400px";
+		frame.append(host);
+		document.body.append(frame);
+		const navigator = new Navigator({ destinations: window.fixture.destinations, root: "root", minViewportHeight: window.fixture.minViewportHeight, chrome: window.fixture.chrome });
+		const calls = [];
+		const origin = ({ kind, layer, links, entering, time }) => {
+			calls.push({ kind, links, entering, scaled: time.ms(10) });
+			layer.replaceChildren();
+			for (const { from, to } of links) {
+				const line = document.createElementNS("http://www.w3.org/2000/svg", "line");
+				line.setAttribute("class", "custom-origin-line");
+				line.setAttribute("x1", String(from.left));
+				line.setAttribute("y1", String(from.top));
+				line.setAttribute("x2", String(to.right));
+				line.setAttribute("y2", String(to.bottom));
+				line.setAttribute("stroke", "#7f5c2a");
+				layer.append(line);
+			}
+		};
+		const workspace = new Workspace(host, { navigator, content: () => ({ element: document.createElement("div") }), overlayRoot: frame, origin });
+		workspace.openModal({ title: "Custom", content: () => ({ element: document.createElement("div") }) }, { from: "root" });
+		workspace.drawOrigins();
+		const drawn = frame.querySelectorAll(".custom-origin-line").length;
+		const gradients = frame.querySelectorAll(".supermax-frustum-fade").length;
+		const call = calls.find((entry) => entry.kind === "modal" && entry.links.length > 0);
+		workspace.destroy();
+		frame.remove();
+		return { drawn, gradients, kind: call?.kind, sourceWidth: call?.links[0].from.width, targetWidth: call?.links[0].to.width, scaled: call?.scaled };
+	});
+	assert.equal(result.drawn, 1, "the host draws its own SVG in the supplied layer");
+	assert.equal(result.gradients, 0, "no default gradient is imposed on the host drawing");
+	assert.equal(result.kind, "modal");
+	assert.ok(result.sourceWidth > 0 && result.targetWidth > 0, "the callback receives source and overlay geometry");
+	assert.equal(result.scaled, 10, "the shared TimeScale is available to the callback");
+});
+
+test("loading shows only a centered, accessibly named spinner in cells and modals", async () => {
+	const result = await page.evaluate(async () => {
+		const { Navigator, Workspace } = await import("/src/index.js");
+		const frame = document.createElement("div");
+		frame.style.cssText = "contain:layout;width:600px;height:400px";
+		const host = document.createElement("div");
+		host.style.cssText = "width:600px;height:400px";
+		frame.append(host);
+		document.body.append(frame);
+		const navigator = new Navigator({ destinations: window.fixture.destinations, root: "root", minViewportHeight: window.fixture.minViewportHeight, chrome: window.fixture.chrome });
+		const pending = () => new Promise(() => {});
+		const workspace = new Workspace(host, { navigator, content: pending, overlayRoot: frame });
+		const measure = (body) => {
+			const status = body.querySelector(".supermax-loading");
+			const mark = status.querySelector(".supermax-loading-mark");
+			const area = body.getBoundingClientRect();
+			const ring = mark.getBoundingClientRect();
+			return { text: status.textContent, label: status.getAttribute("aria-label"), role: status.getAttribute("role"), x: Math.abs((area.left + area.width / 2) - (ring.left + ring.width / 2)), y: Math.abs((area.top + area.height / 2) - (ring.top + ring.height / 2)) };
+		};
+		const cell = measure(frame.querySelector('[data-occurrence="root"] .supermax-cell-body'));
+		workspace.openModal({ title: "Details", content: pending }, { from: "root" });
+		const modal = measure(frame.querySelector(".supermax-modal-body"));
+		workspace.destroy();
+		frame.remove();
+		return { cell, modal };
+	});
+	for (const [kind, state] of Object.entries(result)) {
+		assert.equal(state.text, "", `${kind} loading has no visible text`);
+		assert.equal(state.role, "status");
+		assert.ok(state.x <= 1 && state.y <= 1, `${kind} spinner is centered in its content area: ${JSON.stringify(state)}`);
+	}
+	assert.equal(result.cell.label, "Loading Root");
+	assert.equal(result.modal.label, "Loading Details");
+});
+
 test("notices sit in their source cell by default, or at the top with noticePlacement top", async () => {
 	const result = await page.evaluate(async () => {
 		const { Navigator, Workspace } = await import("/src/index.js");

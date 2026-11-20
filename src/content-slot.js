@@ -70,7 +70,10 @@ export class ContentSlot {
 		const box = this.workspace.create("div", "supermax-loading");
 		box.setAttribute("role", "status");
 		box.setAttribute("aria-live", "polite");
-		box.append(this.workspace.create("span", "supermax-loading-mark"), this.workspace.document.createTextNode(this.workspace.strings.loading(title)));
+		box.setAttribute("aria-label", this.workspace.strings.loading(title));
+		const mark = this.workspace.create("span", "supermax-loading-mark");
+		mark.setAttribute("aria-hidden", "true");
+		box.append(mark);
 		this.body.replaceChildren(box);
 		this.workspace.dispatchEvent(new CustomEvent("content", { detail: { occurrence: this.id, state: "loading" } }));
 	}
