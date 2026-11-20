@@ -15,9 +15,6 @@
     },
     "./cell-collection": "./src/cell-collection.js",
     "./cell-strip": "./src/cell-strip.js",
-    "./navigation": "./src/navigation.js",
-    "./layout": "./src/layout.js",
-    "./workspace": "./src/workspace.js",
     "./workspace.css": "./src/workspace.css"
   },
   "files": [
@@ -35,9 +32,9 @@
   "scripts": {
     "build:docs": "node scripts/build-docs.mjs",
     "check:docs": "node scripts/build-docs.mjs --check",
-    "test:node": "node test/smoke.test.js && node test/navigation.test.js && node test/deeplink.test.js",
-    "test:bun": "bun test/smoke.test.js && bun test/navigation.test.js && bun test/deeplink.test.js",
-    "test:browser": "node test/cell-strip.test.js && node --test --test-concurrency=1 test/workspace.test.js test/workspace-nested.test.js",
+    "test:node": "node test/smoke.test.js && node test/navigation.test.js",
+    "test:bun": "bun test/smoke.test.js && bun test/navigation.test.js",
+    "test:browser": "node test/cell-strip.test.js && node --test --test-concurrency=1 test/workspace.test.js test/workspace-package.test.js",
     "test": "npm run check:docs && npm run test:node && npm run test:browser",
     "check": "npm run test && npm run test:bun"
   },

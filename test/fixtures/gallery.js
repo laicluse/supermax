@@ -32,17 +32,11 @@ export const destinations = {
 	conflict: { title: "Conflict", min: 300, max: 1000, rows: [{ destination: "upside", minHeight: 200, maxHeight: 100 }] },
 	upside: { title: "Upside", min: 300, max: 200 },
 	"item:nested": { title: "Nested item", min: 100, max: 200, defaultChild: "inner" },
-	inner: { title: "Inner", min: 200, max: 1000, rows: [{ destination: "list", minHeight: 201, maxHeight: 300 }, { destination: "grid", minHeight: 100, maxHeight: 200 }] },
-	"item:deep": { title: "Deep item", min: 100, max: 200, defaultChild: "innerfit" },
-	innerfit: { title: "Inner fit", min: 200, max: 1000, rows: [{ destination: "list", minHeight: 200, maxHeight: 300 }, { destination: "grid", minHeight: 100, maxHeight: 200 }] },
+	inner: { title: "Inner", min: 200, max: 1000, rows: [{ destination: "list", minHeight: 100, maxHeight: 300 }, { destination: "grid", minHeight: 100, maxHeight: 200 }] },
 };
 
 destinations.outer = { title: "Outer", min: 300, max: 1000, rows: [{ destination: "empty", minHeight: 100, maxHeight: 200 }] };
-destinations.outerfit = { title: "Outer fit", min: 300, max: 1000, rows: [{ destination: "innerfit", minHeight: 240, maxHeight: 300 }] };
 
-destinations.loop = { title: "Loop", min: 300, max: 1000, rows: [{ destination: "loopback", minHeight: 100, maxHeight: 200 }] };
-destinations.loopback = { title: "Loopback", min: 300, max: 1000, rows: [{ destination: "loop", minHeight: 100, maxHeight: 200 }] };
-destinations.wrapper = { title: "Wrapper", min: 300, max: 1000, rows: [{ destination: "inner", minHeight: 100, maxHeight: 300 }] };
 
 export const GALLERY = "root/gallery";
 export const row = (key) => `${GALLERY}/${key}`;

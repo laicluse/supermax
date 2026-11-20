@@ -1,9 +1,5 @@
-import { Navigator } from "./navigation.js";
-import { Workspace } from "./workspace.js";
-
 export { CellCollection, CellProxy } from "./cell-collection.js";
 export { CellStrip } from "./cell-strip.js";
-export { isSplit, layoutWorkspace, validateSplit } from "./layout.js";
-export { Navigator, Workspace };
-
-globalThis.Supermax = { ...globalThis.Supermax, Navigator, Workspace };
+export { Navigator } from "./navigation.js";
+export { Workspace } from "./workspace.js";
+export { validateSplit } from "./layout.js";

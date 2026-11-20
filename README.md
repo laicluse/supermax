@@ -2,7 +2,7 @@
 
 Framework-free cell layout and navigation primitives for workspaces that open content below and to the right.
 
-The package has five parts. `CellCollection` allocates one horizontal chain of cells within a budget. `CellStrip` animates such a chain. `Navigator` models a workspace whose cells can split into independent rows, with one Back history across all rows. `layout` turns that model into geometry and validates splits (`validateSplit`, `layoutWorkspace`, `isSplit`). `Workspace` renders a navigator into the DOM with the stylesheet `@laicluse/supermax/workspace.css`. Hosts own their content and their routing. A GitHub Pages demo lives in `docs/` outside the package files.
+The package has four parts. `CellCollection` allocates one horizontal chain of cells within a budget. `CellStrip` animates such a chain. `Navigator` models a workspace whose cells can split into independent rows, with one Back history across all rows; `validateSplit` checks a split against the declared minimum height. `Workspace` renders a navigator into the DOM with the stylesheet `@laicluse/supermax/workspace.css`. Hosts own their content and their routing. A GitHub Pages demo lives in `docs/` outside the package files.
 
 ## Allocating one chain
 
@@ -99,5 +99,3 @@ Supermax is package-manager agnostic. The package is developed with pnpm as the 
 corepack pnpm run build:docs
 corepack pnpm run check
 ```
-
-`test` checks the generated demo assets, runs the Node model tests and the browser scenarios; `check` adds the Bun run.

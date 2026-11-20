@@ -100,7 +100,7 @@ export class Workspace extends EventTarget {
 		actions.forEach((action, index) => {
 			if (!results[index].ok) this.dispatchEvent(new CustomEvent("rejected", { detail: { action, result: results[index] } }));
 		});
-		this.dispatchEvent(new CustomEvent("change", { detail: { action: { type: "replay" }, result: { ok: results.every((result) => result.ok), results } } }));
+		this.dispatchEvent(new CustomEvent("change", { detail: { action: { type: "replay" }, result: { ok: results.every((result) => result.ok) } } }));
 		return results;
 	}
 
@@ -137,11 +137,7 @@ export class Workspace extends EventTarget {
 	focusCell(occurrenceId) {
 		const target = this.visibleCellFor(occurrenceId);
 		const entry = target ? this.cells.get(target) : null;
-		if (!entry) return;
-		const moved = target !== this.navigator.focused;
-		this.navigator.focus(target, { resetReveal: false });
-		entry.element.focus({ preventScroll: true });
-		if (moved && !this.rendering) this.render({ animate: true });
+		if (entry) entry.element.focus({ preventScroll: true });
 	}
 
 	visibleCellFor(occurrenceId) {

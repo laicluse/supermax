@@ -9,11 +9,6 @@ Supermax is an application shell, not merely a responsive column allocator. New 
 - **Chain:** a row of cells from a root cell to the right; the workspace root is a chain and every row is a chain.
 - **Split:** a cell whose rows are chains stacked below each other.
 - **Row tab:** the compact form of a collapsed row: its title on one line, which opens the row again.
-- **Reveal:** showing a hidden ancestor of a chain without opening or closing anything.
-- **Navigation group:** one manual opening plus everything it opened by itself.
-- **Back:** closes the newest navigation group across all rows.
-- **Room:** whether the minimum widths of a chain plus a candidate fit the row width.
-- **Strip:** the animated track `CellStrip` moves a chain on; nothing else is called a strip.
 
 ## Start with the cell path
 
@@ -99,13 +94,13 @@ When cells no longer fit, hide ancestors from the left. Do not squeeze them into
 
 ## Rows
 
-A split spans the full width of its own cell and stacks its rows from top to bottom. Rows never share column boundaries with each other, and no cell spans more than one row. Rows are owned by their split: they open with it, close with it, and cannot be replaced or promoted on their own. Inside a row the horizontal rules above apply unchanged: ancestors hide from the left, the newest cell survives, and the first visible cell's header carries a reveal control for the rightmost hidden ancestor. Revealing is a view change, not navigation: it never opens, closes, or regroups anything, and the next opening in that row or above it resets the view to its newest cells.
+A split spans the full width of its own cell and stacks its rows from top to bottom. Rows never share column boundaries with each other, and no cell spans more than one row. Rows are owned by their split: they open with it, close with it, and cannot be replaced or promoted on their own. A split opens from the workspace's root chain and its rows are plain cells; a split inside a row is refused. Inside a row the horizontal rules above apply unchanged: ancestors hide from the left, the newest cell survives, and the first visible cell's header carries a reveal control for the rightmost hidden ancestor. Revealing is a view change, not navigation: it never opens, closes, or regroups anything, and the next opening in that row or above it resets the view to its newest cells.
 
 Rows declare `minHeight` and `maxHeight`. When the split is too short for every row, rows give way from the top: they shrink to their minimum first and then collapse to a row tab, while the focused row (the row holding the focused occurrence, or the last row) always stays open, at its minimum height if need be. A row tab is compact presentation, not a closed row; activating it focuses that row and lets rows above or below it collapse instead. Keyboard focus follows the same rule: focusing content in a row makes that row the protected one, and when a cell slides out of view the focus moves to the visible cell of the same row. Collapse, resize, focus, and reveal preserve drafts, scroll positions, and every navigation group.
 
 ### Minimum height is validated up front
 
-The application declares the smallest viewport height it supports. Before a split opens, every row is checked: the navigation bar, one row tab per other row of this split and of every split above it (the ancestor chrome budget, bounded by the maximum number of rows per split), and the row's own `minHeight` must fit inside that height. An exact fit passes; one pixel over fails; an empty split, a split with more rows than allowed, two rows with the same destination, and a row or cell whose minimum exceeds its maximum fail. The check runs for a split the user opens and for a split that would open as a default; a default that fails stays closed and becomes a manual choice that reports the same verdict. The result names the row, the required height, the chrome budget, and the supported height, and a refused open touches nothing already open. Those numbers are for the developer; the content that offered the link shows an understandable message and a way on.
+The application declares the smallest viewport height it supports. Before a split opens, every row is checked: the navigation bar, one row tab per other row (the ancestor chrome budget, bounded by the maximum number of rows per split), and the row's own `minHeight` must fit inside that height. An exact fit passes; one pixel over fails; an empty split, a split with more rows than allowed, a row that is itself a split, two rows with the same destination, and a row or cell whose minimum exceeds its maximum fail. The check runs for a split the user opens and for a split that would open as a default; a default that fails stays closed and becomes a manual choice that reports the same verdict. The result names the row, the required height, the chrome budget, and the supported height, and a refused open touches nothing already open. Those numbers are for the developer; the content that offered the link shows an understandable message and a way on.
 
 ![The Lab album refused with its reason under the frame](assets/captures/lab-rejected.png)
 

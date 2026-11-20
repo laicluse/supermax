@@ -8,7 +8,6 @@ assert.equal(typeof packageApi.CellStrip, "function");
 assert.equal(typeof packageApi.Navigator, "function");
 assert.equal(typeof packageApi.Workspace, "function");
 assert.equal(typeof packageApi.validateSplit, "function");
-assert.equal(globalThis.Supermax.Navigator, packageApi.Navigator);
 assert.equal(globalThis.Supermax.CellStrip, packageApi.CellStrip);
 assert.equal(globalThis.Supermax.CellCollection, CellCollection);
 assert.equal(globalThis.Supermax.CellProxy, CellProxy);

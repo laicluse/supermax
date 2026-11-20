@@ -194,14 +194,6 @@ test("collapse thresholds keep navigation, draft and scroll, and the content cel
 	assert.equal(await page.inputValue(captionSelector), "Lighthouse at dusk");
 });
 
-test("typing in another row moves the protected row and the title", async () => {
-	await openDemo(THREE_ROWS);
-	await page.focus(inFrame("a", `[data-occurrence="${coast.photo("thumbnails", "a")}"] .caption`));
-	await resize([[960, 400], [420, 640]]);
-	assert.deepEqual(await collapsedRows("a"), [false, true, true], "the row holding the focus stays open");
-	assert.equal(await activeOccurrence(), coast.photo("thumbnails", "a"), "focus is still in the caption");
-});
-
 test("below the declared minimum the focused row keeps its height and the workspace scrolls", async () => {
 	await openDemo(THREE_ROWS);
 	const visible = await page.locator(inFrame("b", ".supermax-cell")).evaluateAll((elements) => elements
@@ -308,7 +300,8 @@ test("a row tab works by keyboard and does not steal the protected row on moused
 	await openDemo(THREE_ROWS);
 	await page.focus(inFrame("a", `[data-occurrence="${coast.photo("thumbnails", "a")}"] .caption`));
 	await resize([[960, 400], [420, 640]]);
-	assert.deepEqual(await collapsedRows("a"), [false, true, true]);
+	assert.deepEqual(await collapsedRows("a"), [false, true, true], "the row holding the focus stays open");
+	assert.equal(await activeOccurrence(), coast.photo("thumbnails", "a"), "focus is still in the caption");
 	const tab = inFrame("a", `.supermax-row[data-row="${coast.row("people")}"] .supermax-row-tab`);
 	await page.hover(tab);
 	await page.mouse.down();

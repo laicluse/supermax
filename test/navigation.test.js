@@ -140,46 +140,16 @@ scenario("a split is validated against the declared minimum height before it ope
 	assert.throws(() => new Navigator({ destinations, root: "root" }), TypeError, "a missing minimum height is a configuration error");
 });
 
-scenario("a split reached through a default is validated with its ancestors' chrome", () => {
-	const instance = model(1000, 300);
+scenario("a split cannot open inside a row, and a row cannot be a split", () => {
+	const instance = model(1000, 500);
 	openGallery(instance);
-	assert.equal(instance.open("item:nested", { from: row("list") }).ok, true);
-	assert.ok(!instance.get(`${item("list", "nested")}/inner`), "40 + 20 x 3 + 201 exceeds 300, so the inner split stays closed");
-	assert.equal(instance.open("item:deep", { from: row("grid") }).ok, true);
-	assert.ok(instance.get(`${item("grid", "deep")}/innerfit`), "40 + 20 x 3 + 200 fits exactly");
-	assert.equal(instance.open("inner", { from: item("list", "nested") }).reason, "invalid-rows", "the manual click gets the same verdict");
-});
-
-scenario("a split whose row is itself a split is validated through that row", () => {
-	const instance = model(1000, 300);
+	const nested = instance.open("fit", { from: row("list") });
+	assert.deepEqual({ reason: nested.reason, detail: nested.validation.reason }, { reason: "invalid-rows", detail: "nested-split" });
+	assert.equal(instance.open("item:nested", { from: row("list") }).ok, true, "the item opens");
+	assert.ok(!instance.get(`${item("list", "nested")}/inner`), "its default split stays closed inside the row");
+	assert.equal(instance.open("inner", { from: item("list", "nested") }).validation.reason, "nested-split", "the manual click gets the same verdict");
+	assert.ok(validateSplit(instance, "outer", instance.root).rows[0].problems.includes("split-row"));
 	assert.equal(instance.open("outer", { from: "root" }).reason, "invalid-rows");
-	assert.deepEqual(instance.state().occurrences, ["root"], "nothing opened");
-	assert.ok(validateSplit(instance, "outer", instance.root).rows[0].problems.includes("invalid-nested-split"));
-	assert.equal(validateSplit(instance, "outerfit", instance.root).ok, true, "a nested split that fits with the outer tabs counted passes");
-	assert.equal(instance.open("outerfit", { from: "root" }).ok, true);
-	assert.ok(instance.get("root/outerfit/innerfit/list"), "the nested rows exist");
-	assert.equal(validateSplit(instance, "loop", instance.root).rows[0].nested.rows[0].nested.reason, "cycle", "a split that contains itself is reported, not recursed forever");
-	assert.equal(instance.open("loop", { from: "root" }).reason, "invalid-rows");
-	openGallery(instance);
-	const wrapper = validateSplit(instance, "wrapper", instance.get(row("grid")));
-	assert.deepEqual({ title: wrapper.rows[0].title, problems: wrapper.rows[0].problems }, { title: "Inner", problems: ["invalid-nested-split"] });
-	assert.equal(wrapper.rows[0].nested.rows[0].required, 40 + 20 * 3 + 201, "the nested result names the row that fails and its real requirement");
-});
-
-scenario("a nested chain that needs more height than its row gets grows the row and marks overflow", () => {
-	const instance = model(1000, 300);
-	openGallery(instance);
-	instance.open("item:deep", { from: row("grid") });
-	instance.focus(`${item("grid", "deep")}/innerfit/list`);
-	const layout = instance.layout();
-	const gridRow = layout.chain.cells[1].rows.rows[1];
-	assert.deepEqual(layout.chain.cells[1].rows.rows.map((candidate) => candidate.height), [20, 220, 20], "the siblings collapse so the grown row fits the supported height");
-	assert.equal(layout.overflow, false, "within the supported range nothing overflows");
-	assert.equal(gridRow.height, gridRow.chain.contentHeight, "the row takes the height its nested rows need");
-	instance.resize({ width: 1000, height: 200 });
-	const short = instance.layout();
-	assert.equal(short.overflow, true, "below the room for the grown row the workspace scrolls");
-	assert.equal(short.chain.cells[1].rows.rows[1].height, 220, "the grown row keeps its content height");
 });
 
 scenario("rows collapse from the top and the focused row keeps its minimum below the supported height", () => {

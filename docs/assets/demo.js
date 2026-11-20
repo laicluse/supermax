@@ -285,13 +285,9 @@ function describeRejection({ action, result }, model) {
 		case "split-source": return `Rejected: ${titleOf(action.from)} owns its rows; nothing opens next to them.`;
 		case "unknown-destination": return `Rejected: ${action.destination} is not a destination.`;
 		case "invalid-rows": {
-			let validation = result.validation;
-			let row = validation.rows.find((candidate) => !candidate.ok);
-			while (row?.nested && !row.nested.ok) {
-				validation = row.nested;
-				row = validation.rows.find((candidate) => !candidate.ok);
-			}
-			if (!row) return `Rejected: a split in this album has ${validation.reason.replace(/-/g, " ")}.`;
+			const row = result.validation.rows.find((candidate) => !candidate.ok);
+			if (!row) return `Rejected: ${result.validation.reason.replace(/-/g, " ")}.`;
+			if (!row.problems.includes("exceeds-supported-height")) return `Rejected: row ${row.title} has ${row.problems.join(", ").replace(/-/g, " ")}.`;
 			return `Rejected: row ${row.title} needs ${row.required}px (${row.chrome}px chrome), supported ${row.supported}px.`;
 		}
 		case "history-empty": return "Nothing left to close.";
