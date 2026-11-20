@@ -1,0 +1,62 @@
+{
+  "commit": "a4c0b21f839d7ac65a7d8b49eb81bddd110774a3",
+  "files": [
+    {
+      "file": "Tiny5.ttf",
+      "source": "https://raw.githubusercontent.com/google/fonts/a4c0b21f839d7ac65a7d8b49eb81bddd110774a3/ofl/tiny5/Tiny5%5BBLED%2CJITT%2CROND%2Cwdth%2Cwght%5D.ttf",
+      "sha256": "588626f2c1b164f55927c0d8123f4bc134651aad7d257da68fc19b0824b0d8fa"
+    },
+    {
+      "file": "Tiny5-OFL.txt",
+      "source": "https://raw.githubusercontent.com/google/fonts/a4c0b21f839d7ac65a7d8b49eb81bddd110774a3/ofl/tiny5/OFL.txt",
+      "sha256": "690fda321d0ebce403249c8d61dadddcee09dc8813424cc5a8f982efcff9a9a3"
+    },
+    {
+      "file": "DepartureMono.otf",
+      "source": "https://raw.githubusercontent.com/rektdeckard/departure-mono/75152a3f1e6dacdd248a6c397c97dbf27e33eea0/public/assets/DepartureMono-1.500.otf",
+      "sha256": "4d53f663155cf8bf7ffc8e688776e719625f7bbb80a8d90073438b249261a2e0"
+    },
+    {
+      "file": "DepartureMono-OFL.txt",
+      "source": "https://raw.githubusercontent.com/rektdeckard/departure-mono/75152a3f1e6dacdd248a6c397c97dbf27e33eea0/public/assets/LICENSE",
+      "sha256": "b65e42750f3cb65437a97f4dfd781c58f199259949db2341012be60e32500e83"
+    },
+    {
+      "file": "BebasNeue.ttf",
+      "source": "https://raw.githubusercontent.com/google/fonts/a4c0b21f839d7ac65a7d8b49eb81bddd110774a3/ofl/bebasneue/BebasNeue-Regular.ttf",
+      "sha256": "08e4623805102d819f58601e46e345648846075e363b2ceb23313c2d1c83ec73"
+    },
+    {
+      "file": "BebasNeue-OFL.txt",
+      "source": "https://raw.githubusercontent.com/google/fonts/a4c0b21f839d7ac65a7d8b49eb81bddd110774a3/ofl/bebasneue/OFL.txt",
+      "sha256": "72082f6cb4d04be2ecf7cc7d9e1e7d73787f0af8a5a278a47cade70c16b78341"
+    },
+    {
+      "file": "Spleen5x8.bdf",
+      "source": "https://raw.githubusercontent.com/fcambus/spleen/5116f8eac7f65da2cfa169626ec43b5d041665fe/spleen-5x8.bdf",
+      "sha256": "40488184d075d0c752cdd239b441c5ece51e50b353156f2496c756c384ab01cb"
+    },
+    {
+      "file": "Spleen-LICENSE.txt",
+      "source": "https://raw.githubusercontent.com/fcambus/spleen/5116f8eac7f65da2cfa169626ec43b5d041665fe/LICENSE",
+      "sha256": "f33fe8679d5b2abecc4f1313ce6c6bfa58262964de5f7bca146596a7318047af"
+    },
+    {
+      "file": "Micro5.ttf",
+      "source": "https://raw.githubusercontent.com/google/fonts/a4c0b21f839d7ac65a7d8b49eb81bddd110774a3/ofl/micro5/Micro5-Regular.ttf",
+      "sha256": "08a08c0d10129d2ecd869ff2f8914fcbf32487d3cbee3568b2a2957866dfdac8"
+    },
+    {
+      "file": "Micro5-OFL.txt",
+      "source": "https://raw.githubusercontent.com/google/fonts/a4c0b21f839d7ac65a7d8b49eb81bddd110774a3/ofl/micro5/OFL.txt",
+      "sha256": "b4c75058634d557a621406c8eb5e243fe02d5ac9c49e0a4567eee8d65295fad8"
+    },
+    {
+      "file": "TomThumb.bdf",
+      "source": "https://robey.lag.net/downloads/tom-thumb.bdf",
+      "sha256": "d2c8c15de5ca83fcaef7cadc06d8db578c082507fa3da8a8f698d026fdda2b14",
+      "license": "MIT; original author also permits CC0 or CC-BY 3.0",
+      "license_source": "https://robey.lag.net/2010/01/23/tiny-monospace-font.html"
+    }
+  ]
+}

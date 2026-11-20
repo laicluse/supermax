@@ -337,6 +337,7 @@ export class Workspace extends EventTarget {
 			rowCue.setAttribute("aria-label", this.strings.unfold(title));
 			rowCue.title = this.strings.unfold(title);
 		}
+		this.folds.setTitle(occurrenceId, title);
 		this.renderUp();
 		this.modalHost.render();
 		this.notices.render();

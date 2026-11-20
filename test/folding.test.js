@@ -394,7 +394,7 @@ test("folded cells and rows trade space when their cues are clicked", async () =
 		assert.equal(await page.locator('.supermax-fold-cue.is-vertical[data-fold-occurrence="root/split/overview"] svg path').count(), 1, "the default cue renders its seam motif as an SVG path");
 		const verticalTarget = await page.locator('.supermax-fold-cue.is-vertical[data-fold-occurrence="root/split/overview"]').boundingBox();
 		assert.ok(verticalTarget.height > 0);
-		await page.mouse.click(verticalTarget.x + 40, verticalTarget.y + verticalTarget.height / 2);
+		await page.mouse.click(verticalTarget.x + verticalTarget.width + 12, verticalTarget.y + verticalTarget.height / 2);
 		assert.equal(await page.evaluate(() => window.vertical.findRow("root/split/overview").folded), true, "the bare row gutter does not unfold");
 		await page.locator('.supermax-fold-cue.is-vertical[data-fold-occurrence="root/split/overview"] .supermax-fold-mark').click();
 		assert.equal(await page.evaluate(() => window.vertical.findRow("root/split/overview").folded), false);
@@ -555,7 +555,7 @@ test("fold handles attach in all four directions outside content clipping", asyn
 				const mark = cue.firstElementChild;
 				const box = mark.getBoundingClientRect();
 				const style = getComputedStyle(mark);
-				return { direction: cue.dataset.direction, layer: cue.parentElement.className, fill: style.backgroundColor, ink: style.color, corners: ["borderTopLeftRadius", "borderTopRightRadius", "borderBottomRightRadius", "borderBottomLeftRadius"].map((key) => parseFloat(style[key])), clickable: cue.contains(document.elementFromPoint(box.x + box.width / 2, box.y + box.height / 2)) };
+				return { direction: cue.dataset.direction, layer: cue.parentElement.className, fill: mark.querySelector('.supermax-fold-outline') ? getComputedStyle(mark.querySelector('.supermax-fold-outline')).fill : style.backgroundColor, ink: style.color, corners: ["borderTopLeftRadius", "borderTopRightRadius", "borderBottomRightRadius", "borderBottomLeftRadius"].map((key) => parseFloat(style[key])), clickable: cue.contains(document.elementFromPoint(box.x + box.width / 2, box.y + box.height / 2)) };
 			}));
 			for (const mark of marks) {
 				directions.add(mark.direction);
@@ -602,11 +602,11 @@ test("the reserved demo uses 8px on both axes and gutters can be disabled", asyn
 			const style = await cue.evaluate((element, axis) => ({
 				gutter: getComputedStyle(element).getPropertyValue("--supermax-gutter"),
 				stroke: getComputedStyle(element.querySelector('svg')).strokeWidth,
-				outline: getComputedStyle(element.querySelector('.supermax-fold-mark')).boxShadow,
+				outline: getComputedStyle(element.querySelector('.supermax-fold-outline')).strokeWidth,
 			}), axis);
 			assert.equal(style.gutter, '0px');
 			assert.equal(style.stroke, '1px');
-			assert.match(style.outline, /1px inset/);
+			assert.equal(style.outline, '1px');
 			await cue.locator('.supermax-fold-mark').click();
 		}
 	} finally {
@@ -768,6 +768,7 @@ test("dragging folds follows the pointer and settles beyond the directional gold
 				const style = getComputedStyle(element, "::before");
 				return { width: parseFloat(style.width), height: parseFloat(style.height), left: style.left, top: style.top, transform: style.transform, visual: { width: element.offsetWidth, height: element.offsetHeight } };
 			});
+			assert.ok(Number.isFinite(hit.width), JSON.stringify({ axis, presentation, hit }));
 			assert.equal(hit.width, Math.max(44, hit.visual.width));
 			assert.equal(hit.height, Math.max(44, hit.visual.height));
 			assert.equal(parseFloat(hit.left), hit.visual.width / 2);

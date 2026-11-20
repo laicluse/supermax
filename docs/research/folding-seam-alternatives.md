@@ -1,5 +1,7 @@
 # Twenty fold seam directions
 
+An unaccepted [typography study](fold-label-typography.md) explores replacing the hatch with a compact surface name while preserving handle thickness and padding.
+
 Status: option 16, Fine hatching, selected on 2026-10-25. The central zigzag trial prompted a broader exploration. Every proposal uses a canvas-coloured hairline on the application surface, matching the canvas gutter width, with a larger invisible tap target. The mark must suggest hidden content rather than navigation or resizing.
 
 ![Twenty fold seam concepts](folding-seam-alternatives.png)

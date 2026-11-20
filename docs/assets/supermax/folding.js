@@ -4,6 +4,7 @@
 import { follow, unfollow } from "./follow.js";
 import { FoldDrag } from "./fold-drag.js";
 import { EASING, TIMING } from "./motion.js";
+import { FoldLabel } from "./fold-label.js";
 
 const CORNERS = ["borderTopLeftRadius", "borderTopRightRadius", "borderBottomRightRadius", "borderBottomLeftRadius"];
 
@@ -12,16 +13,6 @@ function handleShape(cue) {
 	if (!mark) return null;
 	const style = cue.ownerDocument.defaultView.getComputedStyle(mark);
 	return Object.fromEntries(CORNERS.map((corner) => [corner, style[corner]]));
-}
-
-function seamPattern(document) {
-	const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
-	svg.setAttribute("viewBox", "0 0 8 20");
-	svg.setAttribute("aria-hidden", "true");
-	const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
-	path.setAttribute("d", "M2 2L6 6M2 8L6 12M2 14L6 18");
-	svg.append(path);
-	return svg;
 }
 
 export class FoldController {
@@ -39,10 +30,8 @@ export class FoldController {
 		const custom = workspace.foldContent?.(occurrence, axis, workspace);
 		if (custom instanceof workspace.document.defaultView.Node) cue.append(custom);
 		else {
-			const mark = workspace.create("span", "supermax-fold-mark");
-			mark.setAttribute("aria-hidden", "true");
-			mark.append(seamPattern(workspace.document));
-			cue.append(mark);
+			entry.foldLabel = new FoldLabel(workspace, occurrence.title, axis);
+			cue.append(entry.foldLabel.element);
 		}
 		cue.addEventListener("click", (event) => { if (event.detail === 0 && !this.drag) this.focus(occurrence.id, axis); });
 		cue.addEventListener("pointerdown", (event) => {
@@ -59,6 +48,14 @@ export class FoldController {
 		this.layer.append(cue);
 		this.entries.set(cue, { entry, occurrence: occurrence.id, axis });
 		entry.foldCue = cue;
+	}
+
+	setTitle(occurrenceId, title) {
+		for (const { entry, occurrence, axis } of this.entries.values()) if (occurrence === occurrenceId && entry.foldLabel) {
+			entry.foldLabel.title = title;
+			entry.foldLabel.update(entry.foldLabel.available ?? (axis === "horizontal" ? this.workspace.element.clientHeight : this.workspace.element.clientWidth));
+		}
+		this.positionMarks();
 	}
 
 	apply(entry, folded, direction) {
@@ -112,6 +109,12 @@ export class FoldController {
 			}
 			const direction = cue.dataset.direction;
 			const horizontal = axis === "horizontal";
+			if (entry.foldLabel) {
+				entry.foldLabel.title = workspace.navigator.get(occurrence).title;
+				entry.foldLabel.update((horizontal ? box.height : box.width) - 2 * gutter);
+				cue.title = workspace.strings.unfold(entry.foldLabel.title);
+				cue.setAttribute("aria-label", cue.title);
+			}
 			const gutterBox = horizontal && entry.element.parentElement.matches(".supermax-room") ? entry.element.parentElement.getBoundingClientRect() : box;
 			const rowsTop = horizontal ? 0 : entry.element.parentElement.getBoundingClientRect().top;
 			const title = horizontal ? null : entry.element.closest(".supermax-cell")?.querySelector(":scope > .supermax-cell-title");
