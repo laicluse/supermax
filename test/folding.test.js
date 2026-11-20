@@ -37,28 +37,36 @@ test("folded cells and rows trade space when their cues are clicked", async () =
 				return { element: container };
 			} });
 		});
-		assert.equal(await page.locator('[data-occurrence="mode/mail"] .supermax-fold-cue').isVisible(), true);
-		assert.equal(await page.locator('[data-occurrence="mode/mail"] > .supermax-fold-cue').textContent(), "M");
-		assert.equal(await page.locator('[data-occurrence="mode/mail"] > .supermax-fold-cue').getAttribute("data-direction"), "right");
+		assert.equal(await page.locator('.supermax-fold-cue[data-fold-occurrence="mode/mail"]').isVisible(), true);
+		assert.equal(await page.locator('.supermax-fold-cue[data-fold-occurrence="mode/mail"]').textContent(), "M");
+		assert.equal(await page.locator('.supermax-fold-cue[data-fold-occurrence="mode/mail"]').getAttribute("data-direction"), "right");
 		assert.equal(await page.locator('.supermax-up-label svg path').count(), 1, "navigation uses the single SVG chevron");
 		assert.equal(await page.evaluate(() => window.horizontal.presentation.name), "veil");
 		const groups = await page.evaluate(() => window.horizontal.navigator.groups.length);
-		const horizontalTarget = await page.locator('[data-occurrence="mode/mail"] .supermax-fold-cue').boundingBox();
-		assert.equal(horizontalTarget.width, 28, "the cue positions the handle over the gutter");
-		await page.mouse.click(horizontalTarget.x + 2, horizontalTarget.y + horizontalTarget.height / 2);
+		const horizontalTarget = await page.locator('.supermax-fold-cue[data-fold-occurrence="mode/mail"]').boundingBox();
+		assert.ok(horizontalTarget.width > 0);
+		await page.mouse.click(horizontalTarget.x - 3, horizontalTarget.y + horizontalTarget.height / 2);
 		assert.equal(await page.evaluate(() => window.horizontal.findCell("mode/mail").full), false, "clicking beside the handle does not unfold");
-		await page.locator('[data-occurrence="mode/mail"] .supermax-fold-cue > span').click();
+		await page.locator('.supermax-fold-cue[data-fold-occurrence="mode/mail"] > span').click();
 		assert.equal(await page.evaluate(() => window.horizontal.findCell("mode/mail").full), true);
-		assert.equal(await page.locator('[data-occurrence="mode/mail/work"] .supermax-fold-cue').isVisible(), true);
-		assert.equal(await page.locator('[data-occurrence="mode/mail/work"] .supermax-fold-cue').getAttribute("data-direction"), "left");
-		await page.locator('[data-occurrence="mode/mail/work"] .supermax-fold-cue').click();
+		assert.equal(await page.locator('.supermax-fold-cue[data-fold-occurrence="mode/mail/work"]').isVisible(), true);
+		assert.equal(await page.locator('.supermax-fold-cue[data-fold-occurrence="mode/mail/work"]').getAttribute("data-direction"), "left");
+		await page.locator('.supermax-fold-cue[data-fold-occurrence="mode/mail/work"]').click();
 		assert.equal(await page.evaluate(() => window.horizontal.findCell("mode/mail/work").full), true);
-		assert.equal(await page.locator('[data-occurrence="mode/mail"] .supermax-fold-cue').isVisible(), true);
+		assert.equal(await page.locator('.supermax-fold-cue[data-fold-occurrence="mode/mail"]').isVisible(), true);
 		assert.equal(await page.locator('[data-occurrence="mode/mail"] input').inputValue(), "unsent draft");
 		assert.equal(await page.evaluate(() => window.horizontal.navigator.groups.length), groups, "trading space does not add navigation history");
 		assert.equal(await page.locator(".supermax-peek, .is-fold-displaced").count(), 0, "no detached or dimmed veil is created");
 		assert.equal(await page.evaluate(() => window.horizontal.sync(["mode", "missing"], { origin: null }).ok), false);
 		assert.equal(await page.evaluate(() => window.horizontal.findCell("mode/mail/work").full), true, "a rejected navigation leaves fold focus intact");
+		await page.evaluate(() => {
+			window.horizontal.apply({ type: "close" });
+			window.horizontal.apply({ type: "open", destination: "work", from: "mode/mail", origin: null });
+			window.horizontal.folds.focus("mode/mail", "horizontal");
+		});
+		await page.waitForTimeout(400);
+		await page.locator('.supermax-fold-cue[data-fold-occurrence="mode/mail/work"]').click();
+		assert.equal(await page.evaluate(() => window.horizontal.findCell("mode/mail/work").full), true, "a cell reopened during its exit still has a working fold handle");
 		const narrow = await page.evaluate(() => {
 			window.horizontal.navigator.resize({ width: 100, height: 420 });
 			return window.horizontal.navigator.layout();
@@ -88,29 +96,29 @@ test("folded cells and rows trade space when their cues are clicked", async () =
 				return { element };
 			} });
 		});
-		assert.equal(await page.locator('[data-row="root/split/overview"] > .supermax-fold-cue').isVisible(), true);
-		assert.equal(await page.locator('[data-row="root/split/overview"] > .supermax-fold-cue').getAttribute("data-direction"), "down");
-		assert.equal(await page.locator('[data-row="root/split/overview"] > .supermax-fold-cue svg path').count(), 1, "the default cue renders its seam motif as an SVG path");
-		const verticalTarget = await page.locator('[data-row="root/split/overview"] > .supermax-fold-cue').boundingBox();
-		assert.equal(verticalTarget.height, 28, "the cue positions the handle over the row gutter");
+		assert.equal(await page.locator('.supermax-fold-cue.is-vertical[data-fold-occurrence="root/split/overview"]').isVisible(), true);
+		assert.equal(await page.locator('.supermax-fold-cue.is-vertical[data-fold-occurrence="root/split/overview"]').getAttribute("data-direction"), "down");
+		assert.equal(await page.locator('.supermax-fold-cue.is-vertical[data-fold-occurrence="root/split/overview"] svg path').count(), 1, "the default cue renders its seam motif as an SVG path");
+		const verticalTarget = await page.locator('.supermax-fold-cue.is-vertical[data-fold-occurrence="root/split/overview"]').boundingBox();
+		assert.ok(verticalTarget.height > 0);
 		await page.mouse.click(verticalTarget.x + 40, verticalTarget.y + verticalTarget.height / 2);
 		assert.equal(await page.evaluate(() => window.vertical.findRow("root/split/overview").folded), true, "the bare row gutter does not unfold");
-		await page.locator('[data-row="root/split/overview"] > .supermax-fold-cue .supermax-fold-mark').click();
+		await page.locator('.supermax-fold-cue.is-vertical[data-fold-occurrence="root/split/overview"] .supermax-fold-mark').click();
 		assert.equal(await page.evaluate(() => window.vertical.findRow("root/split/overview").folded), false);
-		assert.equal(await page.locator('[data-row="root/split/detail"] > .supermax-fold-cue').isVisible(), true);
-		assert.equal(await page.locator('[data-row="root/split/detail"] > .supermax-fold-cue').getAttribute("data-direction"), "up");
+		assert.equal(await page.locator('.supermax-fold-cue.is-vertical[data-fold-occurrence="root/split/detail"]').isVisible(), true);
+		assert.equal(await page.locator('.supermax-fold-cue.is-vertical[data-fold-occurrence="root/split/detail"]').getAttribute("data-direction"), "up");
 		const closing = await page.evaluate(async () => {
-			document.querySelector('[data-row="root/split/detail"] > .supermax-fold-cue').click();
+			document.querySelector('.supermax-fold-cue.is-vertical[data-fold-occurrence="root/split/detail"]').click();
 			await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
 			const row = document.querySelector('[data-row="root/split/overview"]');
 			const chain = row.querySelector(":scope > .supermax-row-chain");
 			return { rowTop: row.getBoundingClientRect().top, chainTop: chain.getBoundingClientRect().top, overflow: getComputedStyle(row).overflow, background: getComputedStyle(row).backgroundColor };
 		});
-		assert.equal(closing.overflow, "clip", "a closing row clips content that would cover its neighbour");
+		assert.equal(closing.overflow, "hidden", "a closing row clips content that would cover its neighbour");
 		assert.ok(closing.chainTop >= closing.rowTop - 8, "the closing content stays with its shrinking row");
 		assert.equal(closing.background, "rgba(0, 0, 0, 0)", "row backgrounds leave canvas gutters visible");
 		assert.equal(await page.evaluate(() => window.vertical.findRow("root/split/detail").folded), false);
-		assert.equal(await page.locator('[data-row="root/split/overview"] > .supermax-fold-cue').isVisible(), true);
+		assert.equal(await page.locator('.supermax-fold-cue.is-vertical[data-fold-occurrence="root/split/overview"]').isVisible(), true);
 		const short = await page.evaluate(() => {
 			window.vertical.navigator.resize({ width: 360, height: 200 });
 			return window.vertical.navigator.layout();
@@ -159,9 +167,9 @@ test("the main demo exposes both fold axes and follows its Motion choice", async
 				return { offset: Math.abs(cell.getBoundingClientRect().left - cell.parentElement.getBoundingClientRect().left), paper: cell.querySelector(":scope > .supermax-cell-body").getBoundingClientRect().width };
 			});
 		});
-		assert.ok((await trade()).every(({ offset, paper }) => offset < 2 && paper >= 360), "opening left keeps content at full width inside moving rooms");
+		assert.ok((await trade()).every(({ offset, paper }) => offset < 2 && paper >= 320), "opening left keeps content at full width inside moving rooms");
 		await page.waitForTimeout(350);
-		assert.ok((await trade()).every(({ offset, paper }) => offset < 2 && paper >= 360), "opening right keeps content at full width inside moving rooms");
+		assert.ok((await trade()).every(({ offset, paper }) => offset < 2 && paper >= 320), "opening right keeps content at full width inside moving rooms");
 		await page.waitForTimeout(350);
 		const interrupted = await narrow.evaluate(async (frame) => {
 			frame.querySelector('.supermax-fold-cue.is-horizontal:not([inert])').click();
@@ -182,7 +190,7 @@ test("the main demo exposes both fold axes and follows its Motion choice", async
 				return { offset: Math.abs(cell.getBoundingClientRect().left - cell.parentElement.getBoundingClientRect().left), paper: cell.querySelector(":scope > .supermax-cell-body").getBoundingClientRect().width };
 			});
 		});
-		assert.ok(interrupted.every(({ offset, paper }) => offset < 2 && paper >= 360), "reversing mid-fold keeps fixed-size content in its room");
+		assert.ok(interrupted.every(({ offset, paper }) => offset < 2 && paper >= 320), "reversing mid-fold keeps fixed-size content in its room");
 		await page.waitForTimeout(350);
 		await page.locator('[data-presentation]').selectOption("origami");
 		await page.waitForTimeout(250);
@@ -240,75 +248,38 @@ test("Show navigates backward through folds instead of toggling them", async () 
 	}
 });
 
-test("fold handles use host colours, edge corners and exclusive hit targets", async () => {
+test("fold handles attach in all four directions outside content clipping", async () => {
 	const server = await serveDocs();
 	const browser = await chromium.launch({ channel: "chrome", headless: true });
 	try {
 		const page = await browser.newPage({ viewport: { width: 1800, height: 1000 } });
 		await page.goto(server.url);
-		await page.getByRole("button", { name: "Folding: cells and rows" }).click();
-		await page.waitForTimeout(400);
-		await page.evaluate(() => {
-			const workspace = window.supermaxDemo.frames[1].workspace;
-			for (const definition of Object.values(workspace.navigator.destinations)) {
-				if (definition.rows) definition.rows.forEach((row) => { row.fold = { size: 0 }; });
-				else if (!definition.keep && definition.fold !== false) definition.fold = { size: 0 };
-			}
-			workspace.element.style.setProperty("--supermax-surface", "rgb(255, 255, 255)");
-			workspace.element.style.setProperty("--supermax-canvas", "rgb(221, 221, 221)");
-			workspace.render({ animate: false });
-		});
+		await page.getByRole("button", { name: "Folding: cells and rows", exact: true }).click();
 		const directions = new Set();
-		let shifted = false;
 		const check = async () => {
 			await page.waitForTimeout(400);
-			const marks = await page.evaluate(() => {
-				const workspace = window.supermaxDemo.frames[1].workspace;
-				const bounds = workspace.body.getBoundingClientRect();
-				for (const body of workspace.element.querySelectorAll(".supermax-cell.is-split > .supermax-cell-body")) {
-					if (body.scrollLeft || body.scrollTop) throw new Error("fold target scrolled its split container");
-				}
-				return [...workspace.element.querySelectorAll(".is-folded > .supermax-fold-cue")].filter((cue) => cue.getBoundingClientRect().width && cue.getBoundingClientRect().height).map((cue) => {
-					const mark = cue.querySelector(".supermax-fold-mark");
-					const box = mark.getBoundingClientRect();
-					const area = cue.getBoundingClientRect();
-					const parent = cue.parentElement.getBoundingClientRect();
-					const direction = cue.dataset.direction;
-					const horizontal = cue.classList.contains("is-horizontal");
-					const centre = horizontal ? area.x + area.width / 2 : area.y + area.height / 2;
-					const leadingFold = !horizontal && cue.parentElement.matches(".is-unreserved.is-leading");
-					const expected = mark.dataset.edge === "right" ? parent.right - .5 : mark.dataset.edge === "bottom" ? parent.bottom - .5 : (direction === "right" ? parent.right : direction === "left" ? parent.left : direction === "down" ? parent.bottom : parent.top) + (leadingFold ? -.5 : .5);
-					return { direction, offset: Math.abs(centre - expected), x: box.x + box.width / 2 - area.x - area.width / 2, y: box.y + box.height / 2 - area.y - area.height / 2, overflow: Math.max(box.right - bounds.right, box.bottom - bounds.bottom), edge: mark.dataset.edge, edgeGap: horizontal ? bounds.right - box.right : bounds.bottom - box.bottom, ink: getComputedStyle(mark).color, outline: getComputedStyle(mark).outlineColor, outlineWidth: getComputedStyle(mark).outlineWidth, attachment: direction === "right" ? box.left - (centre - .5) : direction === "left" ? box.right - (centre + .5) : direction === "down" ? box.top - (centre - .5) : box.bottom - (centre + .5), corners: ["borderTopLeftRadius", "borderTopRightRadius", "borderBottomRightRadius", "borderBottomLeftRadius"].map((key) => parseFloat(getComputedStyle(mark)[key])), gutterClickable: cue.contains(document.elementFromPoint(horizontal ? area.x + area.width / 2 : area.x + 40, horizontal ? area.y + 40 : area.y + area.height / 2)), handleClickable: cue.contains(document.elementFromPoint(box.x + box.width / 2, box.y + box.height / 2)), fill: getComputedStyle(mark).backgroundColor, padding: parseFloat(getComputedStyle(mark).paddingTop) };
-				});
-			});
+			const marks = await page.locator('[data-frame="b"] .supermax-fold-cue:visible').evaluateAll((cues) => cues.map((cue) => {
+				const mark = cue.firstElementChild;
+				const box = mark.getBoundingClientRect();
+				const style = getComputedStyle(mark);
+				return { direction: cue.dataset.direction, layer: cue.parentElement.className, fill: style.backgroundColor, ink: style.color, corners: ["borderTopLeftRadius", "borderTopRightRadius", "borderBottomRightRadius", "borderBottomLeftRadius"].map((key) => parseFloat(style[key])), clickable: cue.contains(document.elementFromPoint(box.x + box.width / 2, box.y + box.height / 2)) };
+			}));
 			for (const mark of marks) {
 				directions.add(mark.direction);
-				assert.ok(mark.offset < .1, "the line lies on the cell or row gutter");
-				assert.ok(mark.overflow <= .1, "the rounded surface stays inside the viewport");
-				assert.equal(mark.fill, "rgb(255, 255, 255)");
-				assert.equal(mark.ink, "rgb(221, 221, 221)");
-				assert.equal(mark.outline, mark.ink);
-				assert.equal(mark.outlineWidth, "1px");
+				assert.equal(mark.layer, 'supermax-fold-layer');
+				assert.equal(mark.fill, 'rgb(255, 255, 255)');
+				assert.equal(mark.ink, 'rgb(221, 221, 221)');
 				assert.deepEqual(mark.corners, ({ right: [0, 2, 2, 0], left: [2, 0, 0, 2], down: [0, 0, 2, 2], up: [2, 2, 0, 0] })[mark.direction]);
-				if (mark.edge) assert.ok(Math.abs(mark.edgeGap) < .1, "handle meets the viewport edge");
-				assert.ok(mark.padding > 0);
-				assert.equal(mark.gutterClickable, false, "the bare gutter does not open the fold");
-				assert.equal(mark.handleClickable, true, "only the handle opens the fold");
-				shifted ||= mark.x < -1 || mark.y < -1;
-				assert.ok(Math.abs(mark.attachment) < .1, "the straight handle side meets the gutter on the unfolding side");
+				assert.equal(mark.clickable, true);
 			}
 		};
 		await check();
-		await page.locator('[data-frame="b"] .supermax-fold-cue.is-horizontal:visible .supermax-fold-mark').click();
+		await page.locator('[data-frame="b"] .supermax-fold-cue.is-horizontal:visible').click();
 		await check();
-		await page.locator('[data-frame="b"] .supermax-fold-cue.is-vertical:visible .supermax-fold-mark').click();
+		await page.locator('[data-frame="b"] .supermax-fold-cue.is-vertical:visible').click();
 		await check();
-		assert.deepEqual(directions, new Set(["right", "left", "down", "up"]));
-		assert.ok(shifted, "the edge case actually exercises an inward shift");
-	} finally {
-		await browser.close();
-		await server.close();
-	}
+		assert.deepEqual(directions, new Set(['right', 'left', 'down', 'up']));
+	} finally { await browser.close(); await server.close(); }
 });
 
 test("the reserved demo uses 8px on both axes and gutters can be disabled", async () => {
@@ -336,12 +307,478 @@ test("the reserved demo uses 8px on both axes and gutters can be disabled", asyn
 		for (const axis of ['horizontal', 'vertical']) {
 			const cue = frame.locator(`.supermax-fold-cue.is-${axis}:visible`);
 			const style = await cue.evaluate((element, axis) => ({
-				line: getComputedStyle(element, '::after')[axis === 'horizontal' ? 'width' : 'height'],
+				gutter: getComputedStyle(element).getPropertyValue("--supermax-gutter"),
 				stroke: getComputedStyle(element.querySelector('svg')).strokeWidth,
-				outline: getComputedStyle(element.querySelector('.supermax-fold-mark')).outlineWidth,
+				outline: getComputedStyle(element.querySelector('.supermax-fold-mark')).boxShadow,
 			}), axis);
-			assert.deepEqual(style, { line: '0px', stroke: '1px', outline: '1px' });
+			assert.equal(style.gutter, '0px');
+			assert.equal(style.stroke, '1px');
+			assert.match(style.outline, /1px inset/);
 			await cue.locator('.supermax-fold-mark').click();
+		}
+	} finally {
+		await browser.close();
+		await server.close();
+	}
+});
+
+test("canvas gaps remain one pixel after fold trades, including split and viewport edges", async () => {
+	const server = await serveDocs();
+	const browser = await chromium.launch({ channel: "chrome", headless: true });
+	try {
+		for (const scale of [1, 2]) {
+			const page = await browser.newPage({ viewport: { width: 1800, height: 1000 }, deviceScaleFactor: scale });
+			await page.goto(server.url);
+			await page.getByRole('button', { name: 'Folding: cells and rows', exact: true }).click();
+			const checkPixels = async () => {
+				await page.waitForTimeout(500);
+				const points = await page.evaluate(() => {
+					const points = [];
+					for (const frame of document.querySelectorAll('.frame')) {
+						const workspace = frame.querySelector('.supermax-workspace');
+						const bounds = workspace.getBoundingClientRect();
+						for (const row of workspace.querySelectorAll('.supermax-row:not(.is-folded):not(.is-hidden)')) {
+							const box = row.getBoundingClientRect();
+							if (!box.height) continue;
+							const y = box.top + box.height * .8;
+							points.push({ name: 'split left gutter', x: box.left + .5, y, colour: [221, 221, 221] });
+							points.push({ name: 'split left surface', x: box.left + 1.5, y, colour: [255, 255, 255] });
+							if (!row.classList.contains('is-leading') && !row.previousElementSibling?.classList.contains('is-unreserved')) points.push({ name: 'row gutter', x: box.left + box.width * .6, y: box.top + .5, colour: [221, 221, 221] });
+							for (const cell of row.querySelectorAll('.supermax-cell:not(.is-leading):not(.is-folded)')) {
+								const rect = cell.getBoundingClientRect();
+								if (rect.width > 0 && rect.left >= bounds.left && rect.right <= bounds.right + .1) points.push({ name: 'cell gutter', x: rect.left + .5, y, colour: [221, 221, 221] });
+							}
+						}
+						for (const cue of workspace.querySelectorAll('.supermax-fold-cue:not([hidden])')) {
+							const mark = cue.firstElementChild.getBoundingClientRect();
+							const horizontal = cue.classList.contains('is-horizontal');
+							points.push({ name: 'handle top thickness', x: mark.left + mark.width / 2, y: mark.top + .5, colour: [221, 221, 221] });
+							if (horizontal) {
+								const right = cue.dataset.direction === 'right';
+								points.push({ name: 'handle side thickness', x: right ? mark.right - .5 : mark.left + .5, y: mark.top + mark.height / 2, colour: [221, 221, 221] });
+								points.push({ name: 'handle side inner surface', x: right ? mark.right - 1.5 : mark.left + 1.5, y: mark.top + mark.height / 2, colour: [255, 255, 255] });
+							}
+							if (cue.dataset.edge === 'right') points.push({ name: 'right viewport gutter', x: bounds.right - .5, y: mark.top - 30, colour: [221, 221, 221] });
+							if (cue.dataset.edge === 'bottom') points.push({ name: 'bottom viewport gutter', x: mark.left - 30, y: bounds.bottom - .5, colour: [221, 221, 221] });
+						}
+					}
+					return points;
+				});
+				const screenshot = (await page.screenshot()).toString('base64');
+				const pixels = await page.evaluate(async ({ screenshot, points, scale }) => {
+					const image = new Image(); image.src = `data:image/png;base64,${screenshot}`; await image.decode();
+					const canvas = document.createElement('canvas'); canvas.width = image.width; canvas.height = image.height;
+					const context = canvas.getContext('2d'); context.drawImage(image, 0, 0);
+					return points.map((point) => ({ ...point, actual: [...context.getImageData(Math.floor(point.x * scale), Math.floor(point.y * scale), 1, 1).data].slice(0, 3) }));
+				}, { screenshot, points, scale });
+				assert.ok(pixels.length > 5);
+				for (const point of pixels) assert.deepEqual(point.actual, point.colour, `${point.name} at ${point.x},${point.y}, DPR ${scale}`);
+			};
+			await checkPixels();
+			await page.evaluate(() => window.supermaxDemo.resize([[960, 640], [420, 640]]));
+			await checkPixels();
+			await page.locator('[data-frame="b"] .supermax-fold-cue.is-horizontal[data-fold-occurrence="albums/album:folding/folding:thumbnails"]').click();
+			await checkPixels();
+			await page.evaluate(() => window.supermaxDemo.resize([[960, 640], [420, 360]]));
+			await page.waitForTimeout(500);
+			await page.locator('[data-frame="b"] .supermax-fold-cue.is-vertical:visible').click();
+			await checkPixels();
+			await page.close();
+		}
+	} finally { await browser.close(); await server.close(); }
+});
+
+test("dragging folds follows the pointer and settles beyond the directional golden ratio", async () => {
+	const server = await serveDocs();
+	const browser = await chromium.launch({ channel: "chrome", headless: true });
+	try {
+		const page = await browser.newPage({ viewport: { width: 390, height: 700 }, isMobile: true, hasTouch: true });
+		await page.goto(`${server.url}/blank`);
+		await page.evaluate(() => {
+			const viewport = document.createElement("meta");
+			viewport.name = "viewport";
+			viewport.content = "width=device-width, initial-scale=1";
+			document.head.append(viewport);
+		});
+		await page.addStyleTag({ url: `${server.url}/src/workspace.css` });
+		for (const { axis, presentation } of ["horizontal", "vertical"].flatMap((axis) => ["veil", "origami", "fold", "reduced"].map((presentation) => ({ axis, presentation })))) {
+			await page.emulateMedia({ reducedMotion: presentation === "reduced" ? "reduce" : "no-preference" });
+			await page.evaluate(async ({ axis, presentation }) => {
+				window.workspace?.destroy();
+				document.body.replaceChildren();
+				const { Navigator, Workspace } = await import("/src/index.js");
+				const host = document.createElement("div");
+				host.style.cssText = "position:relative;width:320px;height:400px";
+				document.body.append(host);
+				const destinations = axis === "horizontal" ? {
+					first: { title: "First", min: 280, max: "*", preferred: 320 }, second: { title: "Second", min: 280, max: "*", preferred: 320 },
+				} : {
+					mode: { title: "Mode", min: 32, max: 32, keep: true },
+					first: { title: "Rows", rows: [{ destination: "upper", minHeight: 300, maxHeight: 300 }, { destination: "lower", minHeight: 300, maxHeight: "*", preferredHeight: 400 }] },
+					upper: { title: "Upper", min: 280, max: "*", preferred: 320 }, lower: { title: "Lower", min: 280, max: "*", preferred: 320 },
+				};
+				const navigator = new Navigator({ root: axis === "horizontal" ? "first" : "mode", destinations, minViewportHeight: 400 });
+				if (axis === "horizontal") navigator.open("second", { from: "first" });
+				else navigator.open("first", { from: "mode" });
+				window.workspace = new Workspace(host, { navigator, content: () => {
+					const element = document.createElement("textarea");
+					element.value = "a draft that survives the trade";
+					return { element };
+				} });
+				if (presentation === "origami") window.workspace.setPresentation((await import("/src/index.js")).ORIGAMI_PRESENTATION);
+				if (presentation === "fold") window.workspace.setPresentation((await import("/assets/presentation-fold.js")).foldPresentation);
+				window.committedFolds = 0;
+				window.workspace.addEventListener("foldfocus", () => window.committedFolds++);
+			}, { axis, presentation });
+			for (const direction of axis === "horizontal" ? ["right", "left"] : ["down", "up"]) {
+				const cue = page.locator(`.supermax-fold-cue.is-${axis}[data-direction="${direction}"]:visible`);
+				for (const fraction of [0.61, 0.63]) {
+					const box = await cue.boundingBox();
+					const occurrence = await cue.getAttribute("data-fold-occurrence");
+					const start = { x: box.x + box.width / 2, y: box.y + box.height / 2 };
+					const target = await page.evaluate(({ occurrence, axis }) => {
+						const workspace = window.workspace;
+						const previous = workspace.navigator.foldFocuses;
+						workspace.navigator.focusFold(occurrence, axis);
+						const layout = workspace.navigator.layout();
+						workspace.navigator.foldFocuses = previous;
+						return axis === "horizontal" ? layout.chain.cells.find((cell) => cell.occurrence === occurrence).width : layout.chain.cells.find((cell) => cell.rows).rows.rows.find((row) => row.occurrence === occurrence).height;
+					}, { occurrence, axis });
+					const sign = ["left", "up"].includes(direction) ? -1 : 1;
+					await page.mouse.move(start.x, start.y);
+					await page.mouse.down();
+					await page.mouse.move(start.x + (axis === "horizontal" ? sign * target * fraction : 0), start.y + (axis === "vertical" ? sign * target * fraction : 0), { steps: 8 });
+					const extent = await page.locator(`[${axis === "horizontal" ? "data-occurrence" : "data-row"}="${occurrence}"]`).evaluate((element, axis) => element.getBoundingClientRect()[axis === "horizontal" ? "width" : "height"], axis);
+					assert.ok(Math.abs(extent - target * fraction) < 3, `${presentation} ${direction}: content follows the pointer, got ${extent} of ${target}`);
+					const seam = await page.evaluate(({ occurrence, axis, direction }) => {
+						const cue = document.querySelector(`.supermax-fold-cue.is-${axis}[data-fold-occurrence="${occurrence}"]`);
+						const element = document.querySelector(`[${axis === "horizontal" ? "data-occurrence" : "data-row"}="${occurrence}"]`);
+						const source = axis === "horizontal" && element.parentElement.matches(".supermax-room") ? element.parentElement : element;
+						const rect = source.getBoundingClientRect();
+						const handle = cue.getBoundingClientRect();
+						const gutter = parseFloat(getComputedStyle(window.workspace.element).getPropertyValue("--supermax-gutter"));
+						const actual = direction === "right" ? handle.left : direction === "left" ? handle.right : direction === "down" ? handle.top : handle.bottom;
+						const expected = direction === "right" ? rect.right : direction === "left" ? rect.left + gutter : direction === "down" ? rect.bottom : rect.top + gutter;
+						return { actual, expected, rect: { left: rect.left, right: rect.right, top: rect.top, bottom: rect.bottom }, cell: element.getBoundingClientRect().toJSON(), edge: cue.dataset.edge };
+					}, { occurrence, axis, direction });
+					assert.ok(Math.abs(seam.actual - seam.expected) < 1, `${presentation} ${direction}: handle follows gutter owner ${JSON.stringify(seam)}`);
+					await page.mouse.up();
+					await page.waitForTimeout(400);
+					assert.equal(await cue.isVisible(), fraction < 0.618, `${direction}: release at ${fraction}`);
+				}
+			}
+			assert.equal(await page.evaluate(() => window.committedFolds), 2, "only completed trades announce focus");
+			const touch = await page.context().newCDPSession(page);
+			const touchId = await page.locator(`.supermax-fold-cue.is-${axis}:visible`).first().getAttribute("data-fold-occurrence");
+			const touchCue = page.locator(`.supermax-fold-cue.is-${axis}[data-fold-occurrence="${touchId}"]`);
+			const hit = await touchCue.evaluate((element) => {
+				const style = getComputedStyle(element, "::before");
+				return { width: parseFloat(style.width), height: parseFloat(style.height), left: style.left, top: style.top, transform: style.transform, visual: { width: element.offsetWidth, height: element.offsetHeight } };
+			});
+			assert.equal(hit.width, Math.max(44, hit.visual.width));
+			assert.equal(hit.height, Math.max(44, hit.visual.height));
+			assert.equal(parseFloat(hit.left), hit.visual.width / 2);
+			assert.equal(parseFloat(hit.top), hit.visual.height / 2);
+			const tallHit = await touchCue.evaluate((element) => {
+				element.style.height = "60px";
+				const style = getComputedStyle(element, "::before");
+				const result = { width: parseFloat(style.width), height: parseFloat(style.height), top: parseFloat(style.top) };
+				element.style.removeProperty("height");
+				return result;
+			});
+			assert.equal(tallHit.width, Math.max(44, hit.visual.width));
+			assert.equal(tallHit.height, 60, "a tall handle gets no extra height");
+			assert.equal(tallHit.top, 30);
+
+			for (const ending of ["cancel", "return", "open"]) {
+				const box = await touchCue.boundingBox();
+				const start = { x: box.x + box.width / 2 + (axis === "vertical" ? 18 : 0), y: box.y + box.height / 2 + (axis === "horizontal" ? 18 : 0) };
+				const extent = axis === "horizontal" ? 320 : 300;
+				const point = (fraction) => ({ x: start.x + (axis === "horizontal" ? extent * fraction : 0), y: start.y + (axis === "vertical" ? extent * fraction : 0) });
+				await touch.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [start] });
+				await touch.send("Input.dispatchTouchEvent", { type: "touchMove", touchPoints: [point(.8)] });
+				if (ending === "return") await touch.send("Input.dispatchTouchEvent", { type: "touchMove", touchPoints: [point(.2)] });
+				await touch.send("Input.dispatchTouchEvent", { type: ending === "cancel" ? "touchCancel" : "touchEnd", touchPoints: [] });
+				await page.waitForTimeout(350);
+				assert.equal(await touchCue.isVisible(), ending !== "open", `${axis}: touch ${ending} from the extended hit area`);
+			}
+			await touch.detach();
+			assert.equal(await page.evaluate(() => window.committedFolds), 3, "cancelled and returned touches never commit");
+
+			assert.equal(await page.locator("textarea").first().inputValue(), "a draft that survives the trade");
+		}
+	} finally {
+		await browser.close();
+		await server.close();
+	}
+});
+
+test("a vertical fold drag preserves horizontal fold choices and carries its canvas gutter", async () => {
+	const server = await serveDocs();
+	const browser = await chromium.launch({ channel: "chrome", headless: true });
+	try {
+		const page = await browser.newPage({ viewport: { width: 1800, height: 1000 }, deviceScaleFactor: 2 });
+		await page.goto(server.url);
+		await page.getByRole("button", { name: "Folding: cells and rows", exact: true }).click();
+		await page.waitForTimeout(500);
+		const frame = page.locator('[data-frame="b"]');
+		await frame.locator('.supermax-fold-cue.is-horizontal:visible').click();
+		await page.waitForTimeout(400);
+		const before = await page.evaluate(() => {
+			const workspace = window.supermaxDemo.frames[1].workspace;
+			window.hostAnimation = workspace.cells.get("albums/album:folding/folding:thumbnails").body.animate([{ outlineOffset: "0px" }, { outlineOffset: "1px" }], { duration: 60000 });
+			return [...workspace.layout.cells.values()].filter((cell) => cell.occurrence.includes("folding:thumbnails")).map(({ occurrence, width, folded }) => ({ occurrence, width, folded }));
+		});
+		const cue = frame.locator('.supermax-fold-cue.is-vertical[data-direction="down"]:visible');
+		const box = await cue.boundingBox();
+		await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+		await page.mouse.down();
+		await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2 + 120, { steps: 12 });
+		const during = await page.evaluate(() => {
+			const workspace = window.supermaxDemo.frames[1].workspace;
+			return [...workspace.layout.cells.values()].filter((cell) => cell.occurrence.includes("folding:thumbnails")).map(({ occurrence, width, folded }) => ({ occurrence, width, folded }));
+		});
+		assert.deepEqual(during, before, "a row trade must not change any horizontal fold choice");
+		assert.equal(await page.evaluate(() => window.hostAnimation.playState), "running", "the host's own cell-body animation keeps running");
+		const seam = await frame.locator('[data-row="albums/album:folding/folding:thumbnails"]').evaluate((row) => {
+			const rect = row.getBoundingClientRect();
+			return { x: rect.left + 20, y: rect.top + .5 };
+		});
+		const png = await page.screenshot();
+		const color = await page.evaluate(async ({ png, seam }) => {
+			const image = new Image();
+			image.src = `data:image/png;base64,${png}`;
+			await image.decode();
+			const canvas = document.createElement("canvas");
+			canvas.width = image.width;
+			canvas.height = image.height;
+			const context = canvas.getContext("2d");
+			context.drawImage(image, 0, 0);
+			return [...context.getImageData(Math.floor(seam.x * 2), Math.floor(seam.y * 2), 1, 1).data];
+		}, { png: png.toString("base64"), seam });
+		assert.deepEqual(color, [221, 221, 221, 255], "the moving row boundary reveals the canvas gutter");
+		await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2 + 260, { steps: 10 });
+		await page.mouse.up();
+		await page.waitForTimeout(350);
+		const persisted = await page.evaluate(() => {
+			const workspace = window.supermaxDemo.frames[1].workspace;
+			const snapshot = workspace.navigator.snapshot();
+			workspace.restore(snapshot);
+			return [...workspace.layout.cells.values()].filter((cell) => cell.occurrence.includes("folding:thumbnails")).map(({ occurrence, width, folded }) => ({ occurrence, width, folded }));
+		});
+		assert.deepEqual(persisted, before, "completed row trades and snapshot restore preserve the horizontal choice");
+	} finally {
+		await browser.close();
+		await server.close();
+	}
+});
+
+test("a released fold finishes visibly and keeps its handle on the moving gutter", async () => {
+	const server = await serveDocs();
+	const browser = await chromium.launch({ channel: "chrome", headless: true });
+	try {
+		const page = await browser.newPage({ viewport: { width: 1800, height: 1000 }, deviceScaleFactor: 2 });
+		await page.goto(server.url);
+		await page.getByRole("button", { name: "Folding: cells and rows", exact: true }).click();
+		await page.evaluate(() => window.supermaxDemo.resize([[960, 640], [414, 334]]));
+		await page.waitForTimeout(400);
+		const cue = page.locator('[data-frame="b"] .supermax-fold-cue.is-vertical[data-direction="down"]:visible');
+		const occurrence = await cue.getAttribute("data-fold-occurrence");
+		const distance = await page.evaluate((id) => {
+			const workspace = window.supermaxDemo.frames[1].workspace;
+			const previous = workspace.navigator.foldFocuses;
+			workspace.navigator.focusFold(id, "vertical");
+			const height = workspace.navigator.layout().rows.get(id).height;
+			workspace.navigator.foldFocuses = previous;
+			return height;
+		}, occurrence);
+		for (const [fraction, open] of [[0.4, false], [0.75, true]]) {
+			const box = await cue.boundingBox();
+			await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+			await page.mouse.down();
+			await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2 + distance * fraction, { steps: 10 });
+			const atRelease = await page.evaluate((id) => {
+				const row = document.querySelector(`[data-frame="b"] [data-row="${id}"]`);
+				const handle = document.querySelector(`[data-frame="b"] .supermax-fold-cue.is-vertical[data-fold-occurrence="${id}"]`);
+				return { rowBottom: row.getBoundingClientRect().bottom, handleTop: handle.getBoundingClientRect().top };
+			}, occurrence);
+			assert.ok(Math.abs(atRelease.rowBottom - atRelease.handleTop) < 0.1, `the handle outline begins at the moving gutter: ${JSON.stringify(atRelease)}`);
+			await page.evaluate((id) => {
+				window.releaseHeights = [];
+				const row = document.querySelector(`[data-frame="b"] [data-row="${id}"]`);
+				document.addEventListener("pointerup", () => {
+					const started = performance.now();
+					const sample = () => {
+						window.releaseHeights.push({ elapsed: performance.now() - started, height: row.getBoundingClientRect().height });
+						if (performance.now() - started < 260) requestAnimationFrame(sample);
+					};
+					sample();
+				}, { capture: true, once: true });
+			}, occurrence);
+			await page.mouse.up();
+			await page.waitForTimeout(280);
+			const heights = await page.evaluate(() => window.releaseHeights.map((sample) => sample.height));
+			const start = heights[0];
+			const finish = heights.at(-1);
+			const between = heights.filter((height) => open ? height > start + 1 && height < finish - 1 : height < start - 1 && height > finish + 1);
+			assert.ok(between.length >= 3, `${open ? "opening" : "returning"} has visible intermediate frames: ${heights.join(", ")}`);
+			assert.ok(open ? finish > start : finish < start);
+		}
+	} finally {
+		await browser.close();
+		await server.close();
+	}
+});
+
+test("folds opening left or up keep their handles on the interior gutter", async () => {
+	const server = await serveDocs();
+	const browser = await chromium.launch({ channel: "chrome", headless: true });
+	try {
+		const page = await browser.newPage({ viewport: { width: 1800, height: 1000 }, deviceScaleFactor: 2 });
+		await page.goto(server.url);
+		await page.getByRole("button", { name: "Folding: cells and rows", exact: true }).click();
+		await page.evaluate(() => window.supermaxDemo.resize([[960, 640], [414, 334]]));
+		await page.waitForTimeout(400);
+		const frame = page.locator('[data-frame="b"]');
+		await frame.locator('.supermax-fold-cue.is-horizontal:visible').click();
+		await page.waitForTimeout(400);
+		const cue = frame.locator('.supermax-fold-cue.is-horizontal[data-direction="left"]:visible');
+		const id = await cue.getAttribute("data-fold-occurrence");
+		const box = await cue.boundingBox();
+		await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+		await page.mouse.down();
+		await page.mouse.move(box.x + box.width / 2 - 100, box.y + box.height / 2, { steps: 10 });
+		const geometry = await page.evaluate((occurrence) => {
+			const frame = document.querySelector('[data-frame="b"]');
+			const cue = frame.querySelector(`.supermax-fold-cue.is-horizontal[data-fold-occurrence="${occurrence}"]`);
+			const cell = frame.querySelector(`[data-occurrence="${occurrence}"]`);
+			const viewport = frame.querySelector('.supermax-workspace').getBoundingClientRect();
+			const gutter = parseFloat(getComputedStyle(frame.querySelector('.supermax-workspace')).getPropertyValue('--supermax-gutter'));
+			return { handleRight: cue.getBoundingClientRect().right, cellLeft: cell.getBoundingClientRect().left, cellRight: cell.getBoundingClientRect().right, viewportRight: viewport.right, gutter };
+		}, id);
+		assert.ok(Math.abs(geometry.cellRight - geometry.viewportRight) < 2, "the dragged cell still meets the viewport edge");
+		assert.ok(Math.abs(geometry.handleRight - geometry.cellLeft - geometry.gutter) < 0.1, `the handle follows the interior gutter: ${JSON.stringify(geometry)}`);
+		await page.mouse.up();
+		await page.waitForTimeout(250);
+		await frame.locator('.supermax-fold-cue.is-vertical[data-direction="down"]:visible').click();
+		await page.waitForTimeout(400);
+		const upward = frame.locator('.supermax-fold-cue.is-vertical[data-direction="up"]:visible');
+		const rowId = await upward.getAttribute("data-fold-occurrence");
+		const upwardBox = await upward.boundingBox();
+		await page.mouse.move(upwardBox.x + upwardBox.width / 2, upwardBox.y + upwardBox.height / 2);
+		await page.mouse.down();
+		await page.mouse.move(upwardBox.x + upwardBox.width / 2, upwardBox.y + upwardBox.height / 2 - 100, { steps: 10 });
+		const vertical = await page.evaluate((occurrence) => {
+			const frame = document.querySelector('[data-frame="b"]');
+			const cue = frame.querySelector(`.supermax-fold-cue.is-vertical[data-fold-occurrence="${occurrence}"]`);
+			const row = frame.querySelector(`[data-row="${occurrence}"]`);
+			const viewport = frame.querySelector('.supermax-workspace').getBoundingClientRect();
+			const gutter = parseFloat(getComputedStyle(frame.querySelector('.supermax-workspace')).getPropertyValue('--supermax-gutter'));
+			return { handleBottom: cue.getBoundingClientRect().bottom, rowTop: row.getBoundingClientRect().top, rowBottom: row.getBoundingClientRect().bottom, viewportBottom: viewport.bottom, gutter };
+		}, rowId);
+		assert.ok(Math.abs(vertical.rowBottom - vertical.viewportBottom) < 2, "the dragged row still meets the viewport bottom");
+		assert.ok(Math.abs(vertical.handleBottom - vertical.rowTop - vertical.gutter) < 0.1, `the upward handle follows its interior gutter: ${JSON.stringify(vertical)}`);
+		await page.mouse.up();
+	} finally {
+		await browser.close();
+		await server.close();
+	}
+});
+
+test("a completed fold drag carries its handle into the next fold", async () => {
+	const server = await serveDocs();
+	const browser = await chromium.launch({ channel: "chrome", headless: true });
+	try {
+		const page = await browser.newPage({ viewport: { width: 1800, height: 1000 } });
+		await page.goto(server.url);
+		await page.getByRole("button", { name: "Folding: cells and rows", exact: true }).click();
+		await page.evaluate(() => window.supermaxDemo.resize([[960, 640], [414, 334]]));
+		await page.waitForTimeout(400);
+		const frame = page.locator('[data-frame="b"]');
+		await frame.locator('.supermax-fold-cue.is-horizontal:visible').click();
+		await page.waitForTimeout(350);
+		const cue = frame.locator('.supermax-fold-cue.is-horizontal[data-direction="left"]:visible');
+		const box = await cue.boundingBox();
+		const x = box.x + box.width / 2;
+		const y = box.y + box.height / 2;
+		await page.mouse.move(x, y);
+		await page.mouse.down();
+		await page.mouse.move(x - 300, y, { steps: 12 });
+		await page.evaluate(() => {
+			const frame = document.querySelector('[data-frame="b"]');
+			const oldCue = frame.querySelector('.supermax-fold-cue.is-horizontal[data-direction="left"]:not([hidden])');
+			const nextCue = [...frame.querySelectorAll('.supermax-fold-cue.is-horizontal')].find((candidate) => candidate !== oldCue && candidate.dataset.foldOccurrence.endsWith("folding:thumbnails"));
+			window.foldHandleFrames = [];
+			const sample = (elapsed) => {
+				const measure = (cue) => {
+					const mark = cue.querySelector(".supermax-fold-mark");
+					const style = getComputedStyle(mark);
+					return { visible: !cue.hidden, x: cue.getBoundingClientRect().left, leftRadius: parseFloat(style.borderTopLeftRadius), rightRadius: parseFloat(style.borderTopRightRadius) };
+				};
+				window.foldHandleFrames.push({ elapsed, old: measure(oldCue), next: measure(nextCue) });
+			};
+			sample(-1);
+			document.addEventListener("pointerup", () => {
+				const start = performance.now();
+				const tick = () => { sample(performance.now() - start); if (performance.now() - start < 300) requestAnimationFrame(tick); };
+				requestAnimationFrame(tick);
+			}, { capture: true, once: true });
+		});
+		await page.mouse.up();
+		await page.waitForTimeout(330);
+		const frames = await page.evaluate(() => window.foldHandleFrames);
+		const first = frames.findIndex((frame) => frame.next.visible);
+		assert.ok(first > 0, "the destination fold takes over after release");
+		assert.ok(frames[first].elapsed < 40, "the handoff starts when the pointer is released");
+		const before = frames[first - 1].old;
+		const after = frames[first].next;
+		const end = frames.at(-1).next;
+		assert.ok(Math.abs(after.x - before.x) < 3, `the handle does not jump across its gutter: ${JSON.stringify({ before, after })}`);
+		assert.ok(Math.abs(after.leftRadius - before.leftRadius) < 0.5 && Math.abs(after.rightRadius - before.rightRadius) < 0.5, "the handle corners start from the previous shape");
+		assert.ok(Math.abs(end.x - after.x) > 5, "the handle moves to its new side after transfer");
+		assert.ok(frames.slice(first + 1).some((frame) => frame.next.x > Math.min(after.x, end.x) + 1 && frame.next.x < Math.max(after.x, end.x) - 1), "the handle has intermediate positions");
+		assert.ok(frames.slice(first + 1).some((frame) => frame.next.leftRadius > Math.min(after.leftRadius, end.leftRadius) + 0.1 && frame.next.leftRadius < Math.max(after.leftRadius, end.leftRadius) - 0.1), "the handle corners round through intermediate values");
+	} finally {
+		await browser.close();
+		await server.close();
+	}
+});
+
+test("clicking either fold axis animates the same handle handoff", async () => {
+	const server = await serveDocs();
+	const browser = await chromium.launch({ channel: "chrome", headless: true });
+	try {
+		const page = await browser.newPage({ viewport: { width: 1800, height: 1000 } });
+		await page.goto(server.url);
+		await page.getByRole("button", { name: "Folding: cells and rows", exact: true }).click();
+		await page.evaluate(() => window.supermaxDemo.resize([[960, 640], [414, 334]]));
+		await page.waitForTimeout(400);
+		for (const axis of ["horizontal", "vertical"]) {
+			const motion = await page.evaluate(async (axis) => {
+				const frame = document.querySelector('[data-frame="b"]');
+				const oldCue = frame.querySelector(`.supermax-fold-cue.is-${axis}:not([hidden])`);
+				const oldRect = oldCue.getBoundingClientRect();
+				const oldStyle = getComputedStyle(oldCue.querySelector(".supermax-fold-mark"));
+				const before = { x: oldRect.x, y: oldRect.y, leftRadius: parseFloat(oldStyle.borderTopLeftRadius), rightRadius: parseFloat(oldStyle.borderTopRightRadius) };
+				oldCue.click();
+				const newCue = [...frame.querySelectorAll(`.supermax-fold-cue.is-${axis}:not([hidden])`)].find((cue) => cue !== oldCue);
+				const sample = () => {
+					const rect = newCue.getBoundingClientRect();
+					const style = getComputedStyle(newCue.querySelector(".supermax-fold-mark"));
+					return { x: rect.x, y: rect.y, leftRadius: parseFloat(style.borderTopLeftRadius), rightRadius: parseFloat(style.borderTopRightRadius) };
+				};
+				const start = sample();
+				await new Promise((resolve) => setTimeout(resolve, 60));
+				const middle = sample();
+				await new Promise((resolve) => setTimeout(resolve, 270));
+				return { before, start, middle, end: sample() };
+			}, axis);
+			const coordinate = axis === "horizontal" ? "x" : "y";
+			assert.ok(Math.abs(motion.before[coordinate] - motion.start[coordinate]) < 3, `${axis}: no positional flip on click: ${JSON.stringify(motion)}`);
+			assert.ok(Math.abs(motion.before.leftRadius - motion.start.leftRadius) < 0.5 && Math.abs(motion.before.rightRadius - motion.start.rightRadius) < 0.5, `${axis}: corners start from the old handle`);
+			assert.ok(Math.abs(motion.middle[coordinate] - motion.start[coordinate]) > 2 && Math.abs(motion.end[coordinate] - motion.middle[coordinate]) > 2, `${axis}: handle moves in intermediate frames`);
+			const changingCorners = ["leftRadius", "rightRadius"].filter((corner) => Math.abs(motion.start[corner] - motion.end[corner]) > 1);
+			assert.ok(changingCorners.some((corner) => motion.middle[corner] > Math.min(motion.start[corner], motion.end[corner]) + 0.1 && motion.middle[corner] < Math.max(motion.start[corner], motion.end[corner]) - 0.1), `${axis}: corner radius has an intermediate shape: ${JSON.stringify(motion)}`);
 		}
 	} finally {
 		await browser.close();

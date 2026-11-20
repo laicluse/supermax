@@ -76,9 +76,9 @@ test("the workspace composes its overlays behind one surface", async () => {
 		const id = workspace.notify({ scope: "workspace", kind: "action", message: "Hello", action: { label: "Ok", run() {} } });
 		const shown = region.querySelectorAll(".supermax-notice").length;
 		workspace.dismissAll();
-		return { regionInRoot, id, shown, afterDismiss: region.querySelectorAll(".supermax-notice").length, modal: workspace.modal, peek: workspace.peek };
+		return { regionInRoot, id, shown, afterDismiss: region.querySelectorAll(".supermax-notice").length, modal: workspace.modal };
 	});
-	assert.deepEqual(result, { regionInRoot: true, id: "notice-1", shown: 1, afterDismiss: 0, modal: null, peek: null }, "notices live in the overlay root, the page by default, outside the cells");
+	assert.deepEqual(result, { regionInRoot: true, id: "notice-1", shown: 1, afterDismiss: 0, modal: null }, "notices live in the overlay root, the page by default, outside the cells");
 });
 
 test("library text is opt-in: defaults stay English, a host replaces what it names, and a typo fails loudly", async () => {
@@ -327,44 +327,33 @@ test("every change of the zoom emits a zoom event, also when it ends because its
 	assert.deepEqual(events, ["detail", null, "detail", null], "zooming, restoring both ways and closing the zoomed cell each emit zoom once");
 });
 
-test("a compact rail with its own content leaves that content room inside the cell, with only the package stylesheet", async () => {
+test("a kept cell retains its declared minimum without a second presentation", async () => {
 	const measured = await page.evaluate(async () => {
 		const { Navigator, Workspace } = await import("/src/index.js");
 		const host = document.createElement("div");
-		host.style.cssText = "width:700px;height:500px";
+		host.style.cssText = "width:370px;height:500px";
 		document.body.append(host);
 		const navigator = new Navigator({
 			destinations: {
-				menu: { title: "Mail", min: 195, max: 256, keep: true, compact: { min: 48 } },
-					list: { title: "List", min: 320, max: "*", preferred: 640, fold: false },
+				menu: { title: "Mail", min: 48, max: 256, keep: true },
+				list: { title: "List", min: 320, max: "*", preferred: 640, fold: false },
 				detail: { title: "Detail", min: 320, max: 640 },
 			},
 			root: "menu",
 			minViewportHeight: window.fixture.minViewportHeight,
 			chrome: window.fixture.chrome,
 		});
-		const workspace = new Workspace(host, {
-			navigator,
-			content: () => ({ element: document.createElement("div") }),
-			compactContent: () => {
-				const icons = document.createElement("div");
-				icons.className = "test-icons";
-				for (const letter of ["I", "X"]) { const button = document.createElement("button"); button.textContent = letter; icons.append(button); }
-				return icons;
-			},
-		});
+		const workspace = new Workspace(host, { navigator, content: () => ({ element: document.createElement("button") }) });
 		workspace.sync(["menu", "list", "detail"], { animate: false, origin: null });
 		await new Promise((resolve) => requestAnimationFrame(resolve));
 		const cell = host.querySelector('[data-occurrence="menu"]');
-		const compact = cell.querySelector(".supermax-compact").getBoundingClientRect();
-		const icons = [...cell.querySelectorAll(".test-icons button")].map((button) => button.getBoundingClientRect());
-		const result = { compact: cell.classList.contains("is-compact"), bottom: Math.round(compact.bottom), icons: icons.map((rect) => Math.round(rect.bottom)), widths: icons.map((rect) => Math.round(rect.width)) };
+		const result = { width: Math.round(cell.getBoundingClientRect().width), body: !!cell.querySelector(".supermax-cell-body button"), rail: !!cell.querySelector(".supermax-compact") };
 		host.remove();
 		return result;
 	});
-	assert.equal(measured.compact, true, "the menu shows as a rail");
-	assert.ok(measured.icons.every((bottom) => bottom <= measured.bottom), `its icons stay inside the cell: icons end at ${measured.icons}, the rail at ${measured.bottom}px`);
-	assert.ok(measured.widths.every((width) => width > 0), "and take room");
+	assert.ok(measured.width >= 48, "the kept cell remains at its host-declared minimum");
+	assert.equal(measured.body, true, "the host content stays in its own cell body");
+	assert.equal(measured.rail, false, "Supermax adds no compact rail");
 });
 
 test("a sync that carries the zoom replaces a zoomed cell in one render, without showing the cells before it", async () => {

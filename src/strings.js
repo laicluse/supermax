@@ -14,9 +14,6 @@ export const DEFAULT_STRINGS = Object.freeze({
 	noticeSourceClosed: (title) => `${title} (not open):`,
 	closedCell: () => "A closed cell",
 	dismissNotice: (message) => `Dismiss: ${message}`,
-	peek: (title) => `Peek ${title}`,
-	peekDialog: (title) => `${title}, peek`,
-	closePeek: () => "Close peek",
 	unfold: (title) => `Unfold ${title}`,
 });
 

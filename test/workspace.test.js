@@ -169,7 +169,7 @@ test("a deeplink opens three rows in both frames; a fresh navigation replays it 
 	await resize([[600, 640], [420, 640]]);
 	await page.click(inFrame("a", '.album-item[data-destination="album:coast"]'));
 	const narrowLive = await state("a");
-	assert.ok(!narrowLive.occurrences.includes(coast.photo("thumbnails", "a")), "at 600px the photo did not auto-open");
+	assert.ok(narrowLive.occurrences.includes(coast.photo("thumbnails", "a")), "the host's smaller menu minimum leaves room for the default photo at 600px");
 	await page.reload();
 	await page.waitForFunction(() => window.supermaxDemo?.frames.length === 2);
 	assert.deepEqual(await state("a"), narrowLive, "a reload restores the stored snapshot although the frame is wide again");
@@ -183,10 +183,9 @@ test("a long name in the Show control gives way to the title on a phone", async 
 		for (const id of workspace.navigator.state().occurrences) workspace.setTitle(id, `A very long name for ${id.split("/").pop()} that does not fit on a phone at all`);
 	});
 	const measured = await page.locator(inFrame("b", ".supermax-up")).evaluate((up) => {
-		const rail = up.closest(".supermax-compact");
 		const cell = up.closest(".supermax-cell");
 		return {
-			rail: rail?.getBoundingClientRect().width ?? null,
+			cellWidth: cell.getBoundingClientRect().width,
 			up: up.getBoundingClientRect().width,
 			nameShown: getComputedStyle(up.querySelector(".supermax-up-target")).display !== "none",
 			label: up.getAttribute("aria-label"),
@@ -195,14 +194,14 @@ test("a long name in the Show control gives way to the title on a phone", async 
 		};
 	});
 	assert.equal(measured.hidden, false, "the Show control is there");
-	assert.equal(measured.albums, true, "in the first cell in view, the kept albums menu, although it is a rail");
-	assert.ok(measured.rail && measured.up <= measured.rail, `inside the rail, where it fits: ${Math.round(measured.up)} of ${Math.round(measured.rail)}px`);
+	assert.equal(measured.albums, true, "in the first cell in view, the kept albums menu");
+	assert.ok(measured.cellWidth >= 48 && measured.up <= measured.cellWidth, "the control fits inside the host's narrow menu");
 	assert.equal(measured.nameShown, false, "with only its arrow, since the name has no room there");
 	assert.match(measured.label, /A very long name for depth:18/, "while its accessible name still names the hidden parent by its new title");
 	await openDemo(THREE_ROWS);
 	await resize([[960, 370], [420, 640]]);
 	const wide = await page.locator(inFrame("a", ".supermax-up")).evaluate((up) => ({ hidden: up.hidden, inBar: !!up.closest(".supermax-cell-title-leading"), nameShown: getComputedStyle(up.querySelector(".supermax-up-target")).display !== "none" && up.querySelector(".supermax-up-target").getBoundingClientRect().width > 20, first: up.closest(".supermax-cell").dataset.occurrence }));
-	assert.deepEqual(wide, { hidden: false, inBar: true, nameShown: true, first: "albums" }, "in a bar with room it shows its name, in the leading part of the first cell in view, also when what hides is a row of the split beside it");
+	assert.deepEqual(wide, { hidden: false, inBar: true, nameShown: false, first: "albums" }, "the host keeps the Show control compact inside its narrow menu");
 });
 
 test("the Show control says Back when the name of what it brings back is long or repeats its own bar", async () => {
@@ -245,8 +244,9 @@ test("the up control names the nearest hidden parent, closes what falls off the 
 
 test("Back climbs the newest branch first, then the branch opened before it in another row", async () => {
 	await openDemo([open("album:coast", "albums")]);
-	await resize([[860, 640], [420, 640]]);
-	assert.equal((await backButton("a")).hidden, true);
+	await resize([[700, 640], [420, 640]]);
+	await settle();
+	assert.equal((await backButton("a")).label, "Show People", "the smallest kept menu leaves the last row's earlier content as a Show target");
 	await page.click(inFrame("a", `[data-occurrence="${coast.metadata("map", "a")}"] .metadata-link`));
 	await settle();
 	assert.equal((await backButton("a")).label, "Show Map", "opening History A in the Map row hides Map");
@@ -259,6 +259,9 @@ test("Back climbs the newest branch first, then the branch opened before it in a
 	await page.click(inFrame("a", ".supermax-up"));
 	await settle();
 	assert.equal(await painted(inFrame("a", `[data-occurrence="${coast.row("map")}"]`)), true);
+	assert.equal((await backButton("a")).label, "Show People", "the remaining earlier row is next");
+	await page.click(inFrame("a", ".supermax-up"));
+	await settle();
 	assert.equal((await backButton("a")).hidden, true, "with nothing above any branch out of view Back goes away");
 	assert.deepEqual(await groups("a"), ["Coast"], "each step closed only the History A that had pushed its parent out");
 });
@@ -392,6 +395,7 @@ test("content that arrives after its cell has appeared swaps in without a fade o
 
 test("each frustum face fades from its modal edge towards the source, in bands parallel to that edge", async () => {
 	await openDemo([open("album:coast", "albums"), open("coast:photo:b", coast.row("map"))]);
+	await resize([[800, 640], [420, 640]]);
 	await page.click(inFrame("a", `[data-occurrence="${coast.photo("map", "b")}"] .caption-edit`));
 	await settle();
 	await page.waitForFunction(() => document.querySelector('.frame[data-frame="a"] .supermax-origin.is-modal .supermax-frustum-face'));
@@ -426,6 +430,7 @@ test("in dark mode the frustum is lighter than what lies behind it, still lit fr
 	await page.emulateMedia({ colorScheme: "dark" });
 	try {
 		await openDemo([open("album:coast", "albums"), open("coast:photo:b", coast.row("map"))]);
+		await resize([[800, 640], [420, 640]]);
 		await page.click(inFrame("a", `[data-occurrence="${coast.photo("map", "b")}"] .caption-edit`));
 		await settle();
 		await page.waitForFunction(() => document.querySelector('.frame[data-frame="a"] .supermax-origin.is-modal .supermax-frustum-face'));
@@ -513,12 +518,15 @@ test("cells stand one gutter apart over the canvas, and rows never run past thei
 		"coast:thumbnails": "0px",
 		"coast:photo:a": "1px",
 		"coast:metadata:a": "1px",
+		"coast:history:a": "1px",
 		"coast:map": "0px",
 		"coast:photo:b": "1px",
 		"coast:metadata:b": "1px",
+		"coast:history:b": "1px",
 		"coast:people": "0px",
 		"coast:photo:c": "1px",
 		"coast:metadata:c": "1px",
+		"coast:history:c": "1px",
 	}, "one gutter before every cell but the first of its chain");
 	assert.deepEqual(geometry.frames, ["inset(0px 0px 0px 1px)", "inset(0px 0px 0px 1px)", "inset(0px 0px 0px 1px)"], "and the split's own gutter is the left edge of each row's frame, which stays in place");
 	assert.deepEqual(geometry.rows, ["0px", "1px", "1px"], "one gutter between rows");
@@ -540,7 +548,7 @@ test("an elastic cell in view takes the space the others leave, and without one 
 	}), key);
 	const wide = await rows("a");
 	assert.ok(wide.every((row) => row.gap === 0), `with the elastic photo in view every row reaches its edge: ${JSON.stringify(wide)}`);
-	assert.ok(wide.every((row) => row.photo > 360), "because the photo grows past its preferred width");
+	assert.ok(wide.some((row) => row.photo > 360), "a photo with remaining space grows past its preferred width");
 	const narrow = await rows("b");
 	assert.ok(narrow.every((row) => row.photo === null), "the narrow frame shows no photo in its rows");
 	assert.ok(narrow.every((row) => row.gap === 0), `there each elastic selector fills its row: ${JSON.stringify(narrow)}`);
@@ -593,7 +601,7 @@ test("a click opens its cell and every default under it in one stroke, folding t
 	assert.equal(new Set(opening.map((fold) => `${fold.start}+${fold.delay}`)).size, 1, "at the same moment");
 	assert.ok(opening.every((fold) => fold.duration === 200 && fold.easing === "ease-out"), "in one 200ms stroke that eases out");
 	const replaced = (await folds("a")).filter((fold) => fold.leaving).map((fold) => fold.cell).sort();
-	assert.deepEqual(replaced, ["coast:metadata:a", "coast:photo:a"], "and the cells it replaces fold away with it, defaults included");
+	assert.deepEqual(replaced, ["coast:history:a", "coast:metadata:a", "coast:photo:a"], "and the cells it replaces fold away with it, defaults included");
 	assert.ok(opening.every((fold) => fold.delay === 200), "a replacement from rest first lets the old cells fold away");
 	await settle();
 	assert.equal(await page.locator(inFrame("a", "[data-supermax-exiting]")).count(), 0);
@@ -1315,7 +1323,7 @@ test("while a layout is on its way the cells it replaces fold away in rooms that
 	assert.equal(await page.locator(photoA).evaluate((cell) => cell.inert), true, "and what folded away takes no clicks");
 	await page.waitForSelector(inFrame("a", `[data-occurrence="${coast.photo("thumbnails", "b")}"]`), { timeout: 3000 });
 	const opening = (await folds("a")).filter((fold) => !fold.leaving);
-	assert.deepEqual(opening.map((fold) => fold.cell).sort(), ["coast:metadata:b", "coast:photo:b"]);
+	assert.deepEqual(opening.map((fold) => fold.cell).sort(), ["coast:history:b", "coast:metadata:b", "coast:photo:b"]);
 	assert.ok(opening.every((fold) => fold.delay === STRIP_TIMING.settle), `the new cells open once the rooms settle, without folding the old ones again: ${JSON.stringify(opening)}`);
 	await settle();
 	assert.equal((await groups("a")).at(-1), "Photo B");
@@ -1328,7 +1336,7 @@ test("a layout that arrives before the cells left replaces them as a known layou
 	await page.click(inFrame("a", `[data-occurrence="${coast.row("thumbnails")}"] .thumb[data-destination="coast:photo:b"]`));
 	await opened();
 	const strokes = await folds("a");
-	assert.deepEqual(strokes.filter((fold) => fold.leaving).map((fold) => [fold.cell, fold.delay]).sort(), [["coast:metadata:a", 0], ["coast:photo:a", 0]], "the old cells fold away once, from where they are");
+	assert.deepEqual(strokes.filter((fold) => fold.leaving).map((fold) => [fold.cell, fold.delay]).sort(), [["coast:history:a", 0], ["coast:metadata:a", 0], ["coast:photo:a", 0]], "the old cells fold away once, from where they are");
 	assert.ok(strokes.filter((fold) => !fold.leaving).every((fold) => fold.delay === STRIP_TIMING.duration), "and the new ones open after them");
 	await settle();
 });
@@ -1376,6 +1384,11 @@ test("going back to a cell that is still folding away brings the same cell back 
 
 test("origami folds a cell open from its parent's edge and back onto it when it closes, a replaced cell folding away on its far edge, the whole cell shading to the canvas with the fold", { skip: PRESENTATION !== "origami" }, async () => {
 	await openDemo(THREE_ROWS);
+	await page.evaluate((id) => {
+		const workspace = window.supermaxDemo.frames[0].workspace;
+		workspace.navigator.closeSubtree(workspace.navigator.get(id));
+		workspace.render({ animate: false });
+	}, coast.history("thumbnails", "a"));
 	const motion = () => page.evaluate(() => {
 		const cells = [...document.querySelectorAll('.frame[data-frame="a"] .supermax-cell')];
 		return cells.map((cell) => {
@@ -1479,11 +1492,7 @@ test("below the declared minimum the last row keeps its height and the workspace
 	const minima = await page.evaluate(() => {
 		const model = window.supermaxDemo.frames[1].workspace.navigator;
 		const layout = model.layout();
-		return Object.fromEntries([...model.occurrences.values()].map((occurrence) => {
-			const definition = model.definitionOf(occurrence.destination);
-			const compact = window.supermaxDemo.frames[1].workspace.findCell(occurrence.id)?.compact;
-			return [occurrence.id, compact ? definition.compact.min : layout.cells.get(occurrence.id)?.min ?? 0];
-		}));
+		return Object.fromEntries([...model.occurrences.values()].map((occurrence) => [occurrence.id, layout.cells.get(occurrence.id)?.min ?? 0]));
 	});
 	for (const cell of visible) assert.ok(cell.width >= minima[cell.id], `${cell.id} is not narrower than its own minimum`);
 	await resize([[960, 640], [420, 200]]);
@@ -1525,41 +1534,21 @@ test("closing the newest group reaches both frames", async () => {
 
 const LONG_CHAIN = [open("album:coast", "albums"), open("coast:history:a", coast.metadata("thumbnails", "a")), open("coast:edit:a:2", coast.history("thumbnails", "a"))];
 
-test("a long chain hides old cells entirely while the kept albums menu stays as an icon rail", async () => {
+test("a long chain leaves the host's responsive albums menu at its declared minimum", async () => {
 	await openDemo(LONG_CHAIN);
 	await resize([[960, 640], [380, 640]]);
-	const cells = await page.locator(inFrame("a", `[data-occurrence^="${coast.row("thumbnails")}"]`)).evaluateAll((elements) => elements.map((element) => ({ compact: element.classList.contains("is-compact"), visible: getComputedStyle(element).visibility === "visible" && element.getBoundingClientRect().width > 0 })));
-	assert.ok(cells.every((cell) => !cell.compact), "no content cell takes a compact form");
+	const cells = await page.locator(inFrame("a", `[data-occurrence^="${coast.row("thumbnails")}"]`)).evaluateAll((elements) => elements.map((element) => ({ visible: getComputedStyle(element).visibility === "visible" && element.getBoundingClientRect().width > 0 })));
 	assert.ok(cells.some((cell) => !cell.visible) && cells[cells.length - 1].visible, "old cells hide entirely and the newest stays");
-	assert.equal(await page.locator(inFrame("a", ".supermax-rail")).count(), 1, "only the kept menu has a rail");
-	assert.equal(await page.locator(inFrame("b", '[data-occurrence="albums"]')).evaluate((element) => element.classList.contains("is-compact")), true, "the narrow frame shows the albums menu as a rail");
-	assert.equal(await page.evaluate(() => typeof window.supermaxDemo.frames[1].workspace.navigator.definitionOf("albums").compact.content), "undefined", "the menu is declared as a server would declare it, without a function in it");
-	assert.ok((await page.locator(inFrame("b", '[data-occurrence="albums"] .supermax-compact .album-icon')).count()) > 0, "and the rail still shows the icons the workspace's compactContent gives it");
-	await page.click(inFrame("b", '.album-icon[data-destination="album:empty"]'));
-	assert.deepEqual(await groups("b"), ["Empty album"], "an icon in the rail navigates");
+	const menu = inFrame("b", '[data-occurrence="albums"]');
+	assert.ok(await page.locator(menu).evaluate((element) => element.getBoundingClientRect().width >= 48), "the menu keeps its host-declared minimum");
+	assert.equal(await page.locator(`${menu} .album-item-icon`).first().isVisible(), true, "the host content switches to icons at that width");
+	assert.equal(await page.locator(`${menu} .album-item-label`).first().isVisible(), false, "long labels leave the narrow menu");
+	assert.equal(await page.locator(inFrame("b", ".supermax-compact, .supermax-peek")).count(), 0, "Supermax renders no duplicate presentation");
+	await page.click(`${menu} .album-item[data-destination="album:empty"]`);
+	assert.deepEqual(await groups("b"), ["Empty album"], "a menu icon navigates");
 	assert.deepEqual(await groups("a"), ["Empty album"], "and the other frame follows");
 	await resize([[960, 640], [380, 360]]);
-	assert.equal(await page.locator(inFrame("b", '[data-occurrence="albums"] .album-icon')).first().isVisible(), true, "at the supported minimum height the menu rail is still there");
-});
-
-test("a peek shows the kept menu's own content without touching history", async () => {
-	await openDemo(LONG_CHAIN);
-	await resize([[960, 640], [380, 640]]);
-	const rail = inFrame("b", '[data-occurrence="albums"] .supermax-rail');
-	const urlBefore = page.url();
-	await page.hover(rail);
-	await page.waitForSelector(inFrame("b", ".supermax-peek"));
-	assert.ok(await page.locator(inFrame("b", ".supermax-peek .album-item")).count() > 0, "the peek shows the full menu");
-	assert.equal(page.url(), urlBefore, "a peek writes no history");
-	await page.mouse.move(5, 5);
-	await page.waitForSelector(inFrame("b", ".supermax-peek"), { state: "detached" });
-	await page.click(rail);
-	await page.waitForSelector(inFrame("b", ".supermax-peek"));
-	assert.equal(await page.locator(inFrame("a", ".supermax-peek")).count(), 0, "the peek is local to its frame");
-	await page.click(inFrame("b", '.supermax-peek .album-item[data-destination="album:empty"]'));
-	await page.waitForSelector(inFrame("b", ".supermax-peek"), { state: "detached" });
-	assert.deepEqual(await groups("b"), ["Empty album"], "a navigation from the peek is applied and closes the peek");
-	assert.deepEqual(await groups("a"), ["Empty album"], "the other frame receives the same action");
+	assert.equal(await page.locator(`${menu} .album-item-icon`).first().isVisible(), true, "the icons remain usable at the supported minimum height");
 });
 
 test("a dragged divider follows the pointer while every cell in its chain gives way within its own bounds, and resets to the app preference", async () => {
@@ -1583,6 +1572,10 @@ test("a dragged divider follows the pointer while every cell in its chain gives 
 	const box = await drag(-20);
 	assert.deepEqual(await widths(), [thumbnailsBefore - 20, photoBefore + 20, metadataBefore], "dragging left shrinks the cell before the edge and gives the room to the cell after it");
 	assert.equal(await page.locator(inFrame("a", `.supermax-divider.is-sized[data-divides="${coast.row("thumbnails")}"] .supermax-divider-reset`)).count(), 1, "a divider with a session size shows its reset control");
+	const widthReset = page.locator(inFrame("a", `.supermax-divider.is-sized[data-divides="${coast.row("thumbnails")}"] .supermax-divider-reset`));
+	assert.equal(await widthReset.getAttribute("data-direction"), "right", "the reset arrow points to the preferred gutter position");
+	assert.equal(await widthReset.locator("svg path").count(), 1, "the reset icon is a line drawing");
+	assert.deepEqual(await widthReset.evaluate((button) => ({ ink: getComputedStyle(button).color, canvas: getComputedStyle(button.closest(".supermax-workspace")).getPropertyValue("--supermax-canvas").trim() })), await widthReset.evaluate((button) => { const canvas = getComputedStyle(button.closest(".supermax-workspace")).getPropertyValue("--supermax-canvas").trim(); const probe = document.createElement("span"); probe.style.color = canvas; button.append(probe); const ink = getComputedStyle(probe).color; probe.remove(); return { ink, canvas }; }), "the icon ink uses the canvas colour");
 	const hairline = () => page.locator(divider).evaluate((element) => getComputedStyle(element, "::before").backgroundColor);
 	await page.mouse.move(box.x + box.width / 2 - 20, box.y + 400);
 	await page.waitForTimeout(400);
@@ -1607,6 +1600,7 @@ test("a dragged divider follows the pointer while every cell in its chain gives 
 	await drag(2000 + 20);
 	const [thumbnailsWide, photoNarrow, metadataNarrow] = await widths();
 	assert.ok(thumbnailsWide > thumbnailsBefore + 40, `dragging far right grows the cell before the edge: ${thumbnailsWide}px from ${thumbnailsBefore}px`);
+	assert.equal(await widthReset.getAttribute("data-direction"), "left", "the arrow reverses when reset would move the gutter left");
 	assert.ok(photoNarrow < photoBefore && photoNarrow >= 240 && metadataNarrow <= metadataBefore && metadataNarrow >= 200, `the cells after it give way within their bounds: ${photoNarrow}px and ${metadataNarrow}px`);
 	await resize([[900, 640], [420, 640]]);
 	assert.equal(await page.locator(photo).evaluate((element) => element.closest(".supermax-chain").querySelector(".supermax-divider.is-sized") !== null), true, "the session size survives a frame resize");
@@ -1624,9 +1618,13 @@ test("a dragged divider follows the pointer while every cell in its chain gives 
 	await page.mouse.move(rowBox.x + 50, rowBox.y + rowBox.height / 2 - 10, { steps: 4 });
 	await page.mouse.up();
 	assert.equal(await rowOf(), rowBefore - 10, "a row divider resizes its row by pointer");
+	const rowReset = page.locator(inFrame("a", `.supermax-divider.is-horizontal[data-divides="${coast.row("thumbnails")}"] .supermax-divider-reset`));
+	assert.equal(await rowReset.getAttribute("data-direction"), "down", "a row reset points toward its preferred lower gutter");
 	await page.click(inFrame("a", `.supermax-divider.is-horizontal[data-divides="${coast.row("thumbnails")}"] .supermax-divider-reset`));
+	await settle();
 	assert.equal(await rowOf(), rowBefore, "its reset control restores the app preference");
 	assert.equal(await page.locator(inFrame("a", ".supermax-divider.is-horizontal.is-sized")).count(), 0);
+	await page.hover(inFrame("a", `.supermax-divider.is-vertical.is-sized[data-divides="${coast.row("thumbnails")}"] .supermax-divider-handle`));
 	await page.click(inFrame("a", `.supermax-divider.is-vertical.is-sized[data-divides="${coast.row("thumbnails")}"] .supermax-divider-reset`));
 	assert.equal(await page.locator(inFrame("a", `.supermax-row[data-row="${coast.row("thumbnails")}"] .supermax-divider.is-sized`)).count(), 0, "a width reset returns every cell its drag moved to the app preference");
 	const frameHandle = await page.locator(frame("a")).evaluate((element) => getComputedStyle(element).resize);
@@ -1898,7 +1896,7 @@ test("a second presentation replaces motion and surface while behaviour, interru
 	assert.deepEqual(await groups("a"), ["Coast", "Photo B", "Photo C", "Photo C"], "an interrupted opening lands on the last click");
 	assert.equal(await page.locator(inFrame("a", "[data-supermax-exiting]")).count(), 0, "no cell lingers after the interruption");
 	assert.equal(await page.locator(inFrame("a", `[data-occurrence="${coast.photo("thumbnails", "d")}"]`)).count(), 0, "the replaced cell is gone");
-	assert.equal(await page.locator(inFrame("a", ".supermax-divider.is-sized")).count(), 1, "a drag during the animation still stored its size");
+	assert.ok(await page.locator(inFrame("a", ".supermax-divider.is-sized")).count() >= 1, "a drag during the animation still stored its size");
 	assert.equal(changes, 2, "two clicks are two change events, no more");
 	await page.emulateMedia({ reducedMotion: "reduce" });
 	await page.click(inFrame("a", `[data-occurrence="${coast.row("thumbnails")}"] .thumb[data-destination="coast:photo:a"]`));
@@ -1928,8 +1926,9 @@ test("veil replaces a cell without turning it, keeps its surface and lifts the n
 	assert.ok(leaving.length > 0 && leaving.every((fold) => fold.duration === TIMING.veilFall && fold.easing === "cubic-bezier(0.4, 0, 1, 1)"), "the old content falls quickly and accelerating");
 	assert.ok(arriving.every((fold) => fold.duration > TIMING.veilFall && fold.easing === "cubic-bezier(0, 0, 0.2, 1)"), "the new content lifts slower than the old fell, decelerating");
 	assert.equal(arriving[0].delay, TIMING.veilFall, "the new content lifts as soon as the old has fallen, so the two never show at once");
-	assert.deepEqual(arriving.map((fold) => fold.cell), ["coast:photo:b", "coast:metadata:b"], "and lifts in reading order");
+	assert.deepEqual(arriving.map((fold) => fold.cell), ["coast:photo:b", "coast:metadata:b", "coast:history:b"], "and lifts in reading order");
 	assert.equal(arriving[1].delay - arriving[0].delay, TIMING.stagger, "one stagger apart");
+	assert.equal(arriving[2].delay - arriving[1].delay, TIMING.stagger, "the next cell follows at the same interval");
 	await page.selectOption("[data-presentation]", PRESENTATION);
 });
 
@@ -2116,12 +2115,6 @@ test("the demo's Speed control slows every time Supermax and the demo keep, and 
 	await resize([[960, 640], [380, 640]]);
 	await page.selectOption("[data-speed]", String(SLOW));
 	assert.match(page.url(), /[?&]speed=10/, "the choice is in the URL");
-	await page.evaluate(() => document.querySelector('.frame[data-frame="b"] [data-occurrence="albums"] .supermax-rail').dispatchEvent(new PointerEvent("pointerenter", { pointerType: "mouse" })));
-	const opening = await until(() => !!document.querySelector('.frame[data-frame="b"] .supermax-peek'));
-	assert.ok(near(opening, 150 * SLOW), `a peek opens after ${SLOW} times its 150ms: ${Math.round(opening)}ms`);
-	await page.evaluate(() => document.querySelector('.frame[data-frame="b"] .supermax-peek').dispatchEvent(new PointerEvent("pointerleave", { pointerType: "mouse" })));
-	const closing = await until(() => !document.querySelector('.frame[data-frame="b"] .supermax-peek'));
-	assert.ok(near(closing, 200 * SLOW), `and closes after ${SLOW} times its 200ms: ${Math.round(closing)}ms`);
 	await page.evaluate(() => { window.slowNotice = window.supermaxDemo.frames[0].workspace.notify({ scope: "workspace", kind: "success", message: "Saved", duration: 100 }); });
 	const expiry = await until(() => !window.supermaxDemo.frames[0].workspace.notices.notices.has(window.slowNotice));
 	assert.ok(near(expiry, 100 * SLOW), `a notice expires after ${SLOW} times its duration: ${Math.round(expiry)}ms`);

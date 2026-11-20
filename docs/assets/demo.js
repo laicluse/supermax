@@ -117,25 +117,6 @@ const renderers = {
 	edit: renderEdit,
 };
 
-function renderAlbumIcons(occurrence, workspace) {
-	const rail = element("div", "album-icons");
-	for (const album of albums) {
-		const button = element("button", "album-icon", album.title.slice(0, 1));
-		button.type = "button";
-		button.setAttribute("aria-label", `Open ${album.title}`);
-		button.dataset.destination = ids(album).album;
-		button.addEventListener("click", () => workspace.navigate(ids(album).album, { from: occurrence.id, origin: button }));
-		rail.append(button);
-	}
-	const lab = element("button", "album-icon album-icon-lab", "20");
-	lab.type = "button";
-	lab.setAttribute("aria-label", "Open the twenty cells lab");
-	lab.dataset.destination = depthId(1);
-	lab.addEventListener("click", () => workspace.navigate(depthId(1), { from: occurrence.id, origin: lab }));
-	rail.append(lab);
-	return rail;
-}
-
 function renderContent(occurrence, definition, workspace) {
 	const { data } = destinations(session.context)[occurrence.destination];
 	const kind = data.kind;
@@ -162,7 +143,6 @@ function renderSpec(occurrence, definition) {
 	line("max", definition.max);
 	line("preferred", definition.preferred);
 	line("keep", definition.keep ? "yes" : null);
-	line("compact", definition.compact?.min);
 	line("defaultChild", definition.defaultChild);
 	spec.append(element("dt", null, "width"), element("dd", "cell-spec-width", "…"));
 	spec.append(element("dt", null, "state"), element("dd", "cell-spec-state", "…"));
@@ -185,7 +165,7 @@ function updateSpecs(root, layout) {
 	for (const spec of root.querySelectorAll(".cell-spec")) {
 		const cell = layout.cells.get(spec.dataset.specFor);
 		if (!cell) continue;
-		const state = cell.compact ? "compact" : cell.visible ? (cell.sized ? "dragged" : "allocated") : "hidden";
+		const state = cell.visible ? (cell.sized ? "dragged" : "allocated") : "hidden";
 		spec.querySelector(".cell-spec-width").textContent = `${Math.round(cell.width)} px`;
 		spec.querySelector(".cell-spec-state").textContent = state;
 		const body = spec.closest(".supermax-cell-body");
@@ -212,16 +192,20 @@ function renderAlbums(occurrence, data, workspace) {
 	const list = element("ul", "album-list");
 	for (const album of albums) {
 		const item = element("li");
-		const button = element("button", "album-item", album.title);
+		const button = element("button", "album-item");
 		button.type = "button";
+		button.setAttribute("aria-label", album.title);
+		button.append(element("span", "album-item-label", album.title), element("span", "album-item-icon", album.title.slice(0, 1)));
 		button.dataset.destination = ids(album).album;
 		button.addEventListener("click", () => workspace.navigate(ids(album).album, { from: occurrence.id, origin: button }));
 		item.append(button);
 		list.append(item);
 	}
 	const lab = element("li", "album-lab");
-	const depth = element("button", "album-item depth-start", "Lab: twenty cells deep");
+	const depth = element("button", "album-item depth-start");
 	depth.type = "button";
+	depth.setAttribute("aria-label", "Lab: twenty cells deep");
+	depth.append(element("span", "album-item-label", "Lab: twenty cells deep"), element("span", "album-item-icon", "20"));
 	depth.dataset.destination = depthId(1);
 	depth.addEventListener("click", () => workspace.navigate(depthId(1), { from: occurrence.id, origin: depth }));
 	lab.append(depth);
@@ -612,7 +596,7 @@ class Session {
 			if (wanted(id)) hover = setTimeout(() => { if (wanted(id)) this.prepare(id).catch(() => null); }, this.time.ms(DEMO_TIMING.hover));
 		});
 		root.addEventListener("pointerdown", () => clearTimeout(hover));
-		const workspace = new Workspace(root, { navigator: model, content: renderContent, compactContent: renderAlbumIcons, overlayRoot: box, time: this.time, onIntent: (action, origin) => this.dispatch(action, origin) });
+		const workspace = new Workspace(root, { navigator: model, content: renderContent, overlayRoot: box, time: this.time, onIntent: (action, origin) => this.dispatch(action, origin) });
 		workspace.addEventListener("up", () => this.record("push"));
 		workspace.addEventListener("rejected", (event) => {
 			rejection.hidden = false;

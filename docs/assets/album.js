@@ -3,7 +3,7 @@ import { LAYOUT_SCHEMA, layoutOf } from "./supermax/layout-declaration.js";
 export const minViewportHeight = 360;
 
 const widths = {
-	albums: { min: 200, max: 320, preferred: 200, keep: true, compact: { min: 48 }, header: "title" },
+	albums: { min: 48, max: 320, preferred: 240, keep: true, header: "title" },
 	selector: { min: 200, max: "*", preferred: 360 },
 	map: { min: 220, max: "*", preferred: 480 },
 	photo: { min: 240, max: "*", preferred: 360, zoomable: true },
@@ -162,8 +162,8 @@ export function declarationSet(root, context = "ana") {
 }
 
 function declare(definition) {
-	const { keep, compact, rows, ...layout } = layoutOf(definition);
-	return { ...layout, ...(keep ? { keep } : {}), ...(compact ? { compact } : {}), ...(rows ? { rows: rows.map(({ keep: rowKeep, preferredHeight, ...row }) => ({ ...row, ...(preferredHeight !== null ? { preferredHeight } : {}), ...(rowKeep ? { keep: rowKeep } : {}) })) } : {}) };
+	const { keep, rows, ...layout } = layoutOf(definition);
+	return { ...layout, ...(keep ? { keep } : {}), ...(rows ? { rows: rows.map(({ keep: rowKeep, preferredHeight, ...row }) => ({ ...row, ...(preferredHeight !== null ? { preferredHeight } : {}), ...(rowKeep ? { keep: rowKeep } : {}) })) } : {}) };
 }
 
 export function embeddedDestinations(context = "ana") {

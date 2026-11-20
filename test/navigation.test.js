@@ -172,6 +172,7 @@ scenario("an impossible split is a configuration error for the developer before 
 	assert.ok(verdict.unpreferred.rows[0].problems.includes("elastic-without-preferred"), "an elastic row declares its preferred height");
 	const cellProblems = (extra) => validateDestinations({ ...destinations, ...extra }, { minViewportHeight, chrome }).problems.map((problem) => [problem.destination, problem.reason]);
 	assert.deepEqual(cellProblems({ loose: { title: "Loose", min: 100, max: "*" } }), [["loose", "elastic-without-preferred"]], "an elastic cell declares its preferred width");
+	assert.deepEqual(cellProblems({ loose: { title: "Loose", min: 100, max: 200, compact: { min: 48 } } }), [["loose", "unsupported-compact"]], "the removed compact rail is rejected instead of being silently ignored");
 	assert.deepEqual(validateDestinations({ root: { title: "Root", min: 100, max: 200 } }, { minViewportHeight, chrome }).problems.map((problem) => problem.reason), ["no-elastic-destination"], "a configuration without any elastic cell is refused");
 	const failing = verdict.over.rows.find((candidate) => !candidate.ok);
 	assert.deepEqual({ title: failing.title, required: failing.required, chrome: failing.chrome, supported: failing.supported }, { title: "List", required: 301, chrome: 28, supported: 300 }, "one pixel over fails: the split's title bar counts as chrome");
@@ -255,7 +256,7 @@ scenario("Up reaches every cell hidden above the window, newest branch first, ne
 	assert.deepEqual(narrow.upTarget(), { id: row("grid"), title: "Grid" }, "the newest branch climbs first");
 	assert.deepEqual(titles(narrow), ["Gallery", "Item A", "Item B"], "finding a target closes nothing");
 
-	const chain = new Navigator({ destinations: { elsewhere, menu: { title: "Menu", min: 100, max: 100, keep: true, compact: { min: 20 } }, a: { title: "A", min: 100, max: 100, defaultChild: "b" }, b: { title: "B", min: 100, max: 100, defaultChild: "c" }, c: { title: "C", min: 100, max: 100 } }, root: "menu", minViewportHeight, chrome });
+	const chain = new Navigator({ destinations: { elsewhere, menu: { title: "Menu", min: 100, max: 100, keep: true }, a: { title: "A", min: 100, max: 100, defaultChild: "b" }, b: { title: "B", min: 100, max: 100, defaultChild: "c" }, c: { title: "C", min: 100, max: 100 } }, root: "menu", minViewportHeight, chrome });
 	chain.resize({ width: 400, height: 500 });
 	chain.open("a", { from: "menu" });
 	chain.resize({ width: 120, height: 500 });
@@ -310,30 +311,30 @@ scenario("a revealed outer chain does not change which defaults open", () => {
 	assert.equal(revealed.layout().chain.revealOffset, 0, "an opening resets the reveal of every chain above it");
 });
 
-scenario("only a kept cell stays, compact when space runs out; every other cell is in view or gone", () => {
+scenario("a kept cell stays at its declared minimum while other cells give way", () => {
 	const set = {
 		elsewhere,
-		menu: { title: "Menu", min: 100, max: 100, keep: true, compact: { min: 20 }, defaultChild: "a" },
-		a: { title: "A", min: 100, max: 100, compact: { min: 20 }, defaultChild: "b" },
+		menu: { title: "Menu", min: 100, max: 100, keep: true, defaultChild: "a" },
+		a: { title: "A", min: 100, max: 100, defaultChild: "b" },
 		b: { title: "B", min: 100, max: 100, defaultChild: "c" },
 		c: { title: "C", min: 100, max: 100 },
 	};
 	const instance = new Navigator({ destinations: set, root: "menu", minViewportHeight, chrome });
 	instance.resize({ width: 400, height: 500 });
 	assert.equal(instance.open("a", { from: "menu" }).ok, true);
-	const cells = () => instance.layout().chain.cells.map((cell) => (cell.compact ? "compact" : cell.visible ? "full" : "gone"));
+	const cells = () => instance.layout().chain.cells.map((cell) => (cell.folded ? "folded" : cell.visible ? "full" : "gone"));
 	assert.deepEqual(cells(), ["full", "full", "full", "full"]);
 	instance.resize({ width: 320, height: 500 });
-	assert.deepEqual(cells(), ["compact", "full", "full", "full"], "the kept cell takes its compact form before anything hides");
+	assert.deepEqual(cells(), ["full", "gone", "full", "full"], "the kept cell keeps its full minimum while another cell gives way");
 	instance.resize({ width: 220, height: 500 });
-	assert.deepEqual(cells(), ["compact", "gone", "full", "full"], "a compact form without keep is never used");
+	assert.deepEqual(cells(), ["full", "gone", "gone", "full"]);
 	instance.resize({ width: 120, height: 500 });
-	assert.deepEqual(cells(), ["compact", "gone", "gone", "full"], "the kept cell outlasts every other cell");
+	assert.deepEqual(cells(), ["full", "gone", "gone", "full"], "the kept cell stays at its minimum even when the frame overflows");
 	instance.startWindow("menu", "menu/a");
-	assert.deepEqual(cells(), ["compact", "full", "gone", "gone"], "a window start shows an earlier cell next to the kept one");
+	assert.deepEqual(cells(), ["full", "full", "gone", "gone"], "a window start shows an earlier cell next to the kept one");
 	instance.startWindow("menu", null);
 	instance.resize({ width: 110, height: 500 });
-	assert.deepEqual([instance.layout().overflowX, Math.round(instance.layout().chain.contentWidth)], [true, 120], "when the kept rail and the newest cell's minimum exceed the width the newest keeps its minimum and the workspace scrolls sideways");
+	assert.deepEqual([instance.layout().overflowX, Math.round(instance.layout().chain.contentWidth)], [true, 200], "the kept cell and newest cell retain their minima when the frame cannot fit both");
 });
 
 scenario("a dragged size is a session preference inside min and max, and rows follow the same rule", () => {
@@ -377,7 +378,7 @@ scenario("a dragged size is a session preference inside min and max, and rows fo
 	assert.equal(Math.round(chain().cells[1].width), 190, "while the chain has room for it a session size is exact");
 	instance.resize({ width: 600, height: 500 });
 	const squeezed = chain().cells.find((cell) => cell.occurrence === item("list", "a"));
-	assert.equal(squeezed.visible && !squeezed.compact, true, "when the frame shrinks the sized cell stays in view");
+	assert.equal(squeezed.visible, true, "when the frame shrinks the sized cell stays in view");
 	assert.ok(squeezed.width < 190 && squeezed.width >= 100, "and gives up width like a preference instead of pushing others out");
 	assert.equal(chain().cells.every((cell) => cell.visible), true, "nothing hides to honour a session size");
 	instance.resize({ width: 1000, height: 500 });
@@ -847,7 +848,7 @@ scenario("sync names a path into a row: the next id after a split is one of its 
 	const E = "*";
 	const chain = new Navigator({
 		destinations: {
-			modes: { title: "Modes", min: 192, max: 256, keep: true, compact: { min: 48 } },
+			modes: { title: "Modes", min: 192, max: 256, keep: true },
 			mailboxes: { title: "Mailboxes", min: 256, max: 320 },
 			conversations: { title: "Conversations", min: 320, max: E, preferred: 640 },
 			conversation: { title: "Subject", rows: [{ destination: "metadata", minHeight: 240, maxHeight: E, preferredHeight: 560 }, { destination: "attachments", minHeight: 96, maxHeight: 120 }] },
@@ -897,7 +898,7 @@ scenario("sync names a path into a row: the next id after a split is one of its 
 scenario("room gives way in reading order through a split: the cells before it first, then the row's older cells, the split last, and Show closes the newest row cell before the split", () => {
 	const E = "*";
 	const destinations = {
-		modes: { title: "Modes", min: 192, max: 256, keep: true, compact: { min: 48 } },
+		modes: { title: "Modes", min: 192, max: 256, keep: true },
 		mailboxes: { title: "Mailboxes", min: 256, max: 320 },
 		nav: { title: "Nav", min: 256, max: 320 },
 		conversations: { title: "Conversations", min: 320, max: E, preferred: 640 },
@@ -917,7 +918,7 @@ scenario("room gives way in reading order through a split: the cells before it f
 	const picture = (chain) => {
 		const layout = chain.layout();
 		return {
-			root: layout.chain.cells.map((cell) => `${cell.title}:${cell.visible ? (cell.compact ? "compact" : Math.round(cell.width)) : "hidden"}`),
+			root: layout.chain.cells.map((cell) => `${cell.title}:${cell.visible ? Math.round(cell.width) : "hidden"}`),
 			row: layout.chains.get(`${split}/metadata`)?.cells.map((cell) => `${cell.title}:${cell.visible ? Math.round(cell.width) : "hidden"}`) ?? null,
 		};
 	};
@@ -927,14 +928,14 @@ scenario("room gives way in reading order through a split: the cells before it f
 	wide.open("messages", { from: `${split}/metadata`, origin: null });
 	let shown = picture(wide);
 	assert.ok(shown.row.length === 2 && shown.row.every((cell) => !cell.endsWith("hidden")), `at 1920 the summary and the messages stand side by side in the row: ${shown.row}`);
-	assert.ok(shown.root.slice(0, 4).every((cell) => !cell.endsWith("hidden")), `with everything before the split in view, the menu compact: ${shown.root}`);
-	assert.equal(shown.root[0], "Modes:compact");
+	assert.ok(Number(shown.root[0].split(":")[1]) >= 192, "the kept menu retains its declared minimum");
 	const laptop = at(1440);
 	laptop.sync([...root, "metadata", "messages"]);
 	laptop.sync([...root, "attachments", "attachment"]);
 	laptop.open("messages", { from: `${split}/metadata`, origin: null });
 	shown = picture(laptop);
-	assert.deepEqual(shown.root.slice(0, 3), ["Modes:compact", "Mailboxes:hidden", "Nav:hidden"], "at 1440 the mailboxes and the nav give way first");
+	assert.ok(Number(shown.root[0].split(":")[1]) >= 192);
+	assert.deepEqual(shown.root.slice(1, 3), ["Mailboxes:hidden", "Nav:hidden"], "at 1440 the mailboxes and the nav give way first");
 	assert.ok(shown.row.length === 2 && shown.row.every((cell) => !cell.endsWith("hidden")), `so the summary keeps standing beside the messages, and the attachment beside the split: ${shown.row}`);
 	assert.ok(shown.root[5].startsWith("Attachment:") && !shown.root[5].endsWith("hidden"));
 	const show = at(900);
@@ -951,7 +952,7 @@ scenario("ifRoom may name a path into a row, and opens it whole or not at all", 
 	const make = (width) => {
 		const chain = new Navigator({
 			destinations: {
-				modes: { title: "Modes", min: 192, max: 256, keep: true, compact: { min: 48 } },
+				modes: { title: "Modes", min: 192, max: 256, keep: true },
 				conversations: { title: "Conversations", min: 320, max: E, preferred: 640 },
 				conversation: { title: "Subject", header: "title", rows: [{ destination: "metadata", minHeight: 240, maxHeight: E, preferredHeight: 560 }] },
 				metadata: { title: "Summary", min: 320, max: 640 },

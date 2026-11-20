@@ -17,7 +17,7 @@ Start with [Migrating from v1 to v2](docs/migrating-to-v2.md). A dependency vers
 
 ### Added
 
-- Navigator and Workspace provide a branching cell shell, layout declarations, Show, compact rails, dividers, loading content, overlays, presentations and a shared time scale.
+- Navigator and Workspace provide a branching cell shell, layout declarations, Show, dividers, loading content, overlays, presentations and a shared time scale.
 - A cell draws no title bar unless it declares `header: "title"`; the title stays its accessible name. A split may declare it too, one bar above its rows.
 - A destination may declare `height: "full"`: opened from a cell in a row it stands beside the split at the full height, the shell's answer to a colspan; one breakout per split, replaced by the next. `navigator.next(occurrence)` names what follows a cell in its chain, `replay` takes a `sync` action, a split in `ifRoom` opens with its rows, and `sync` names a path into a row: after a split the next id is one of its rows.
 - `VEIL_PRESENTATION` opens, closes and replaces cells by lifting and lowering a veil in the cell's own surface colour, without rotating or travelling, for workspaces with large cells. Presentation poses may carry `duration`, `easing` and `delay`, and a motion may set `follow: false` and `travel(pixels)`.

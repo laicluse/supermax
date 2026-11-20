@@ -118,7 +118,7 @@ export class CellStrip {
 		this.reducedMotion.addEventListener("change", this.onMotionPreference);
 	}
 
-	update(entries, { animate = true, arrive = false } = {}) {
+	update(entries, { animate = true, arrive = false, interactive = false } = {}) {
 		const ids = new Set();
 		for (const entry of entries) {
 			if (ids.has(entry.id)) throw new Error(`Duplicate cell id: ${entry.id}`);
@@ -127,7 +127,7 @@ export class CellStrip {
 		}
 		const firstPaint = !this.initialized;
 		this.initialized = true;
-		if (!animate || this.reducedMotion.matches || this.duration <= 0 || (firstPaint && !arrive)) return this.sync(entries);
+		if (!animate || (!interactive && this.reducedMotion.matches) || this.duration <= 0 || (firstPaint && !arrive)) return this.sync(entries);
 
 		const view = this.viewport.ownerDocument.defaultView;
 		const departed = this.resolveDepartures(ids);

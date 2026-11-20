@@ -10,7 +10,7 @@ Compare a list-detail chain with settings on demand against a browsing/operation
 
 For frequent monitoring, a candidate is a collection split with browsing above operations. Filters belong to the work collection. Status and a settings action remain concise at every size; a separate settings task exposes all independent role choices. The main row receives useful growth; operations gets only the height its task needs.
 
-These maps hold the same state: navigation, collection split, selected work and a document opened from that work are all open. `*` marks active content, `~` its scroll owner, `R` a kept compact navigation rail, and `F` the single full-height breakout. Rows inside a split have independent horizontal chains; their column boundaries need not align.
+These maps hold the same state: navigation, collection split, selected work and a document opened from that work are all open. `*` marks active content, `~` its scroll owner, `R` a kept navigation cell whose content fits its minimum, and `F` the single full-height breakout. Rows inside a split have independent horizontal chains; their column boundaries need not align.
 
 ```text
 Wide/tall: proposed 1440 x 1000

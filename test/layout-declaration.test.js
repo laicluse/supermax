@@ -29,7 +29,7 @@ await assert.rejects(readLayout(head(mixed)), (error) => error instanceof Superm
 await assert.rejects(readLayout(head(null)), (error) => error.reason === "missing-header");
 await assert.rejects(readLayout(head(inline.value.replace("v=2", "v=3"))), (error) => error.reason === "schema-version");
 
-assert.deepEqual(layoutOf({ title: "Albums", min: 200, max: 320, keep: true, compact: { min: 48, content: () => null }, data: { kind: "albums" } }), { title: "Albums", min: 200, max: 320, preferred: null, keep: true, compact: { min: 48 }, rows: null, defaultChild: null }, "the layout of a definition leaves host data and callbacks out");
+assert.deepEqual(layoutOf({ title: "Albums", min: 200, max: 320, keep: true, data: { kind: "albums" } }), { title: "Albums", min: 200, max: 320, preferred: null, keep: true, rows: null, defaultChild: null }, "the layout of a definition leaves host data and callbacks out");
 
 {
 	const foldable = { schemaVersion: 2, context: "ana", root: "split", destinations: {

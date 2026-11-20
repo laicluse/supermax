@@ -19,7 +19,6 @@ export class ModalHost {
 
 	open(definition, { from } = {}) {
 		const workspace = this.workspace;
-		workspace.closePeek();
 		if (this.current) this.close("replaced");
 		const source = workspace.navigator.get(from) ?? null;
 		const element = workspace.create("div", "supermax-modal-layer");
@@ -51,6 +50,8 @@ export class ModalHost {
 		modal.retry = () => modal.slot.mount(definition.title, () => definition.content(modal, workspace), () => this.current === modal);
 		this.current = modal;
 		this.describe(modal);
+		workspace.folds.drag?.settle(false);
+		if (workspace.folds.layer) workspace.folds.layer.inert = true;
 		workspace.body.inert = true;
 		workspace.notices.render();
 		workspace.element.append(element);
@@ -217,6 +218,7 @@ export class ModalHost {
 		modal.slot.leave();
 		this.leave(modal, reason, () => modal.slot.dispose());
 		workspace.body.inert = false;
+		if (workspace.folds.layer) workspace.folds.layer.inert = false;
 		workspace.notices.render();
 		workspace.element.classList.remove("has-modal");
 		workspace.scheduleOrigins();

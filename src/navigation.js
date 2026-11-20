@@ -25,6 +25,7 @@ export function validateDestinations(destinations, { minViewportHeight, chrome =
 		.map((id) => ({ destination: id, validation: validateSplit(model, id, null) }))
 		.filter((problem) => !problem.validation.ok);
 	for (const id of Object.keys(destinations)) {
+		if (destinations[id].compact != null) problems.push({ destination: id, reason: "unsupported-compact" });
 		if (destinations[id].height != null && (!isFull(destinations[id]) || isSplit(destinations[id]))) problems.push({ destination: id, reason: "invalid-height" });
 		if (isSplit(destinations[id]) && ["min", "max", "preferred"].some((key) => destinations[id][key] != null)) problems.push({ destination: id, reason: "split-with-width" });
 		if (destinations[id].header != null && destinations[id].header !== "title") problems.push({ destination: id, reason: "invalid-header" });
@@ -60,11 +61,17 @@ export class Navigator {
 		this.groups = [];
 		this.groupSequence = 0;
 		this.zoomed = null;
-		this.foldFocus = null;
+		this.foldFocuses = [];
 		this.windowStarts = new Map();
 		this.rowStarts = new Map();
 		this.sizes = { width: new Map(), height: new Map() };
 		this.root = this.createOccurrence(this.rootDestination, null, 0, null);
+	}
+
+	focusFold(occurrenceId, axis) {
+		const occurrence = this.get(occurrenceId);
+		const scope = axis === "horizontal" ? chainRootOf(this, occurrence).id : occurrence.parent;
+		this.foldFocuses = [...this.foldFocuses.filter((focus) => focus.axis !== axis || focus.scope !== scope), { occurrence: occurrenceId, axis, scope }];
 	}
 
 	resize(size) {
@@ -209,11 +216,11 @@ export class Navigator {
 		if (place.cells.some((cell) => cell.destination === candidate)) return;
 		if (isSplit(this.definitionOf(candidate)) && !validateSplit(this, candidate, occurrence).ok) return;
 		if (place.beside && this.breakoutBeside(occurrence)) return;
-		const shown = (layout) => new Set([...layout.cells.values()].filter((cell) => cell.visible && !cell.compact).map((cell) => cell.occurrence));
+		const shown = (layout) => new Set([...layout.cells.values()].filter((cell) => cell.full).map((cell) => cell.occurrence));
 		const before = shown(this.layout());
 		const child = this.createOccurrence(candidate, occurrence, 0, group);
 		const after = shown(this.layout());
-		// allow-comment: a default opens only when, with the room its chain then asks for, it shows in full without hiding or compacting any cell that showed in full before.
+		// allow-comment: a default opens only when, with the room its chain then asks for, it shows in full without hiding any cell that showed in full before.
 		if (!after.has(child.id) || [...before].some((id) => !after.has(id))) {
 			this.removeSubtree(child);
 			return;
@@ -376,10 +383,10 @@ export class Navigator {
 		return !!parent && isSplit(this.definitionOf(parent.destination));
 	}
 
-	// allow-comment: an optional cell opens only when it shows without hiding or compacting a cell that is in view now; existing widths may change. A nested list opens whole or not at all.
+	// allow-comment: an optional cell opens only when it shows without hiding a cell that is in view now; existing widths may change. A nested list opens whole or not at all.
 	openIfRoom(parent, entries) {
 		const opened = [];
-		const shown = (layout) => [...layout.cells.values()].filter((cell) => cell.visible && !cell.compact).map((cell) => cell.occurrence);
+		const shown = (layout) => [...layout.cells.values()].filter((cell) => cell.full).map((cell) => cell.occurrence);
 		let current = parent;
 		for (const entry of entries) {
 			const ids = Array.isArray(entry) ? entry : [entry];
@@ -413,10 +420,10 @@ export class Navigator {
 			const layout = this.layout();
 			const fits = !refused && added.every((id) => {
 				const cell = layout.cells.get(id);
-				return cell?.visible && !cell.compact;
+				return cell?.full;
 			}) && inView.every((occurrence) => {
 				const kept = layout.cells.get(occurrence);
-				return kept?.visible && !kept.compact;
+				return kept?.full;
 			});
 			if (!fits) {
 				if (added.length > 0) this.restore(before);
@@ -495,7 +502,7 @@ export class Navigator {
 	showByClosing(occurrenceId) {
 		const target = this.get(occurrenceId);
 		if (!target) return [];
-		this.foldFocus = null;
+		this.foldFocuses = [];
 		this.bringIntoView(occurrenceId, { chains: false });
 		const levels = [];
 		for (let member = target; member; ) {
@@ -597,7 +604,7 @@ export class Navigator {
 			groups: this.groups.map((group) => ({ ...group })),
 			groupSequence: this.groupSequence,
 			zoomed: this.zoomed,
-			foldFocus: this.foldFocus,
+			foldFocuses: this.foldFocuses,
 			windowStarts: [...this.windowStarts],
 			rowStarts: [...this.rowStarts],
 			sizes: { width: [...this.sizes.width], height: [...this.sizes.height] },
@@ -610,7 +617,7 @@ export class Navigator {
 		this.groups = snapshot.groups.map((group) => ({ ...group }));
 		this.groupSequence = snapshot.groupSequence;
 		this.zoomed = snapshot.zoomed ?? null;
-		this.foldFocus = snapshot.foldFocus && this.get(snapshot.foldFocus.occurrence) ? snapshot.foldFocus : null;
+		this.foldFocuses = (snapshot.foldFocuses ?? []).filter((focus) => this.get(focus.occurrence) && this.get(focus.scope));
 		this.windowStarts = new Map(snapshot.windowStarts ?? []);
 		this.rowStarts = new Map(snapshot.rowStarts ?? []);
 		this.sizes = { width: new Map(snapshot.sizes?.width ?? []), height: new Map(snapshot.sizes?.height ?? []) };

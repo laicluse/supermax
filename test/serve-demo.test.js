@@ -4,7 +4,6 @@ import { createServer } from "node:http";
 import { chromium } from "playwright";
 import { serveDocs } from "./serve-docs.js";
 
-const port = 8000 + Math.floor(Math.random() * 900);
 const earlier = { "/": "<!doctype html><script type=\"module\" src=\"./assets/demo.js\"></script>", "/assets/demo.js": "window.build = \"earlier\";" };
 const plain = createServer((request, response) => {
 	const body = earlier[new URL(request.url, "http://localhost").pathname];
@@ -13,7 +12,8 @@ const plain = createServer((request, response) => {
 	response.setHeader("Last-Modified", new Date(Date.now() - 86400000).toUTCString());
 	response.end(body);
 });
-await new Promise((done) => plain.listen(port, "127.0.0.1", done));
+await new Promise((done) => plain.listen(0, "127.0.0.1", done));
+const port = plain.address().port;
 
 const browser = await chromium.launch({ channel: "chrome", headless: true });
 try {
