@@ -7,8 +7,8 @@ export const LAYOUT_SCHEMA = 2;
 const REQUIRED = ["title", "min", "max", "preferred", "defaultChild"];
 const REQUIRED_SPLIT = ["title", "rows"];
 const WIDTH = ["min", "max", "preferred"];
-const FIELDS = new Set([...REQUIRED, "keep", "compact", "rows", "zoomable", "height", "header"]);
-const ROW_FIELDS = new Set(["destination", "minHeight", "maxHeight", "preferredHeight", "keep"]);
+const FIELDS = new Set([...REQUIRED, "keep", "compact", "fold", "rows", "zoomable", "height", "header"]);
+const ROW_FIELDS = new Set(["destination", "minHeight", "maxHeight", "preferredHeight", "keep", "fold"]);
 
 export class SupermaxLayoutError extends Error {
 	constructor(message, reason) {
@@ -26,7 +26,7 @@ export function layoutOf(definition) {
 		return {
 			title: definition.title,
 			keep: !!definition.keep,
-			rows: definition.rows.map((row) => ({ destination: row.destination, minHeight: row.minHeight, maxHeight: row.maxHeight, preferredHeight: row.preferredHeight ?? null, keep: !!row.keep })),
+			rows: definition.rows.map((row) => ({ destination: row.destination, minHeight: row.minHeight, maxHeight: row.maxHeight, preferredHeight: row.preferredHeight ?? null, keep: !!row.keep, ...(row.fold === false ? { fold: false } : row.fold ? { fold: { size: row.fold.size } } : {}) })),
 			...(definition.header === "title" ? { header: "title" } : {}),
 		};
 	}
@@ -37,7 +37,8 @@ export function layoutOf(definition) {
 		preferred: definition.preferred ?? null,
 		keep: !!definition.keep,
 		compact: definition.compact ? { min: definition.compact.min } : null,
-		rows: definition.rows ? definition.rows.map((row) => ({ destination: row.destination, minHeight: row.minHeight, maxHeight: row.maxHeight, preferredHeight: row.preferredHeight ?? null, keep: !!row.keep })) : null,
+		...(definition.fold === false ? { fold: false } : definition.fold ? { fold: { size: definition.fold.size } } : {}),
+		rows: definition.rows ? definition.rows.map((row) => ({ destination: row.destination, minHeight: row.minHeight, maxHeight: row.maxHeight, preferredHeight: row.preferredHeight ?? null, keep: !!row.keep, ...(row.fold === false ? { fold: false } : row.fold ? { fold: { size: row.fold.size } } : {}) })) : null,
 		defaultChild: definition.defaultChild ?? null,
 		...(definition.zoomable ? { zoomable: true } : {}),
 		...(definition.height === "full" ? { height: "full" } : {}),
@@ -64,10 +65,10 @@ function problemsOf(id, declaration) {
 	if (typeof declaration.title !== "string" || declaration.title.trim().length === 0) problems.push("invalid-title");
 	if (declaration.rows != null) {
 		if (REQUIRED_SPLIT.some((key) => !Object.hasOwn(declaration, key))) problems.push("missing-field");
-		if (WIDTH.some((key) => declaration[key] != null) || declaration.defaultChild != null || declaration.compact != null) problems.push("split-with-width");
+		if (WIDTH.some((key) => declaration[key] != null) || declaration.defaultChild != null || declaration.compact != null || declaration.fold != null) problems.push("split-with-width");
 		const rows = declaration.rows;
 		const badHeight = (row) => (row.maxHeight === ELASTIC ? !(size(row.preferredHeight) && row.preferredHeight >= row.minHeight) : !size(row.maxHeight) || row.minHeight > row.maxHeight);
-		const badRow = (row) => !row || typeof row.destination !== "string" || Object.keys(row).some((key) => !ROW_FIELDS.has(key)) || !size(row.minHeight) || badHeight(row);
+		const badRow = (row) => !row || typeof row.destination !== "string" || Object.keys(row).some((key) => !ROW_FIELDS.has(key)) || !size(row.minHeight) || badHeight(row) || (row.fold != null && row.fold !== false && (!size(row.fold.size) || row.fold.size >= row.minHeight || Object.keys(row.fold).some((key) => key !== "size")));
 		if (!Array.isArray(rows) || rows.length === 0 || rows.some(badRow)) problems.push("invalid-row-shape");
 		if (declaration.height != null) problems.push("invalid-height");
 		return problems;
@@ -78,6 +79,7 @@ function problemsOf(id, declaration) {
 	if (elastic && !(size(declaration.preferred) && declaration.preferred >= declaration.min)) problems.push("elastic-without-preferred");
 	else if (declaration.preferred != null && (!size(declaration.preferred) || declaration.preferred < declaration.min || (!elastic && declaration.preferred > declaration.max))) problems.push("invalid-preferred");
 	if (declaration.compact != null && (!size(declaration.compact.min) || Object.keys(declaration.compact).some((key) => key !== "min"))) problems.push("invalid-compact");
+	if (declaration.fold != null && declaration.fold !== false && (!size(declaration.fold.size) || declaration.fold.size >= declaration.min || Object.keys(declaration.fold).some((key) => key !== "size"))) problems.push("invalid-fold");
 	if (declaration.defaultChild != null && (typeof declaration.defaultChild !== "string" || declaration.defaultChild.length === 0 || declaration.defaultChild === id)) problems.push("invalid-default");
 	if (declaration.height != null && declaration.height !== "full") problems.push("invalid-height");
 	return problems;

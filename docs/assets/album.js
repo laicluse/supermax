@@ -57,6 +57,15 @@ export const albums = [
 		],
 		photos: [{ id: "x", title: "Photo X", date: "Jan 1, 2024", place: "Lab", tags: "fixture", hue: 300 }],
 	},
+	{
+		id: "folding",
+		title: "Folding",
+		rows: [
+			{ key: "map", title: "Details", minHeight: 180, maxHeight: 520, preferredHeight: 320, fold: { size: 12 } },
+			{ key: "thumbnails", title: "Gallery", minHeight: 180, maxHeight: "*", preferredHeight: 320 },
+		],
+		photos: [{ id: "x", title: "Photo X", date: "Jan 1, 2024", place: "Lab", tags: "fixture", hue: 205 }],
+	},
 ];
 
 export function ids(album) {
@@ -92,7 +101,7 @@ export function destinations(context = "ana") {
 	if (catalogs.has(context)) return catalogs.get(context);
 	const result = { albums: { title: "Albums", ...widths.albums, data: { kind: "albums" } } };
 	for (let n = 1; n <= depthCount; n += 1) {
-		result[depthId(n)] = { title: `Depth ${n}`, ...widths.depth, data: { kind: "depth", n } };
+		result[depthId(n)] = { title: `Depth ${n}`, ...widths.depth, fold: false, data: { kind: "depth", n } };
 	}
 	for (const album of albums) {
 		const key = ids(album);
@@ -106,12 +115,13 @@ export function destinations(context = "ana") {
 			result[key.row(row.key)] = {
 				title: row.title,
 				...(row.key === "map" ? widths.map : widths.selector),
+				...(album.id === "folding" && row.key === "thumbnails" ? { fold: { size: 12 } } : {}),
 				defaultChild: album.photos.length ? key.photo(album.photos[0]) : null,
 				data: { kind: "selector", album, row },
 			};
 		}
 		for (const photo of album.photos) {
-			result[key.photo(photo)] = { title: photo.title, ...widths.photo, defaultChild: key.metadata(photo), data: { kind: "photo", album, photo } };
+			result[key.photo(photo)] = { title: photo.title, ...widths.photo, defaultChild: album.id === "folding" ? null : key.metadata(photo), data: { kind: "photo", album, photo } };
 			result[key.metadata(photo)] = { title: `Metadata ${photo.id.toUpperCase()}`, ...widths.metadata, defaultChild: context === "ben" ? null : key.history(photo), data: { kind: "metadata", album, photo } };
 			result[key.history(photo)] = { title: `History ${photo.id.toUpperCase()}`, ...widths.history, data: { kind: "history", album, photo } };
 			result[key.full(photo)] = { title: `${photo.title} at full height`, ...widths.full, data: { kind: "full", album, photo } };
@@ -119,6 +129,11 @@ export function destinations(context = "ana") {
 				result[key.edit(photo, edit)] = { title: `${edit.title} (${photo.id.toUpperCase()})`, ...widths.edit, data: { kind: "edit", album, photo, edit } };
 			}
 		}
+	}
+	for (const album of albums.filter((candidate) => candidate.id !== "folding")) {
+		const key = ids(album);
+		result[key.album].rows.forEach((row) => { row.fold ??= false; });
+		for (const id of Object.keys(result).filter((candidate) => candidate.startsWith(`${album.id}:`))) if (!result[id].rows) result[id].fold ??= false;
 	}
 	catalogs.set(context, result);
 	return result;

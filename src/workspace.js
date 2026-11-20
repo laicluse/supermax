@@ -6,10 +6,12 @@ import { chainRootOf, isSplit } from "./layout.js";
 import { ModalHost } from "./modal.js";
 import { NoticeBoard } from "./notices.js";
 import { PeekController } from "./peek.js";
+import { FoldController } from "./folding.js";
 import { resolveStrings } from "./strings.js";
 import { frustumOrigin } from "./origin.js";
-import { defaultNoticeIcon } from "./icons.js";
-import { HORIZON, ORIGAMI_PRESENTATION } from "./origami.js";
+import { chevronIcon, defaultNoticeIcon } from "./icons.js";
+import { HORIZON } from "./origami.js";
+import { VEIL_PRESENTATION } from "./veil.js";
 import { TIMING, TimeScale } from "./motion.js";
 
 function normalizePresentation(presentation) {
@@ -32,10 +34,11 @@ const JUSTIFY = Object.freeze({ start: "flex-start", center: "center", end: "fle
 const UP_NAME_LIMIT = 20;
 
 export class Workspace extends EventTarget {
-	constructor(element, { navigator, content, compactContent = null, onIntent = null, presentation = ORIGAMI_PRESENTATION, strings = {}, origin = frustumOrigin, overlayRoot = element.ownerDocument.body, noticePlacement = "source", noticeIcon = defaultNoticeIcon, time = new TimeScale() }) {
+	constructor(element, { navigator, content, compactContent = null, foldContent = null, onIntent = null, presentation = VEIL_PRESENTATION, strings = {}, origin = frustumOrigin, overlayRoot = element.ownerDocument.body, noticePlacement = "source", noticeIcon = defaultNoticeIcon, time = new TimeScale() }) {
 		super();
 		this.time = time;
 		this.compactContent = compactContent;
+		this.foldContent = foldContent;
 		this.onTimeScale = () => this.paintTime();
 		if (noticeIcon !== null && typeof noticeIcon !== "function") throw new TypeError("noticeIcon must be a function that returns an element, or null for no icon");
 		this.noticeIcon = noticeIcon;
@@ -60,6 +63,7 @@ export class Workspace extends EventTarget {
 		this.notices = new NoticeBoard(this);
 		this.modalHost = new ModalHost(this);
 		this.peeks = new PeekController(this);
+		this.folds = new FoldController(this);
 		this.dividers = new DividerLayer(this);
 		this.reducedMotion = this.document.defaultView.matchMedia("(prefers-reduced-motion: reduce)");
 		this.buildChrome();
@@ -83,7 +87,7 @@ export class Workspace extends EventTarget {
 		this.upButton = this.create("button", "supermax-up");
 		this.upButton.type = "button";
 		this.upLabel = this.create("span", "supermax-up-label");
-		this.upLabel.textContent = "‹";
+		this.upLabel.append(chevronIcon(this.document));
 		this.upLabel.setAttribute("aria-hidden", "true");
 		this.upName = this.create("span", "supermax-up-target");
 		this.upButton.append(this.upLabel, this.upName);
@@ -166,6 +170,7 @@ export class Workspace extends EventTarget {
 		const previous = this.navigator.zoomed;
 		if (!this.navigator.zoom(occurrenceId)) return false;
 		if (previous === this.navigator.zoomed) return true;
+		this.navigator.foldFocus = null;
 		this.closePeek();
 		this.render({ animate });
 		return true;
@@ -187,6 +192,8 @@ export class Workspace extends EventTarget {
 		}
 		const target = this.navigator.upTarget(this.layout ?? undefined);
 		if (!target) return { ok: false, reason: "nothing-hidden" };
+		const previousFocus = this.navigator.foldFocus;
+		this.navigator.foldFocus = null;
 		const before = this.navigator.snapshot();
 		const closed = this.navigator.showByClosing(target.id);
 		const after = this.navigator.snapshot();
@@ -194,7 +201,10 @@ export class Workspace extends EventTarget {
 		const shown = this.navigator.get(target.id);
 		const closing = closed.map(({ id, destination, title }) => ({ occurrence: id, destination, title }));
 		const question = new CustomEvent("show", { cancelable: true, detail: { shown: { occurrence: shown.id, destination: shown.destination, title: shown.title }, closing } });
-		if (!this.dispatchEvent(question)) return { ok: false, reason: "cancelled" };
+		if (!this.dispatchEvent(question)) {
+			this.navigator.foldFocus = previousFocus;
+			return { ok: false, reason: "cancelled" };
+		}
 		this.navigator.restore(after);
 		if (this.modal) this.closeModal("navigation");
 		this.render({ animate: true });
@@ -276,6 +286,11 @@ export class Workspace extends EventTarget {
 	goTo(occurrenceId) {
 		const occurrence = this.navigator.get(occurrenceId);
 		if (!occurrence) return false;
+		const folded = this.findCell(occurrenceId)?.folded || this.findRow(occurrenceId)?.folded;
+		if (folded) {
+			return this.folds.focus(occurrenceId, this.findRow(occurrenceId)?.folded ? "vertical" : "horizontal");
+		}
+		this.navigator.foldFocus = null;
 		this.navigator.bringIntoView(occurrenceId);
 		this.render({ animate: true });
 		const target = this.findCell(occurrenceId);
@@ -309,8 +324,11 @@ export class Workspace extends EventTarget {
 	}
 
 	apply(action, { animate = true } = {}) {
+		const previousFocus = this.navigator.foldFocus;
+		this.navigator.foldFocus = null;
 		const before = new Set(this.navigator.occurrences.keys());
 		const result = this.run(action);
+		if (!result.ok || result.noop) this.navigator.foldFocus = previousFocus;
 		if (action.type === "open" && result.ok && animate && action.origin === undefined && [...before].some((id) => !this.navigator.get(id))) this.warn("navigate()", "replaced cells without an origin, so they fold away on their far edge. Pass the element the user clicked as { origin } to navigate() or apply(), or origin: null when no element started it.");
 		if (result.ok && result.occurrence) this.remember(result.occurrence.id, action.origin);
 		if (result.ok && result.occurrence) this.navigator.bringIntoView(result.occurrence.id);
@@ -330,6 +348,15 @@ export class Workspace extends EventTarget {
 				entry.rail.textContent = title;
 				entry.rail.setAttribute("aria-label", this.strings.peek(title));
 			}
+			if (entry.foldCue) {
+				entry.foldCue.setAttribute("aria-label", this.strings.unfold(title));
+				entry.foldCue.title = this.strings.unfold(title);
+			}
+		}
+		const rowCue = this.rows.get(occurrenceId)?.foldCue;
+		if (rowCue) {
+			rowCue.setAttribute("aria-label", this.strings.unfold(title));
+			rowCue.title = this.strings.unfold(title);
 		}
 		this.renderUp();
 		this.modalHost.render();
@@ -368,9 +395,12 @@ export class Workspace extends EventTarget {
 	}
 
 	sync(destinationIds, { animate = true, origin, ifRoom = [], zoom } = {}) {
+		const previousFocus = this.navigator.foldFocus;
+		this.navigator.foldFocus = null;
 		const action = { type: "sync", destinations: [...destinationIds], ifRoom: [...ifRoom], ...(zoom === undefined ? {} : { zoom }) };
 		const before = new Set(this.navigator.occurrences.keys());
 		const result = this.navigator.sync(destinationIds, { ifRoom, zoom });
+		if (!result.ok || result.noop) this.navigator.foldFocus = previousFocus;
 		if (result.ok && !result.noop && animate && origin === undefined && [...before].some((id) => !this.navigator.get(id))) this.warn("sync()", "replaced cells without an origin, so they fold away on their far edge. Pass the element the user clicked as { origin }, or origin: null when no element started it.");
 		if (result.ok && origin && result.opened?.[0]) this.remember(result.opened[0], origin);
 		if (!result.ok) {
@@ -420,6 +450,7 @@ export class Workspace extends EventTarget {
 	}
 
 	render({ animate = true } = {}) {
+		if (this.navigator.foldFocus && !this.navigator.get(this.navigator.foldFocus.occurrence)) this.navigator.foldFocus = null;
 		if (this.announcing) this.warn("render()", "ran from inside a render or zoom handler, which turns one click into two renders. Act on the event without rendering again, or render from the action that started it.");
 		this.departure = null;
 		this.wasRendered = this.rendered;
@@ -520,7 +551,7 @@ export class Workspace extends EventTarget {
 		this.upButton.hidden = !next;
 		if (next) this.upButton.setAttribute("aria-label", this.strings.up(next.title));
 		else this.upButton.removeAttribute("aria-label");
-		const first = this.layout?.chain.cells.find((cell) => cell.inView);
+		const first = this.layout?.chain.cells.find((cell) => cell.inView && !cell.folded) ?? this.layout?.chain.cells.find((cell) => cell.inView);
 		const entry = first ? this.cells.get(first.occurrence) : null;
 		// allow-comment: the visible name says what comes back only when that adds something: a short title that differs from the bar it stands in; otherwise the control says Back, and its accessible name still names the cell.
 		const own = first ? this.navigator.get(first.occurrence)?.title : null;
@@ -550,12 +581,18 @@ export class Workspace extends EventTarget {
 			element: this.mountCell(cell.occurrence, inRow),
 			width: cell.width,
 			visible: cell.visible,
+			folded: cell.folded,
 			axis: inRow && index === 0 ? "row" : "chain",
 			row,
 			still: !!cell.rows,
 			follow: cell.rows ? () => this.reachOfRows(this.cells.get(cell.occurrence) ?? this.leavingCells.get(cell.occurrence)) : undefined,
 		}));
-		for (const cell of chain.cells) this.peeks.apply(cell);
+		const focusIndex = chain.cells.findIndex((cell) => cell.occurrence === this.navigator.foldFocus?.occurrence && cell.full);
+		const activeIndex = focusIndex >= 0 ? focusIndex : chain.cells.findLastIndex((cell) => cell.full);
+		for (const [index, cell] of chain.cells.entries()) {
+			this.peeks.apply(cell);
+			this.folds.apply(this.cells.get(cell.occurrence), cell.folded, index < activeIndex ? "right" : "left");
+		}
 		entry.strip.update(entries, { animate: animating, arrive: created && this.wasRendered && animating });
 		entry.strip.strip.style.marginLeft = `${chain.spare * ALIGN[this.navigator.spareSpace]}px`;
 		for (const cell of chain.cells) {
@@ -569,12 +606,12 @@ export class Workspace extends EventTarget {
 
 	widthDividers(chain, visible) {
 		const items = [];
-		const parts = visible.map((cell) => ({ id: cell.occurrence, size: cell.width, min: cell.compact ? cell.width : cell.min, max: cell.compact ? cell.width : cell.max }));
+		const parts = visible.map((cell) => ({ id: cell.occurrence, size: cell.width, min: cell.compact || cell.folded ? cell.width : cell.min, max: cell.compact || cell.folded ? cell.width : cell.max }));
 		let offset = 0;
 		visible.forEach((cell, index) => {
 			offset += cell.width;
 			const next = visible[index + 1];
-			if (!next || cell.compact || next.compact) return;
+			if (!next || cell.compact || next.compact || cell.folded || next.folded) return;
 			items.push({ id: cell.occurrence, title: cell.title, offset, size: cell.width, sized: cell.sized, parts, edge: index, room: chain.width });
 		});
 		return items;
@@ -582,12 +619,12 @@ export class Workspace extends EventTarget {
 
 	heightDividers(rows, budget) {
 		const items = [];
-		const parts = rows.map((row) => ({ id: row.occurrence, size: row.height, min: row.visible ? row.minHeight : row.height, max: row.visible ? row.maxHeight : row.height }));
+		const parts = rows.map((row) => ({ id: row.occurrence, size: row.height, min: row.visible && !row.folded ? row.minHeight : row.height, max: row.visible && !row.folded ? row.maxHeight : row.height }));
 		let offset = 0;
 		rows.forEach((row, index) => {
 			offset += row.height;
 			const next = rows[index + 1];
-			if (!next || !row.visible || !next.visible) return;
+			if (!next || !row.visible || !next.visible || row.folded || next.folded) return;
 			items.push({ id: row.occurrence, title: row.title, offset, size: row.height, sized: row.sized, parts, edge: index, room: budget });
 		});
 		return items;
@@ -629,6 +666,7 @@ export class Workspace extends EventTarget {
 		element.append(body);
 		entry = { element, body, header, leading, titleNode, trailing, slot: new ContentSlot(this, { element, body, header: trailing, id: occurrenceId }), parent: occurrence.parent, rail: null };
 		if (!isSplit(definition) && definition.keep && definition.compact) this.peeks.mount(entry, occurrence, definition);
+		this.folds.mount(entry, occurrence, "horizontal");
 		this.cells.set(occurrenceId, entry);
 		if (!isSplit(definition)) this.mountContent(entry, occurrence);
 		return element;
@@ -637,6 +675,8 @@ export class Workspace extends EventTarget {
 	renderRows(cell, animating, strip) {
 		const host = this.cells.get(cell.occurrence).body.firstElementChild;
 		host.style.justifyContent = JUSTIFY[this.navigator.spareSpace];
+		const focusIndex = cell.rows.rows.findIndex((row) => row.occurrence === this.navigator.foldFocus?.occurrence && row.visible && !row.folded);
+		const activeIndex = focusIndex >= 0 ? focusIndex : cell.rows.rows.findLastIndex((row) => row.visible && !row.folded);
 		for (const [rowIndex, row] of cell.rows.rows.entries()) {
 			let entry = this.rows.get(row.occurrence);
 			if (!entry) {
@@ -647,13 +687,17 @@ export class Workspace extends EventTarget {
 				host.append(element);
 				entry = { element, chain, height: null, animation: null };
 				this.rows.set(row.occurrence, entry);
+				const occurrence = this.navigator.get(row.occurrence);
+				this.folds.mount(entry, occurrence, "vertical");
 			}
+			const exchangingFold = entry.element.classList.contains("is-folded") !== row.folded;
+			this.folds.apply(entry, row.folded, rowIndex < activeIndex ? "down" : "up");
 			const leading = row === cell.rows.rows.find((candidate) => candidate.visible);
 			entry.leading = leading;
-			this.setRowHeight(entry, row.height, animating, strip);
+			this.setRowHeight(entry, row.height, animating, strip, exchangingFold);
 			entry.element.classList.toggle("is-hidden", !row.visible);
 			entry.element.classList.toggle("is-leading", leading);
-			entry.chain.inert = !row.visible;
+			entry.chain.inert = !row.visible || row.folded;
 			if (row.visible) entry.chain.style.visibility = "";
 			else if (entry.slide) entry.slide.finished.then(() => { if (entry.element.classList.contains("is-hidden")) entry.chain.style.visibility = "hidden"; }, () => {});
 			else entry.chain.style.visibility = "hidden";
@@ -703,7 +747,7 @@ export class Workspace extends EventTarget {
 		return Math.max(0, ...strips.map(footprint));
 	}
 
-	setRowHeight(entry, height, animating, strip = null) {
+	setRowHeight(entry, height, animating, strip = null, exchangingFold = false) {
 		unfollow(entry.element);
 		entry.followed?.style.removeProperty("margin-top");
 		entry.followed = null;
@@ -720,6 +764,16 @@ export class Workspace extends EventTarget {
 		entry.paper = paper;
 		const timing = strip?.roomTiming?.() ?? this.time.timing({ duration: STRIP_TIMING.duration, easing: STRIP_TIMING.easing });
 		entry.animation = entry.element.animate([{ height: `${previous}px` }, { height: `${height}px` }], { ...timing, fill: "backwards" });
+		if (exchangingFold) {
+			entry.chain.style.marginTop = "0px";
+			const animation = entry.animation;
+			animation.finished.then(() => {
+				if (entry.animation !== animation) return;
+				entry.paper = entry.height;
+				this.sizeRowChain(entry, entry.height);
+			}, () => {});
+			return;
+		}
 		entry.slide = entry.chain.animate([{ marginTop: `${previous - paper}px` }, { marginTop: `${height - paper}px` }], { ...timing, fill: "both" });
 		const slide = entry.slide;
 		slide.finished.then(() => {

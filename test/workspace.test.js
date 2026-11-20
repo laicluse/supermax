@@ -38,7 +38,7 @@ const PRESENTATION = process.env.SUPERMAX_PRESENTATION ?? "origami";
 
 async function openDemo(log = []) {
 	await page.goto("about:blank");
-	await page.goto(`${server.url}/?delay=0${PRESENTATION === "origami" ? "" : `&presentation=${PRESENTATION}`}${log.length ? `#${encodeLog(log)}` : ""}`);
+	await page.goto(`${server.url}/?delay=0&presentation=${PRESENTATION}${log.length ? `#${encodeLog(log)}` : ""}`);
 	await page.waitForFunction(() => window.supermaxDemo?.frames.length === 2);
 	await settle();
 }
@@ -91,7 +91,7 @@ const painted = (selector) => page.locator(selector).evaluate((element) => getCo
 
 test("the start state names the end of history and both frames receive a click", async () => {
 	await openDemo();
-	assert.deepEqual(await backButton("a"), { hidden: true, label: null, text: "‹" }, "with nothing out of view there is no Show control");
+	assert.deepEqual(await backButton("a"), { hidden: true, label: null, text: "" }, "with nothing out of view there is no Show control");
 	await page.click(inFrame("a", '.album-item[data-destination="album:coast"]'));
 	await settle();
 	assert.ok((await state("a")).occurrences.includes(coast.metadata("thumbnails", "a")), "the wide frame auto-opens metadata once its layout metadata has arrived");
@@ -209,20 +209,20 @@ test("the Show control says Back when the name of what it brings back is long or
 	await openDemo(TWENTY_DEEP);
 	await resize([[960, 640], [420, 640]]);
 	const control = () => page.locator(inFrame("a", ".supermax-up")).evaluate((up) => ({ text: up.textContent, label: up.getAttribute("aria-label") }));
-	assert.deepEqual(await control(), { text: "‹Depth 15", label: "Show Depth 15" }, "a short name that differs from the bar names the cell");
+	assert.deepEqual(await control(), { text: "Depth 15", label: "Show Depth 15" }, "a short name that differs from the bar names the cell");
 	await page.evaluate(() => window.supermaxDemo.frames[0].workspace.setTitle(window.supermaxDemo.frames[0].workspace.upDestination.id, "Your order at the corner shop has been delivered"));
-	assert.deepEqual(await control(), { text: "‹Back", label: "Show Your order at the corner shop has been delivered" }, "a long name becomes Back, while the accessible name still names the cell");
+	assert.deepEqual(await control(), { text: "Back", label: "Show Your order at the corner shop has been delivered" }, "a long name becomes Back, while the accessible name still names the cell");
 	await page.evaluate(() => {
 		const workspace = window.supermaxDemo.frames[0].workspace;
 		workspace.setTitle(workspace.upDestination.id, "Albums");
 	});
-	assert.deepEqual(await control(), { text: "‹Back", label: "Show Albums" }, "and so does a name that repeats the title of the bar it stands in");
+	assert.deepEqual(await control(), { text: "Back", label: "Show Albums" }, "and so does a name that repeats the title of the bar it stands in");
 });
 
 test("the up control names the nearest hidden parent, closes what falls off the end to show it, and browser back undoes that", async () => {
 	await openDemo(TWENTY_DEEP);
 	await resize([[960, 640], [420, 640]]);
-	assert.deepEqual(await backButton("a"), { hidden: false, label: "Show Depth 15", text: "‹Depth 15" });
+	assert.deepEqual(await backButton("a"), { hidden: false, label: "Show Depth 15", text: "Depth 15" });
 	const before = { a: await groups("a"), b: await backButton("b"), bGroups: await groups("b"), url: page.url() };
 	await page.click(inFrame("a", ".supermax-up"));
 	await settle();
@@ -1152,7 +1152,7 @@ test("zooming a cell hides the cells before it, keeps what follows, and Show zoo
 	const zoomed = await shown();
 	assert.deepEqual(zoomed.slice(0, 2), ["coast:photo:c", "coast:metadata:c"], `Thumbnails hides, and Photo C keeps what follows it: ${zoomed}`);
 	const show = await page.locator(inFrame("a", ".supermax-up")).evaluate((button) => ({ hidden: button.hidden, text: button.textContent }));
-	assert.deepEqual(show, { hidden: false, text: "‹Thumbnails" }, "the Show control offers the way back to the zoomed cell's hidden parent");
+	assert.deepEqual(show, { hidden: false, text: "Thumbnails" }, "the Show control offers the way back to the zoomed cell's hidden parent");
 	await page.click(inFrame("a", ".supermax-up"));
 	await settle();
 	await page.evaluate(() => document.getAnimations().forEach((animation) => animation.finish()));

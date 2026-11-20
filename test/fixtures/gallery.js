@@ -30,6 +30,11 @@ export const destinations = {
 	inner: { title: "Inner", rows: [{ destination: "list", minHeight: 100, maxHeight: "*", preferredHeight: 300 }, { destination: "grid", minHeight: 100, maxHeight: 200 }] },
 };
 
+for (const definition of Object.values(destinations)) {
+	if (definition.rows) definition.rows.forEach((row) => { row.fold ??= false; });
+	else definition.fold ??= false;
+}
+
 export const invalidSplits = {
 	over: { title: "Over", header: "title", rows: [{ destination: "list", minHeight: 273, maxHeight: "*", preferredHeight: 300 }, { destination: "grid", minHeight: 100, maxHeight: 200 }] },
 	empty: { title: "Empty", rows: [] },

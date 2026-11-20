@@ -1,8 +1,47 @@
 import assert from "node:assert/strict";
-import { Navigator, SupermaxConfigurationError, validateDestinations } from "../src/navigation.js";
+import { Navigator as BaseNavigator, SupermaxConfigurationError, validateDestinations } from "../src/navigation.js";
 import { validateSplit } from "../src/layout.js";
 import { GALLERY, chrome, destinations, detail, invalidSplits, item, minViewportHeight, row } from "./fixtures/gallery.js";
 import { scenario } from "./scenario.js";
+
+class Navigator extends BaseNavigator {
+	constructor(options) {
+		const destinations = Object.fromEntries(Object.entries(options.destinations).map(([id, definition]) => [id, definition.rows ? { ...definition, rows: Array.isArray(definition.rows) ? definition.rows.map((row) => row && typeof row === "object" ? { ...row, fold: row.fold ?? false } : row) : definition.rows } : { ...definition, fold: definition.fold ?? false }]));
+		super({ ...options, destinations });
+	}
+}
+
+scenario("ordinary cells and rows fold by default while fold false excludes them", () => {
+	const horizontal = (fold) => {
+		const model = new BaseNavigator({ root: "mode", minViewportHeight: 300, destinations: {
+			mode: { title: "Mode", min: 48, max: 48, keep: true },
+			selector: { title: "Selector", min: 180, max: 180, ...(fold === false ? { fold: false } : {}) },
+			content: { title: "Content", min: 270, max: "*", preferred: 320 },
+		} });
+		model.resize({ width: 340, height: 300 });
+		model.open("selector", { from: "mode" });
+		model.open("content", { from: "mode/selector" });
+		return model.layout().chain.cells[1];
+	};
+	assert.equal(horizontal().folded, true);
+	assert.equal(horizontal(false).folded, false);
+	const vertical = (fold) => {
+		const model = new BaseNavigator({ root: "home", minViewportHeight: 300, destinations: {
+			home: { title: "Home", min: 40, max: 40, keep: true },
+			split: { title: "Split", rows: [
+				{ destination: "summary", minHeight: 170, maxHeight: 170, ...(fold === false ? { fold: false } : {}) },
+				{ destination: "detail", minHeight: 250, maxHeight: "*", preferredHeight: 280 },
+			] },
+			summary: { title: "Summary", min: 280, max: 280 },
+			detail: { title: "Detail", min: 280, max: "*", preferred: 320 },
+		} });
+		model.resize({ width: 360, height: 300 });
+		model.open("split", { from: "home" });
+		return model.layout().chain.cells[1].rows.rows[0];
+	};
+	assert.equal(vertical().folded, true);
+	assert.equal(vertical(false).folded, false);
+});
 
 function model(width = 1000, height = 500) {
 	const instance = new Navigator({ destinations, root: "root", minViewportHeight, chrome });

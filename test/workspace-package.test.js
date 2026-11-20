@@ -336,7 +336,7 @@ test("a compact rail with its own content leaves that content room inside the ce
 		const navigator = new Navigator({
 			destinations: {
 				menu: { title: "Mail", min: 195, max: 256, keep: true, compact: { min: 48 } },
-				list: { title: "List", min: 320, max: "*", preferred: 640 },
+					list: { title: "List", min: 320, max: "*", preferred: 640, fold: false },
 				detail: { title: "Detail", min: 320, max: 640 },
 			},
 			root: "menu",

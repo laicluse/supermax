@@ -155,7 +155,10 @@ export class CellStrip {
 			}];
 		}));
 
-		const next = entries.map((entry) => ({ ...entry, departing: false, overlay: false }));
+		const next = entries.map((entry) => {
+			const old = previous.get(entry.id);
+			return { ...entry, departing: false, overlay: false, paperWidth: old && old.folded !== entry.folded ? Math.max(old.width, entry.width) : old?.paperWidth ?? null };
+		});
 		const leaving = this.entries.filter((entry) => !ids.has(entry.id)).map((entry) => ({ ...entry, visible: false }));
 		const newlyLeaving = leaving.filter((entry) => !entry.departing);
 		const returning = next.filter((entry) => previous.get(entry.id)?.departing);
@@ -197,7 +200,13 @@ export class CellStrip {
 			totalWidth += entry.displayWidth;
 		});
 		for (const entry of leaving) entry.displayWidth = 0;
-		for (const entry of this.entries) entry.card = !!this.motion && !entry.overlay;
+		for (const entry of this.entries) {
+			entry.card = !!this.motion && !entry.overlay && !entry.paperWidth;
+			if (entry.paperWidth) {
+				entry.element.setAttribute("data-supermax-fold-paper", "");
+				entry.element.style.setProperty("--supermax-fold-paper-width", `${entry.paperWidth}px`);
+			}
+		}
 		this.place(previous);
 		const targetTransform = `translateX(${-offset}px)`;
 		this.strip.style.width = `${totalWidth}px`;
@@ -552,6 +561,7 @@ export class CellStrip {
 	drop(entry) {
 		this.driven.delete(entry.id);
 		entry.element.style.removeProperty("margin-left");
+		this.clearFoldPaper(entry);
 		const box = this.boxOf(entry);
 		box.remove();
 		for (const property of ["position", "top", "left", "margin-right"]) box.style.removeProperty(property);
@@ -590,6 +600,7 @@ export class CellStrip {
 				this.drop(entry);
 			}
 			else if (!entry.departing) {
+				this.clearFoldPaper(entry);
 				entry.element.style.visibility = entry.visible ? "" : "hidden";
 				const box = this.boxOf(entry);
 				if (entry.card) {
@@ -602,6 +613,12 @@ export class CellStrip {
 		}
 	}
 
+	clearFoldPaper(entry) {
+		entry.paperWidth = null;
+		entry.element.removeAttribute("data-supermax-fold-paper");
+		entry.element.style.removeProperty("--supermax-fold-paper-width");
+	}
+
 	cancelGeometry() {
 		const geometry = this.geometry;
 		this.geometry = [];
@@ -611,7 +628,10 @@ export class CellStrip {
 	sync(entries) {
 		this.cancelGeometry();
 		unfollow(this.strip);
-		for (const entry of this.entries) entry.element.style.removeProperty("margin-left");
+		for (const entry of this.entries) {
+			entry.element.style.removeProperty("margin-left");
+			this.clearFoldPaper(entry);
+		}
 		this.driven = new Set();
 		this.step();
 		for (const motion of this.motions.values()) stop(motion.animation);

@@ -7,6 +7,32 @@ const PATHS = {
 	action: '<circle cx="8" cy="8" r="6.25"/><path d="M8 7.25v4"/><path d="M8 4.9v.15"/>',
 };
 
+const SVG = "http://www.w3.org/2000/svg";
+
+export function chevronIcon(document, { opposing = false } = {}) {
+	const icon = document.createElementNS(SVG, "svg");
+	icon.setAttribute("viewBox", "0 0 16 16");
+	icon.setAttribute("fill", "none");
+	icon.setAttribute("stroke", "currentColor");
+	icon.setAttribute("stroke-width", "1.8");
+	icon.setAttribute("stroke-linecap", "round");
+	icon.setAttribute("stroke-linejoin", "round");
+	icon.setAttribute("aria-hidden", "true");
+	const left = document.createElementNS(SVG, "path");
+	left.setAttribute("d", "M10 4 6 8 10 12");
+	if (opposing) left.setAttribute("transform", "translate(-3 0)");
+	icon.append(left);
+	if (opposing) {
+		const right = left.cloneNode();
+		right.setAttribute("transform", "translate(19 0) scale(-1 1)");
+		icon.append(right);
+		const bridge = document.createElementNS(SVG, "path");
+		bridge.setAttribute("d", "M7 8h2");
+		icon.append(bridge);
+	}
+	return icon;
+}
+
 export function defaultNoticeIcon(kind, document) {
 	const paths = PATHS[kind];
 	if (!paths) return null;

@@ -31,6 +31,25 @@ await assert.rejects(readLayout(head(inline.value.replace("v=2", "v=3"))), (erro
 
 assert.deepEqual(layoutOf({ title: "Albums", min: 200, max: 320, keep: true, compact: { min: 48, content: () => null }, data: { kind: "albums" } }), { title: "Albums", min: 200, max: 320, preferred: null, keep: true, compact: { min: 48 }, rows: null, defaultChild: null }, "the layout of a definition leaves host data and callbacks out");
 
+{
+	const foldable = { schemaVersion: 2, context: "ana", root: "split", destinations: {
+		split: { title: "Split", rows: [{ destination: "top", minHeight: 160, maxHeight: 160, fold: { size: 20 } }, { destination: "bottom", minHeight: 220, maxHeight: "*", preferredHeight: 280 }] },
+		top: { title: "Top", min: 200, max: 300, preferred: null, defaultChild: null, fold: { size: 16 } },
+		bottom: { title: "Bottom", min: 220, max: "*", preferred: 300, defaultChild: null },
+	} };
+	assert.deepEqual(validateDeclarationSet(foldable), [], "a server declaration can carry horizontal and vertical fold sizes");
+	assert.deepEqual(layoutOf(foldable.destinations.split).rows[0].fold, { size: 20 });
+	assert.deepEqual(layoutOf(foldable.destinations.top).fold, { size: 16 });
+	foldable.destinations.top.fold = false;
+	foldable.destinations.split.rows[0].fold = false;
+	assert.deepEqual(validateDeclarationSet(foldable), [], "a server declaration can exclude cells and rows from folding");
+	assert.equal(layoutOf(foldable.destinations.top).fold, false);
+	assert.equal(layoutOf(foldable.destinations.split).rows[0].fold, false);
+	foldable.destinations.top.fold = { size: 16 };
+	foldable.destinations.top.fold.size = 200;
+	assert.deepEqual(validateDeclarationSet(foldable).map((problem) => problem.reason), ["invalid-fold"], "a fold must save space compared with the cell minimum");
+}
+
 for (const context of ["ana", "ben"]) {
 	const catalog = destinations(context);
 	for (const id of Object.keys(catalog)) assert.deepEqual(validateDeclarationSet(declarationSet(id, context)), [], `the demo declares ${id} for ${context} as a valid, closed set`);

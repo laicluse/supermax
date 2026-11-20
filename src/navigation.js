@@ -28,6 +28,7 @@ export function validateDestinations(destinations, { minViewportHeight, chrome =
 		if (destinations[id].height != null && (!isFull(destinations[id]) || isSplit(destinations[id]))) problems.push({ destination: id, reason: "invalid-height" });
 		if (isSplit(destinations[id]) && ["min", "max", "preferred"].some((key) => destinations[id][key] != null)) problems.push({ destination: id, reason: "split-with-width" });
 		if (destinations[id].header != null && destinations[id].header !== "title") problems.push({ destination: id, reason: "invalid-header" });
+		if (destinations[id].fold != null && (isSplit(destinations[id]) || (destinations[id].fold !== false && (!Number.isFinite(destinations[id].fold.size) || destinations[id].fold.size <= 0 || destinations[id].fold.size >= destinations[id].min)))) problems.push({ destination: id, reason: "invalid-fold" });
 	}
 	const elastic = Object.keys(destinations).filter((id) => destinations[id].max === ELASTIC);
 	for (const id of elastic) {
@@ -59,6 +60,7 @@ export class Navigator {
 		this.groups = [];
 		this.groupSequence = 0;
 		this.zoomed = null;
+		this.foldFocus = null;
 		this.windowStarts = new Map();
 		this.rowStarts = new Map();
 		this.sizes = { width: new Map(), height: new Map() };
@@ -584,6 +586,7 @@ export class Navigator {
 			groups: this.groups.map((group) => ({ ...group })),
 			groupSequence: this.groupSequence,
 			zoomed: this.zoomed,
+			foldFocus: this.foldFocus,
 			windowStarts: [...this.windowStarts],
 			rowStarts: [...this.rowStarts],
 			sizes: { width: [...this.sizes.width], height: [...this.sizes.height] },
@@ -596,6 +599,7 @@ export class Navigator {
 		this.groups = snapshot.groups.map((group) => ({ ...group }));
 		this.groupSequence = snapshot.groupSequence;
 		this.zoomed = snapshot.zoomed ?? null;
+		this.foldFocus = snapshot.foldFocus && this.get(snapshot.foldFocus.occurrence) ? snapshot.foldFocus : null;
 		this.windowStarts = new Map(snapshot.windowStarts ?? []);
 		this.rowStarts = new Map(snapshot.rowStarts ?? []);
 		this.sizes = { width: new Map(snapshot.sizes?.width ?? []), height: new Map(snapshot.sizes?.height ?? []) };

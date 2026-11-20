@@ -56,4 +56,4 @@ The second built-in presentation, `VEIL_PRESENTATION`, applies the rules above t
 
 ![The same replacement in origami and in veil, slowed ten times: origami shows the black canvas across the row, veil keeps the surface and lifts the new content](origami-vs-veil.png)
 
-Origami stays the default and keeps its 3D fold, which reads well for small cells. A host chooses per workspace with `new Workspace(element, { presentation: VEIL_PRESENTATION })`; the presentation contract that makes this possible already existed and gained the timing fields veil needs.
+Origami was the default during this study and keeps its 3D fold, which reads well for small cells. Veil is now the workspace default for large and complex cells. A host chooses per workspace with `new Workspace(element, { presentation: VEIL_PRESENTATION })`; the presentation contract that makes this possible already existed and gained the timing fields veil needs.

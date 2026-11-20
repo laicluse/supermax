@@ -1,0 +1,31 @@
+<!doctype html><html lang="en"><meta charset="utf-8"><title>Fold seams: 20 directions</title>
+<style>
+*{box-sizing:border-box}body{margin:0;padding:36px;background:#f3f4f5;color:#25282d;font:14px/1.4 system-ui}h1{margin:0;font-size:28px}header p{max-width:1000px;color:#606770}main{display:grid;grid-template-columns:repeat(4,1fr);gap:18px}article{background:white;padding:18px;border:1px solid #ddd}h2{font-size:16px;margin:0 0 12px}article p{font-size:12px;color:#606770;min-height:34px;margin:12px 0 0}.sample{display:block;width:100%;height:160px}.detail{display:block;width:100%;height:35px;margin-top:8px}small{color:#70757b;font-size:11px}footer{margin-top:20px;color:#606770}
+</style><header><h1>Fold seams · 20 directions</h1><p>Concept study, not an implementation. Each card shows the same two-axis corner with application context, then a 2× detail. Canvas #ddd on application white; every line uses the same 1px gutter. The visible mark remains separate from the generous tap target.</p></header><main></main><footer>2026-10-25 · Research and trade-offs: folding-seam-alternatives.md · Motion and discoverability still need a live trial.</footer>
+<script>
+const studies=[
+['Twin seam','Parallel hairlines suggest compressed layers.','M0 -2H80M0 2H80'],
+['Local double','A short second line; little visual mass.','M0 0H80M26 3H54'],
+['Three leaves','Three lines suggest stacked surfaces.','M0 0H80M26 3H54M30 6H50'],
+['Offset leaves','Overlapping pages rather than a grip.','M0 0H80M24 3H50M30 6H56'],
+['Quiet slit','Very quiet; weak hidden-content meaning.','M0 0H34M46 0H80'],
+['Single notch','One recess replaces the repeated zigzag.','M0 0H34L40 4 46 0H80'],
+['Square step','A shallow architectural recess.','M0 0H32V3H48V0H80'],
+['Tucked edge','One surface seems tucked behind another.','M0 0H42L36 4M38 0H80'],
+['Soft scoop','A shallow, tactile indentation.','M0 0H31Q40 8 49 0H80'],
+['S-crease','A smooth change of curvature.','M0 0H28C34 0 34 -4 40 -4S46 4 52 4S56 0 62 0H80'],
+['Lens','Two lines separate to suggest stored space.','M0 0H26Q40 -6 54 0H80M26 0Q40 6 54 0'],
+['Single wave','One low wave; less literal folding.','M0 0H26Q33 -5 40 0T54 0H80'],
+['Three pinpoints','Risks reading as a menu or drag grip.','dots'],
+['Perforation','A dotted segment suggests separation.','perforation'],
+['Stitches','Tiny cross-strokes make a material-like seam.','M0 0H80M34 -2V2M40 -2V2M46 -2V2'],
+['Fine hatching','Distinct texture, but can imply resize.','M0 0H29M51 0H80M32 2L36 -2M38 2L42 -2M44 2L48 -2'],
+['Hollow handle','Familiar handle; less clearly folded.','M0 0H27M53 0H80M30 -2H50Q53 -2 53 0T50 2H30Q27 2 27 0T30 -2'],
+['Shallow tab','The seam itself becomes a small tab.','M0 0H29V-4Q29 -6 31 -6H49Q51 -6 51 -4V0H80'],
+['Facing brackets','Opposing edges suggest opening a gap.','M0 0H30M50 0H80M36 -3H33V3H36M44 -3H47V3H44'],
+['Dog-ear','A tiny folded corner; literal paper.','M0 0H34L42 -6V0H80M34 0H42']
+];
+function motif(i){if(studies[i][2]==='dots')return '<path d="M0 0H29M51 0H80"/><circle cx="34" r=".5"/><circle cx="40" r=".5"/><circle cx="46" r=".5"/>';if(studies[i][2]==='perforation')return '<path d="M0 0H27M53 0H80"/><path d="M30 0H50" stroke-dasharray="2 3"/>';return `<path d="${studies[i][2]}"/>`;}
+const group=i=>`<g fill="none" stroke="#ddd" stroke-width="1" stroke-linejoin="round">${motif(i)}</g>`;
+document.querySelector('main').innerHTML=studies.map(([name,note],i)=>`<article><h2>${String(i+1).padStart(2,'0')} · ${name}</h2><svg class="sample" viewBox="0 0 280 160"><rect width="280" height="160" fill="white"/><path d="M12 160V12H280" stroke="#ddd" fill="none"/><rect x="90" y="3" width="80" height="18" fill="white"/><g transform="translate(90 12)">${group(i)}</g><rect x="3" y="55" width="18" height="80" fill="white"/><g transform="translate(12 55) rotate(90)">${group(i)}</g><text x="33" y="44" font-family="system-ui" font-size="13" fill="#43484d">Summary</text><rect x="33" y="59" width="226" height="30" fill="#f6f6f6"/><text x="43" y="79" font-family="system-ui" font-size="11" fill="#676c72">4 unread</text><path d="M33 110H259M33 140H259" stroke="#eee"/><text x="43" y="106" font-family="system-ui" font-size="11" fill="#676c72">2 flagged</text></svg><small>Detail · 2×</small><svg class="detail" viewBox="0 0 280 35"><g transform="translate(60 17) scale(2)">${group(i)}</g></svg><p>${note}</p></article>`).join('');
+</script></html>

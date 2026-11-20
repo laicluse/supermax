@@ -20,6 +20,7 @@ export const DEFAULT_STRINGS = Object.freeze({
 	peek: (title) => `Peek ${title}`,
 	peekDialog: (title) => `${title}, peek`,
 	closePeek: () => "Close peek",
+	unfold: (title) => `Unfold ${title}`,
 });
 
 export function resolveStrings(overrides = {}) {

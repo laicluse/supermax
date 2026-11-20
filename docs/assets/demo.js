@@ -10,6 +10,7 @@ const presentations = { origami: ORIGAMI_PRESENTATION, veil: VEIL_PRESENTATION, 
 const DEMO_TIMING = Object.freeze({ hover: 100, waiting: 700, network: { least: 100, spread: 600, quick: 400, slow: 1500 } });
 
 const coast = paths(albums[0]);
+const folding = paths(albums.find((album) => album.id === "folding"));
 const open = (destination, from) => ({ type: "open", destination, from });
 const depthPath = (n) => ["albums", ...Array.from({ length: n }, (_, index) => depthId(index + 1))].join("/");
 const twentyDeep = Array.from({ length: depthCount }, (_, index) => open(depthId(index + 1), depthPath(index)));
@@ -34,6 +35,7 @@ const sizePresets = [
 ];
 
 const scenarios = [
+	{ label: "Folding: cells and rows", folding: true, actions: [open("album:folding", "albums"), open("folding:photo:x", folding.row("thumbnails"))], sizes: [[960, 640], [420, 360]], network: { delay: "0", fail: "" }, presentation: "veil" },
 	{ label: "Open the Coast album", actions: [open("album:coast", "albums")] },
 	{
 		label: "Three rows: A, B, C",
@@ -757,8 +759,12 @@ for (const scenario of scenarios) {
 	const button = element("button", "scenario", scenario.label);
 	button.type = "button";
 	button.addEventListener("click", async () => {
+		for (const choice of scenarioHost.querySelectorAll(".scenario")) choice.setAttribute("aria-pressed", String(choice === button));
 		session.setNetwork(scenario.network ?? { delay: new URLSearchParams(location.search).get("delay") ?? "random", fail: "" });
 		await session.replay(scenario.actions.map((action) => ({ ...action })));
+		for (const frame of session.frames) frame.box.classList.toggle("is-folding-scenario", !!scenario.folding);
+		if (scenario.sizes) session.resize(scenario.sizes);
+		if (scenario.presentation) session.setPresentation(scenario.presentation);
 		if (scenario.local) session.frames.forEach((frame) => { scenario.local(frame); frame.workspace.render({ animate: false }); });
 	});
 	scenarioHost.append(button);
@@ -772,5 +778,7 @@ for (const preset of sizePresets) {
 }
 document.querySelector("[data-reset]").addEventListener("click", () => {
 	session.reset();
+	for (const choice of scenarioHost.querySelectorAll(".scenario")) choice.setAttribute("aria-pressed", "false");
+	for (const frame of session.frames) frame.box.classList.remove("is-folding-scenario");
 	session.resize(sizePresets[0].sizes);
 });
