@@ -122,11 +122,11 @@ scenario("rejections leave the model untouched and name their reason", () => {
 
 scenario("a split is validated against the declared minimum height before it opens", () => {
 	const instance = model(1000, 300);
-	assert.equal(validateSplit(instance, "fit", instance.root).ok, true, "40 + 20 + 240 = 300 passes");
+	assert.equal(validateSplit(instance, "fit", instance.root).ok, true, "40 + 260 = 300 passes");
 	const rejected = instance.open("over", { from: "root" });
 	assert.equal(rejected.reason, "invalid-rows");
 	const failing = rejected.validation.rows.find((candidate) => !candidate.ok);
-	assert.deepEqual({ title: failing.title, required: failing.required, chrome: failing.chrome, supported: failing.supported }, { title: "List", required: 301, chrome: 60, supported: 300 });
+	assert.deepEqual({ title: failing.title, required: failing.required, chrome: failing.chrome, supported: failing.supported }, { title: "List", required: 301, chrome: 40, supported: 300 });
 	assert.deepEqual(instance.state().occurrences, ["root"]);
 	openGallery(instance);
 	const before = instance.state();
@@ -152,97 +152,83 @@ scenario("a split cannot open inside a row, and a row cannot be a split", () => 
 	assert.equal(instance.open("outer", { from: "root" }).reason, "invalid-rows");
 });
 
-scenario("rows collapse from the top and the focused row keeps its minimum below the supported height", () => {
+scenario("rows hide from the top, a window start keeps an earlier row, and the last row keeps its minimum below the supported height", () => {
 	const instance = model(1000, 500);
 	openGallery(instance);
-	let split = instance.layout().chain.cells[1];
-	assert.deepEqual(split.rows.rows.map((candidate) => candidate.collapsed), [false, false, false]);
-	assert.equal(split.rows.rows.reduce((sum, candidate) => sum + candidate.height, 0), 500 - chrome.navbar);
-	assert.ok(split.rows.rows.every((candidate) => candidate.chain.width === split.width), "rows span the split width");
+	const rows = () => instance.layout().chain.cells[1].rows.rows;
+	assert.deepEqual(rows().map((candidate) => candidate.visible), [true, true, true]);
+	assert.equal(rows().reduce((sum, candidate) => sum + candidate.height, 0), 500 - chrome.navbar);
+	assert.ok(rows().every((candidate) => candidate.chain.width === instance.layout().chain.cells[1].width), "rows span the split width");
 
 	instance.resize({ width: 1000, height: 300 });
 	const before = instance.state();
-	split = instance.layout().chain.cells[1];
-	assert.deepEqual(split.rows.rows.map((candidate) => candidate.collapsed), [true, false, false], "the top row collapses first");
-	assert.deepEqual(split.rows.rows.map((candidate) => candidate.height), [20, 120, 120]);
+	assert.deepEqual(rows().map((candidate) => [candidate.visible, candidate.height]), [[false, 0], [true, 130], [true, 130]], "the top row hides entirely, no tab is left");
 	assert.deepEqual(instance.state(), before, "resize rewrites nothing");
 
-	instance.focus(row("list"));
-	split = instance.layout().chain.cells[1];
-	assert.deepEqual(split.rows.rows.map((candidate) => candidate.collapsed), [false, true, false], "the focused row stays open and the next one gives way");
+	instance.focus(row("list"), { resetReveal: false });
+	assert.deepEqual(rows().map((candidate) => candidate.visible), [false, true, true], "focus alone does not move the window");
+	instance.startRows(GALLERY, row("list"));
+	assert.deepEqual(rows().map((candidate) => [candidate.visible, candidate.height]), [[true, 130], [true, 130], [false, 0]], "a window start shows the earlier row and the last one gives way");
+	instance.resize({ width: 1000, height: 500 });
+	assert.deepEqual(rows().map((candidate) => candidate.visible), [true, true, true], "with room again the window fills toward the end");
 
 	instance.resize({ width: 1000, height: 100 });
 	const layout = instance.layout();
-	split = layout.chain.cells[1];
 	assert.equal(layout.belowMinimum, true);
 	assert.equal(layout.overflow, true);
-	assert.deepEqual(split.rows.rows.map((candidate) => candidate.collapsed), [false, true, true], "even at a zero budget the focused row stays open");
-	assert.equal(split.rows.rows[0].height, 100, "at its declared minimum");
-	assert.equal(layout.contentHeight, 140, "the content height counts the open row and two tabs");
+	assert.deepEqual(rows().map((candidate) => [candidate.visible, candidate.height]), [[true, 100], [false, 0], [false, 0]], "even at a short budget the window start keeps its declared minimum");
+	assert.equal(layout.contentHeight, 100);
 });
 
-scenario("reveal shifts the row window and never changes what is open", () => {
+scenario("a window start shifts the row window and never changes what is open", () => {
 	const narrow = model(110, 500);
 	openGallery(narrow);
 	narrow.open("item:a", { from: row("list") });
 	let chain = narrow.layout().chain.cells[1].rows.rows[0].chain;
 	assert.deepEqual(chain.cells.map((cell) => cell.visible), [false, true]);
-	assert.equal(chain.hiddenLeft, "List");
-	narrow.reveal(row("list"), 1);
+	narrow.startWindow(row("list"), row("list"));
 	chain = narrow.layout().chain.cells[1].rows.rows[0].chain;
 	assert.deepEqual(chain.cells.map((cell) => cell.visible), [true, false]);
-	assert.equal(chain.hiddenRight, "Item A");
 	assert.deepEqual(titles(narrow), ["Gallery", "Item A"]);
 	narrow.focus(row("list"), { resetReveal: false });
 	assert.equal(narrow.layout().chain.cells[1].rows.rows[0].chain.revealOffset, 1, "a row focus keeps the window");
 	narrow.open("detail:a", { from: item("list", "a") });
 	assert.equal(narrow.layout().chain.cells[1].rows.rows[0].chain.revealOffset, 0, "an opening in the row resets the window");
-	narrow.reveal(row("list"), 1);
+	narrow.startWindow(row("list"), row("list"));
 	narrow.back();
-	assert.equal(narrow.layout().chain.cells[1].rows.rows[0].chain.revealOffset, 1, "a Back keeps the revealed window");
+	assert.equal(narrow.layout().chain.cells[1].rows.rows[0].chain.revealOffset, 1, "closing a group keeps the window");
 });
 
 scenario("a revealed outer chain does not change which defaults open", () => {
-	const instance = model(450, 500);
+	const instance = model(350, 500);
 	openGallery(instance);
-	instance.reveal("root", 1);
+	instance.startWindow("root", "root");
 	assert.equal(instance.layout().chain.cells[1].visible, false, "the gallery is hidden behind the revealed root");
 	assert.equal(instance.open("item:b", { from: row("grid") }).ok, true);
 	assert.ok(instance.get(detail("grid", "b")), "the row width ignores the reveal, so the detail still fits");
 	assert.equal(instance.layout().chain.revealOffset, 0, "an opening resets the reveal of every chain above it");
 });
 
-scenario("cells with a compact form go compact from the left before anything hides, up to the cap", () => {
-	const instance = model(1000, 500);
-	openGallery(instance);
-	const chain = () => instance.layout().chain.cells[1].rows.rows[0].chain;
-	instance.resize({ width: 520, height: 500 });
-	let cells = chain().cells;
-	assert.deepEqual(cells.map((cell) => [cell.compact, cell.visible]), [[true, true], [false, true], [false, true], [false, true]], "one compact cell is enough in a 420 row");
-	assert.deepEqual(cells.map((cell) => cell.collapsible), [true, true, true, false], "the last cell is never collapsible");
-	instance.resize({ width: 440, height: 500 });
-	cells = chain().cells;
-	assert.deepEqual(cells.map((cell) => [cell.compact, cell.visible, Math.round(cell.width)]), [[true, true, 20], [true, true, 20], [false, true, 150], [false, true, 150]], "list and item go compact so detail and notes keep their room in a 340 row");
-	instance.resize({ width: 280, height: 500 });
-	cells = chain().cells;
-	assert.deepEqual(cells.map((cell) => [cell.compact, cell.visible]), [[false, false], [true, true], [false, true], [false, true]], "beyond the cap of two the oldest cell hides instead of a third compact");
-	assert.equal(chain().hiddenLeft, "List");
-	instance.resize({ width: 1000, height: 500 });
-	assert.ok(chain().cells.every((cell) => !cell.compact), "with room nothing is compact");
-	instance.collapse(item("list", "a"), true);
-	cells = chain().cells;
-	assert.deepEqual(cells.map((cell) => cell.compact), [false, true, false, false], "a user collapse goes compact regardless of room");
-	assert.deepEqual(titles(instance), ["Gallery"], "collapsing is not a navigation group");
-	const snapshot = instance.snapshot();
-	instance.collapse(item("list", "a"), false);
-	assert.ok(chain().cells.every((cell) => !cell.compact));
-	instance.restore(snapshot);
-	assert.equal(chain().cells[1].compact, true, "the collapse is part of the snapshot");
-	instance.collapse(detail("list", "a"), true);
-	instance.collapse(row("list"), true);
-	assert.equal(chain().cells.filter((cell) => cell.compact).length, 2, "user collapses beyond the cap are ignored, oldest first");
-	assert.equal(instance.back().ok, true);
-	assert.equal(instance.collapsed.size, 0, "closing removes the collapse state of closed cells");
+scenario("only a kept cell stays, compact when space runs out; every other cell is in view or gone", () => {
+	const set = {
+		menu: { title: "Menu", min: 100, max: 100, keep: true, compact: { min: 20 }, defaultChild: "a" },
+		a: { title: "A", min: 100, max: 100, compact: { min: 20 }, defaultChild: "b" },
+		b: { title: "B", min: 100, max: 100, defaultChild: "c" },
+		c: { title: "C", min: 100, max: 100 },
+	};
+	const instance = new Navigator({ destinations: set, root: "menu", minViewportHeight, chrome });
+	instance.resize({ width: 400, height: 500 });
+	assert.equal(instance.open("a", { from: "menu" }).ok, true);
+	const cells = () => instance.layout().chain.cells.map((cell) => (cell.compact ? "compact" : cell.visible ? "full" : "gone"));
+	assert.deepEqual(cells(), ["full", "full", "full", "full"]);
+	instance.resize({ width: 320, height: 500 });
+	assert.deepEqual(cells(), ["compact", "full", "full", "full"], "the kept cell takes its compact form before anything hides");
+	instance.resize({ width: 220, height: 500 });
+	assert.deepEqual(cells(), ["compact", "gone", "full", "full"], "a compact form without keep is never used");
+	instance.resize({ width: 120, height: 500 });
+	assert.deepEqual(cells(), ["compact", "gone", "gone", "full"], "the kept cell outlasts every other cell");
+	instance.startWindow("menu", "menu/a");
+	assert.deepEqual(cells(), ["compact", "full", "gone", "gone"], "a window start shows an earlier cell next to the kept one");
 });
 
 scenario("a dragged size is a session preference inside min and max, and rows follow the same rule", () => {
@@ -272,11 +258,7 @@ scenario("a dragged size is a session preference inside min and max, and rows fo
 	assert.equal(instance.layout().chain.cells[1].rows.rows[0].height, 150, "session sizes are part of the snapshot");
 	instance.setSize(item("list", "a"), 150, "width");
 	instance.open("item:b", { from: `${item("list", "a")}/detail:a` });
-	const compactCount = () => instance.layout().chain.cells[1].rows.rows[0].chain.cells.filter((cell) => cell.compact).length;
-	instance.resize({ width: 400, height: 500 });
-	const withSession = compactCount();
 	instance.setSize(item("list", "a"), null, "width");
-	assert.equal(compactCount(), withSession, "a session size never changes what goes compact, since compaction counts definition minima");
 	instance.resize({ width: 1000, height: 500 });
 	instance.back();
 	instance.open("item:b", { from: row("list") });

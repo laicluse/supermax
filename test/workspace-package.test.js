@@ -49,14 +49,11 @@ test("the package stylesheet alone renders the chrome at the sizes the model com
 		document.getElementById("host").style.height = "300px";
 		return new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve({ navbar, ...measureRows() }))));
 		function measureRows() {
-		const tab = document.querySelector(".supermax-row-tab:not([hidden])").getBoundingClientRect().height;
-		const rows = [...document.querySelectorAll(".supermax-row")].map((row) => row.getBoundingClientRect().height);
-		return { tab, rows };
+		return { rows: [...document.querySelectorAll(".supermax-row")].map((row) => row.getBoundingClientRect().height) };
 		}
 	});
 	assert.equal(measured.navbar, 40);
-	assert.equal(measured.tab, 20);
-	assert.deepEqual(measured.rows, [20, 120, 120]);
+	assert.deepEqual(measured.rows, [0, 130, 130], "a row that does not fit takes no height at all");
 });
 
 test("the workspace composes its overlays behind one surface", async () => {

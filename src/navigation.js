@@ -1,6 +1,6 @@
 import { chainCells, chainFits, chainRootOf, chainWidth, isSplit, layoutWorkspace, validateSplit } from "./layout.js";
 
-const DEFAULT_CHROME = { navbar: 44, rowTab: 32, maxRows: 4, maxCompact: 2 };
+const DEFAULT_CHROME = { navbar: 44, maxRows: 4 };
 const GENERIC_CELL = { min: 200, max: 320 };
 
 export class Navigator {
@@ -18,8 +18,8 @@ export class Navigator {
 		this.occurrences = new Map();
 		this.groups = [];
 		this.groupSequence = 0;
-		this.revealOffsets = new Map();
-		this.collapsed = new Set();
+		this.windowStarts = new Map();
+		this.rowStarts = new Map();
 		this.sizes = { width: new Map(), height: new Map() };
 		this.root = this.createOccurrence(this.rootDestination, null, 0, null);
 		this.focused = this.root.id;
@@ -164,7 +164,7 @@ export class Navigator {
 		}
 		const existing = this.child(parent);
 		if (existing && existing.destination === destinationId) {
-			this.focus(existing.id);
+			this.focus(existing.id, { resetReveal: false });
 			if (!this.isAuto(existing)) return { ok: true, noop: true, occurrence: existing };
 			const group = this.promote(existing);
 			return { ok: true, promoted: true, occurrence: existing, group };
@@ -247,8 +247,8 @@ export class Navigator {
 		const parent = occurrence.parent ? this.get(occurrence.parent) : null;
 		if (parent && parent.children[occurrence.slot] === occurrence.id) parent.children[occurrence.slot] = undefined;
 		this.occurrences.delete(occurrence.id);
-		this.revealOffsets.delete(occurrence.id);
-		this.collapsed.delete(occurrence.id);
+		this.windowStarts.delete(occurrence.id);
+		this.rowStarts.delete(occurrence.id);
 		this.sizes.width.delete(occurrence.id);
 		this.sizes.height.delete(occurrence.id);
 		if (this.focused === occurrence.id) this.focused = parent ? parent.id : this.root.id;
@@ -283,7 +283,8 @@ export class Navigator {
 		if (!resetReveal) return;
 		let current = occurrence;
 		while (current) {
-			this.revealOffsets.delete(chainRootOf(this, current).id);
+			this.windowStarts.delete(chainRootOf(this, current).id);
+			this.rowStarts.delete(current.id);
 			current = current.parent ? this.get(current.parent) : null;
 		}
 	}
@@ -300,20 +301,14 @@ export class Navigator {
 		return this.sizes[axis]?.get(occurrenceId) ?? null;
 	}
 
-	collapse(occurrenceId, collapsed = true) {
-		if (!this.get(occurrenceId)) return;
-		if (collapsed) this.collapsed.add(occurrenceId);
-		else this.collapsed.delete(occurrenceId);
+	startWindow(chainRootId, occurrenceId) {
+		if (occurrenceId) this.windowStarts.set(chainRootId, occurrenceId);
+		else this.windowStarts.delete(chainRootId);
 	}
 
-	reveal(chainRootId, delta) {
-		const chainRoot = this.get(chainRootId);
-		if (!chainRoot) return;
-		const length = chainCells(this, chainRoot).length;
-		const current = this.revealOffsets.get(chainRootId) ?? 0;
-		const next = Math.max(0, Math.min(length - 1, current + delta));
-		if (next === 0) this.revealOffsets.delete(chainRootId);
-		else this.revealOffsets.set(chainRootId, next);
+	startRows(splitId, rowRootId) {
+		if (rowRootId) this.rowStarts.set(splitId, rowRootId);
+		else this.rowStarts.delete(splitId);
 	}
 
 	focusInfo() {
@@ -337,8 +332,8 @@ export class Navigator {
 			groups: this.groups.map((group) => ({ ...group })),
 			groupSequence: this.groupSequence,
 			focused: this.focused,
-			revealOffsets: [...this.revealOffsets],
-			collapsed: [...this.collapsed],
+			windowStarts: [...this.windowStarts],
+			rowStarts: [...this.rowStarts],
 			sizes: { width: [...this.sizes.width], height: [...this.sizes.height] },
 		};
 	}
@@ -349,8 +344,8 @@ export class Navigator {
 		this.groups = snapshot.groups.map((group) => ({ ...group }));
 		this.groupSequence = snapshot.groupSequence;
 		this.focused = snapshot.focused;
-		this.revealOffsets = new Map(snapshot.revealOffsets);
-		this.collapsed = new Set(snapshot.collapsed ?? []);
+		this.windowStarts = new Map(snapshot.windowStarts ?? []);
+		this.rowStarts = new Map(snapshot.rowStarts ?? []);
 		this.sizes = { width: new Map(snapshot.sizes?.width ?? []), height: new Map(snapshot.sizes?.height ?? []) };
 		this.root = this.get(this.rootDestination);
 		return true;

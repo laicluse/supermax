@@ -45,16 +45,11 @@ export class CellCollection {
 	hideCellsToFit(maxColumns, keepIndex = this.proxies.length - 1) {
 		if (this.sumOfActuals() <= maxColumns) return;
 		for (let index = 0; index < this.proxies.length; index += 1) {
-			if (index === keepIndex) continue;
+			if (index === keepIndex || this.proxies[index].config.keep) continue;
 			this.proxies[index].actual = 0;
 			if (this.sumOfActuals() <= maxColumns) return;
 		}
 		this.proxies[keepIndex].actual = Math.min(this.proxies[keepIndex].actual, maxColumns);
-	}
-
-	findKeepIndex(pinnedId) {
-		const index = this.proxies.findIndex((proxy) => proxy.id === pinnedId);
-		return index === -1 ? this.proxies.length - 1 : index;
 	}
 
 	distributeRemainingSpace(maxColumns) {
@@ -135,9 +130,9 @@ export class CellCollection {
 		return -1;
 	}
 
-	distribute(maxColumns, anchorId, { pinnedId } = {}) {
+	distribute(maxColumns, anchorId) {
 		this.resetActualsToMins();
-		if (this.sumOfActuals() > maxColumns) this.hideCellsToFit(maxColumns, this.findKeepIndex(pinnedId));
+		if (this.sumOfActuals() > maxColumns) this.hideCellsToFit(maxColumns);
 		const anchorIndex = this.findAnchorIndex(anchorId == null ? null : anchorId);
 		if (anchorIndex > 0) this.hideCellsBeforeAnchor(anchorIndex);
 		this.distributeRemainingSpace(maxColumns);

@@ -4,7 +4,7 @@
 import { CellStrip, STRIP_TIMING } from "./cell-strip.js";
 import { ContentSlot } from "./content-slot.js";
 import { DividerLayer } from "./dividers.js";
-import { chainRootOf, isSplit } from "./layout.js";
+import { chainCells, chainRootOf, isSplit } from "./layout.js";
 import { ModalHost } from "./modal.js";
 import { NoticeBoard } from "./notices.js";
 import { PeekController } from "./peek.js";
@@ -63,10 +63,9 @@ export class Workspace extends EventTarget {
 	}
 
 	buildChrome() {
-		const { navbar, rowTab } = this.navigator.chrome;
+		const { navbar } = this.navigator.chrome;
 		this.element.classList.add("supermax-workspace");
 		this.element.style.setProperty("--supermax-navbar", `${navbar}px`);
-		this.element.style.setProperty("--supermax-row-tab", `${rowTab}px`);
 		this.navbar = this.create("nav", "supermax-navbar");
 		this.navbar.setAttribute("aria-label", "Workspace navigation");
 		this.backButton = this.create("button", "supermax-back");
@@ -111,17 +110,28 @@ export class Workspace extends EventTarget {
 		return { ok: true, destination: destination.id };
 	}
 
-	backDestination(layout = this.layout ?? this.navigator.layout()) {
-		let current = this.navigator.get(this.navigator.focused) ?? this.navigator.root;
-		while (current) {
-			const root = chainRootOf(this.navigator, current);
-			const chain = layout.chains.get(root.id);
-			const first = chain ? chain.cells.findIndex((cell) => cell.visible) : -1;
-			if (first > 0) {
-				const cell = chain.cells[first - 1];
-				return { id: cell.occurrence, title: cell.title, chain: root.id };
+	readingOrder() {
+		const order = [];
+		const visit = (chainRoot) => {
+			for (const occurrence of chainCells(this.navigator, chainRoot)) {
+				order.push(occurrence);
+				for (const childId of isSplit(this.navigator.definitionOf(occurrence.destination)) ? occurrence.children : []) {
+					const row = childId ? this.navigator.get(childId) : null;
+					if (row) visit(row);
+				}
 			}
-			current = root.parent ? this.navigator.get(root.parent) : null;
+		};
+		visit(this.navigator.root);
+		return order;
+	}
+
+	backDestination(layout = this.layout ?? this.navigator.layout()) {
+		const order = this.readingOrder();
+		const focusIndex = order.findIndex((occurrence) => occurrence.id === this.navigator.focused);
+		for (let index = (focusIndex === -1 ? order.length : focusIndex) - 1; index >= 0; index -= 1) {
+			const occurrence = order[index];
+			if (isSplit(this.navigator.definitionOf(occurrence.destination))) continue;
+			if (!layout.cells.get(occurrence.id)?.inView) return { id: occurrence.id, title: occurrence.title };
 		}
 		return null;
 	}
@@ -148,8 +158,6 @@ export class Workspace extends EventTarget {
 		this.element.classList.add(`supermax-presentation-${next.name}`);
 		for (const entry of this.chains.values()) {
 			entry.strip.destroy();
-			entry.left.remove();
-			entry.right.remove();
 			entry.viewport.remove();
 		}
 		this.chains.clear();
@@ -220,27 +228,11 @@ export class Workspace extends EventTarget {
 	}
 
 	goTo(occurrenceId) {
-		let current = this.navigator.get(occurrenceId);
-		while (current) {
-			const row = this.rows.get(current.id);
-			if (row?.element.classList.contains("is-collapsed")) { this.focusRow(current.id); break; }
-			current = current.parent ? this.navigator.get(current.parent) : null;
-		}
-		const chainRoot = chainRootOf(this.navigator, this.navigator.get(occurrenceId));
-		const chain = this.findChain(chainRoot.id);
-		const cell = chain?.cells.find((candidate) => candidate.occurrence === occurrenceId);
-		if (cell && !cell.visible) {
-			const index = chain.cells.indexOf(cell);
-			const nearest = this.navigator.revealOffsets.get(chainRoot.id) ?? 0;
-			let offset = nearest;
-			for (let candidate = nearest; candidate <= chain.cells.length - 1 - index; candidate += 1) {
-				this.navigator.revealOffsets.set(chainRoot.id, candidate);
-				offset = candidate;
-				if (this.navigator.layout().chains.get(chainRoot.id)?.cells[index]?.visible) break;
-			}
-			this.navigator.revealOffsets.set(chainRoot.id, nearest);
-			this.reveal(chainRoot.id, offset - nearest);
-		}
+		const occurrence = this.navigator.get(occurrenceId);
+		if (!occurrence) return false;
+		this.bringIntoView(occurrence);
+		this.navigator.focus(occurrenceId, { resetReveal: false });
+		this.render({ animate: true });
 		const target = this.findCell(occurrenceId);
 		if (target?.compact) {
 			this.peeks.open(occurrenceId);
@@ -251,20 +243,35 @@ export class Workspace extends EventTarget {
 		return target?.full ?? false;
 	}
 
-	collapsedRowFor(occurrenceId) {
-		let current = this.navigator.get(occurrenceId);
-		while (current) {
-			if (this.findRow(current.id)?.collapsed) return this.rows.get(current.id)?.tab ?? null;
-			current = current.parent ? this.navigator.get(current.parent) : null;
+	bringIntoView(occurrence) {
+		const path = [];
+		for (let current = occurrence; current; current = current.parent ? this.navigator.get(current.parent) : null) path.unshift(current);
+		for (const step of path) {
+			const parent = step.parent ? this.navigator.get(step.parent) : null;
+			if (parent && isSplit(this.navigator.definitionOf(parent.destination))) {
+				const rows = parent.children.map((id) => (id ? this.navigator.get(id) : null));
+				this.reachWindow(rows, step, (layout, id) => layout.rows.get(id), (id) => this.navigator.startRows(parent.id, id));
+			}
+			if (step !== occurrence && !isSplit(this.navigator.definitionOf(step.destination))) continue;
+			const chainRoot = chainRootOf(this.navigator, step);
+			this.reachWindow(chainCells(this.navigator, chainRoot), step, (layout, id) => layout.cells.get(id), (id) => this.navigator.startWindow(chainRoot.id, id));
 		}
-		return null;
 	}
 
-	collapse(occurrenceId, collapsed = !this.navigator.collapsed.has(occurrenceId)) {
-		this.closePeek();
-		this.navigator.collapse(occurrenceId, collapsed);
-		this.render({ animate: true });
-		this.focusCell(occurrenceId);
+	reachWindow(members, target, find, start) {
+		const shown = (id) => !!find(this.navigator.layout(), id)?.visible;
+		if (shown(target.id)) return;
+		const layout = this.navigator.layout();
+		const targetIndex = members.findIndex((member) => member?.id === target.id);
+		const first = members.findIndex((member) => member && find(layout, member.id)?.visible && !find(layout, member.id).kept);
+		if (first === -1 || targetIndex < first) {
+			start(target.id);
+			return;
+		}
+		for (let index = first + 1; index <= targetIndex; index += 1) {
+			start(members[index].id);
+			if (shown(target.id)) return;
+		}
 	}
 
 	setSize(occurrenceId, size, axis = "width") {
@@ -291,7 +298,7 @@ export class Workspace extends EventTarget {
 				this.becomeSplit(entry);
 				continue;
 			}
-			if (completed.compact && !entry.rail) this.peeks.mount(entry, occurrence, completed);
+			if (completed.keep && completed.compact && !entry.rail) this.peeks.mount(entry, occurrence, completed);
 			this.mountContent(entry, occurrence);
 		}
 		for (const rejection of result.rejected) {
@@ -304,7 +311,6 @@ export class Workspace extends EventTarget {
 	setTitle(entry, title) {
 		if (entry.titleNode) entry.titleNode.textContent = title;
 		entry.element.setAttribute("aria-label", title);
-		entry.collapseButton?.setAttribute("aria-label", `Collapse ${title}`);
 		if (entry.rail) {
 			entry.rail.setAttribute("aria-label", `Peek ${title}`);
 			entry.rail.firstChild.textContent = title;
@@ -318,7 +324,6 @@ export class Workspace extends EventTarget {
 		entry.header = null;
 		entry.element.querySelector(":scope > .supermax-compact")?.remove();
 		entry.rail = null;
-		entry.collapseButton = null;
 		entry.element.classList.remove("is-provisional", "is-loading", "is-error", "is-compact");
 		entry.element.classList.add("is-split");
 		entry.body.replaceChildren(this.create("div", "supermax-rows"));
@@ -339,6 +344,7 @@ export class Workspace extends EventTarget {
 
 	apply(action, { animate = true, focus = false } = {}) {
 		const result = this.run(action);
+		if (result.ok && result.occurrence) this.bringIntoView(result.occurrence);
 		this.render({ animate });
 		if (!result.ok) this.dispatchEvent(new CustomEvent("rejected", { detail: { action, result } }));
 		this.dispatchEvent(new CustomEvent("change", { detail: { action, result } }));
@@ -368,23 +374,6 @@ export class Workspace extends EventTarget {
 		if (!result.ok) return;
 		if (action.type === "back") this.focusCell(result.focus);
 		else if (result.occurrence) this.focusCell(result.occurrence.id);
-	}
-
-	focusRow(rowRootId) {
-		this.navigator.focus(rowRootId, { resetReveal: false });
-		this.render({ animate: true });
-		this.focusCell(rowRootId);
-	}
-
-	reveal(chainRootId, delta) {
-		this.navigator.reveal(chainRootId, delta);
-		const before = this.navigator.layout();
-		const chain = before.chains.get(chainRootId) ?? null;
-		const visible = chain ? chain.cells.filter((cell) => cell.visible) : [];
-		const target = delta > 0 ? visible[0] : visible[visible.length - 1];
-		if (target) this.navigator.focus(target.occurrence, { resetReveal: false });
-		this.render({ animate: true });
-		if (target) this.focusCell(target.occurrence);
 	}
 
 	focusCell(occurrenceId) {
@@ -423,7 +412,7 @@ export class Workspace extends EventTarget {
 	}
 
 	followFocus(target) {
-		if (this.rendering || target.closest?.(".supermax-row-tab, .supermax-reveal, .supermax-navbar")) return;
+		if (this.rendering || target.closest?.(".supermax-navbar")) return;
 		const cell = target.closest?.(".supermax-cell");
 		if (!cell || !this.element.contains(cell) || cell.classList.contains("is-split")) return;
 		const occurrenceId = cell.dataset.occurrence;
@@ -485,9 +474,7 @@ export class Workspace extends EventTarget {
 			const viewport = this.create("div", "supermax-chain");
 			host.append(viewport);
 			const strip = this.presentation.createStrip(viewport, this);
-			const left = this.revealButton("left", () => this.reveal(chain.root, 1));
-			const right = this.revealButton("right", () => this.reveal(chain.root, -1));
-			entry = { viewport, strip, left, right };
+			entry = { viewport, strip };
 			this.chains.set(chain.root, entry);
 		}
 		const entries = chain.cells.map((cell) => ({
@@ -503,8 +490,6 @@ export class Workspace extends EventTarget {
 			if (cell.rows) this.renderRows(cell, animating);
 		}
 		const visible = chain.cells.filter((cell) => cell.visible);
-		this.placeReveal(entry.left, chain.root === this.backTo?.chain ? null : chain.hiddenLeft, visible[0], "prepend", entry.viewport);
-		this.placeReveal(entry.right, chain.hiddenRight, visible[visible.length - 1], "append", entry.viewport);
 		this.dividers.sync(entry.viewport, "vertical", this.widthDividers(chain, visible));
 		return entry.viewport;
 	}
@@ -528,8 +513,8 @@ export class Workspace extends EventTarget {
 		rows.forEach((row, index) => {
 			offset += row.height;
 			const next = rows[index + 1];
-			if (!next || row.collapsed || next.collapsed) return;
-			const others = rows.filter((candidate) => candidate !== row).reduce((sum, candidate) => sum + (candidate.collapsed || candidate.sized ? candidate.height : candidate.minHeight), 0);
+			if (!next || !row.visible || !next.visible) return;
+			const others = rows.filter((candidate) => candidate !== row).reduce((sum, candidate) => sum + (!candidate.visible || candidate.sized ? candidate.height : candidate.minHeight), 0);
 			items.push({ id: row.occurrence, title: row.title, offset, size: row.height, min: row.minHeight, max: Math.max(row.minHeight, Math.min(row.maxHeight, budget - others)), sized: row.sized });
 		});
 		return items;
@@ -539,27 +524,6 @@ export class Workspace extends EventTarget {
 		const active = this.activeAtRender;
 		if (!active || this.pendingFocus || !elements.some((element) => element.contains(active))) return;
 		this.pendingFocus = this.navigator.get(target) ? target : this.navigator.focused;
-	}
-
-	revealButton(side, onClick) {
-		const button = this.create("button", `supermax-reveal is-${side}`);
-		button.type = "button";
-		button.hidden = true;
-		button.addEventListener("click", onClick);
-		return button;
-	}
-
-	placeReveal(button, title, cell, position, viewport) {
-		button.hidden = !title;
-		if (!title) return;
-		button.textContent = button.classList.contains("is-left") ? "‹" : "›";
-		button.setAttribute("aria-label", `Show ${title}`);
-		button.title = `Show ${title}`;
-		const header = cell && !cell.compact ? this.cells.get(cell.occurrence)?.header : null;
-		const floating = !!cell && cell.compact;
-		const host = header ?? (floating ? viewport : this.navbarLeft);
-		button.classList.toggle("is-floating", floating);
-		if (button.parentElement !== host) host[header ? position : "append"](button);
 	}
 
 	mountCell(occurrenceId) {
@@ -584,8 +548,8 @@ export class Workspace extends EventTarget {
 			element.append(header);
 		}
 		element.append(body);
-		entry = { element, body, header, titleNode, slot: new ContentSlot(this, { element, body, id: occurrenceId }), parent: occurrence.parent, rail: null, collapseButton: null, provisional: false };
-		if (!isSplit(definition) && definition.compact) this.peeks.mount(entry, occurrence, definition);
+		entry = { element, body, header, titleNode, slot: new ContentSlot(this, { element, body, id: occurrenceId }), parent: occurrence.parent, rail: null, provisional: false };
+		if (!isSplit(definition) && definition.keep && definition.compact) this.peeks.mount(entry, occurrence, definition);
 		this.cells.set(occurrenceId, entry);
 		if (!isSplit(definition)) this.mountContent(entry, occurrence);
 		return element;
@@ -598,25 +562,18 @@ export class Workspace extends EventTarget {
 			if (!entry) {
 				const element = this.create("div", "supermax-row");
 				element.dataset.row = row.occurrence;
-				const tab = this.create("button", "supermax-row-tab");
-				tab.type = "button";
-				tab.textContent = row.title;
-				tab.setAttribute("aria-label", `Open row ${row.title}`);
-				tab.addEventListener("click", () => this.focusRow(row.occurrence));
 				const chain = this.create("div", "supermax-row-chain");
-				element.append(tab, chain);
+				element.append(chain);
 				host.append(element);
-				entry = { element, tab, chain, height: null, animation: null };
+				entry = { element, chain, height: null, animation: null };
 				this.rows.set(row.occurrence, entry);
 			}
 			this.setRowHeight(entry, row.height, animating);
-			entry.element.classList.toggle("is-collapsed", row.collapsed);
-			entry.element.classList.toggle("is-focused", row.focused);
-			if (row.collapsed) this.protectFocus([entry.chain]);
-			entry.tab.hidden = !row.collapsed;
-			entry.chain.inert = row.collapsed;
-			entry.chain.style.visibility = row.collapsed ? "hidden" : "";
-			if (!row.collapsed) {
+			entry.element.classList.toggle("is-hidden", !row.visible);
+			if (!row.visible) this.protectFocus([entry.chain]);
+			entry.chain.inert = !row.visible;
+			entry.chain.style.visibility = row.visible ? "" : "hidden";
+			if (row.visible) {
 				entry.chain.style.height = `${row.height}px`;
 				this.renderChain(row.chain, entry.chain, animating);
 			}
@@ -654,8 +611,6 @@ export class Workspace extends EventTarget {
 		for (const [chainRootId, entry] of this.chains) {
 			if (this.navigator.get(chainRootId)) continue;
 			this.chains.delete(chainRootId);
-			entry.left.remove();
-			entry.right.remove();
 			this.dividers.dispose(entry.viewport);
 			this.afterExit(entry.viewport, () => {
 				entry.strip.destroy();
@@ -705,6 +660,5 @@ export class Workspace extends EventTarget {
 		this.element.replaceChildren();
 		this.element.classList.remove("supermax-workspace", `supermax-presentation-${this.presentation.name}`);
 		this.element.style.removeProperty("--supermax-navbar");
-		this.element.style.removeProperty("--supermax-row-tab");
 	}
 }

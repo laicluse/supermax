@@ -58,11 +58,6 @@ const scenarios = [
 		actions: longChain,
 	},
 	{
-		label: "Collapse photo and history in that chain",
-		actions: longChain,
-		local: (frame) => [coast.photo("thumbnails", "a"), coast.history("thumbnails", "a")].forEach((id) => frame.workspace.collapse(id, true)),
-	},
-	{
 		label: "Preferred sizes: photo wide, metadata narrow",
 		actions: [open("album:coast", "albums"), open("coast:photo:b", coast.row("map"))],
 	},
@@ -152,6 +147,7 @@ function renderSpec(occurrence, definition) {
 	line("min", definition.min);
 	line("max", definition.max);
 	line("preferred", definition.preferred);
+	line("keep", definition.keep ? "yes" : null);
 	line("compact", definition.compact?.min);
 	line("defaultChild", definition.defaultChild);
 	spec.append(element("dt", null, "width"), element("dd", "cell-spec-width", "…"));

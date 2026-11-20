@@ -1,15 +1,15 @@
 export const minViewportHeight = 360;
 
 const widths = {
-	albums: { min: 200, max: 320, compact: { min: 48 } },
+	albums: { min: 200, max: 320, keep: true, compact: { min: 48 } },
 	album: { min: 320, max: 1600 },
-	selector: { min: 200, max: 360, compact: { min: 40 } },
-	map: { min: 220, max: 480, compact: { min: 40 } },
-	photo: { min: 240, max: 520, preferred: 360, compact: { min: 40 } },
-	metadata: { min: 200, max: 320, preferred: 220, compact: { min: 40 } },
-	history: { min: 200, max: 320, compact: { min: 40 } },
+	selector: { min: 200, max: 360 },
+	map: { min: 220, max: 480 },
+	photo: { min: 240, max: 520, preferred: 360 },
+	metadata: { min: 200, max: 320, preferred: 220 },
+	history: { min: 200, max: 320 },
 	edit: { min: 200, max: 320 },
-	depth: { min: 160, max: 240, compact: { min: 36 } },
+	depth: { min: 160, max: 240 },
 };
 
 export const depthCount = 20;
@@ -50,7 +50,7 @@ export const albums = [
 		id: "lab-fit",
 		title: "Lab: exact fit",
 		rows: [
-			{ key: "thumbnails", title: "Gallery", minHeight: 284, maxHeight: 600 },
+			{ key: "thumbnails", title: "Gallery", minHeight: 316, maxHeight: 600 },
 			{ key: "map", title: "Notes", minHeight: 180, maxHeight: 520 },
 		],
 		photos: [{ id: "x", title: "Photo X", date: "Jan 1, 2024", place: "Lab", tags: "fixture", hue: 300 }],
@@ -59,7 +59,7 @@ export const albums = [
 		id: "lab-over",
 		title: "Lab: one pixel over",
 		rows: [
-			{ key: "thumbnails", title: "Gallery", minHeight: 285, maxHeight: 600 },
+			{ key: "thumbnails", title: "Gallery", minHeight: 317, maxHeight: 600 },
 			{ key: "map", title: "Notes", minHeight: 180, maxHeight: 520 },
 		],
 		photos: [{ id: "y", title: "Photo Y", date: "Jan 2, 2024", place: "Lab", tags: "fixture", hue: 330 }],

@@ -1,6 +1,6 @@
 # Supermax application shell
 
-Supermax is an application shell, not merely a responsive column allocator. New content opens below and then to the right, like reading a book: a cell can split into rows, every row runs its own left-to-right chain, and one Back closes what was opened last. The allocator decides which cells fit and how wide they become; the navigator decides what is open and what Back closes; the host owns content and should follow this contract so that navigation, controls, and content remain predictable across applications.
+Supermax is an application shell, not merely a responsive column allocator. New content opens below and then to the right, like reading a book: a cell can split into rows, every row runs its own left-to-right chain, and the screen is a window on that reading order that one Back moves toward its beginning. The allocator decides which cells fit and how wide they become; the navigator decides what is open; the host owns content and should follow this contract so that navigation, controls, and content remain predictable across applications.
 
 ## Vocabulary
 
@@ -8,13 +8,12 @@ Supermax is an application shell, not merely a responsive column allocator. New 
 - **Occurrence:** one opened destination at one place, identified by the path of destination ids from the root.
 - **Chain:** a row of cells from a root cell to the right; the workspace root is a chain and every row is a chain.
 - **Split:** a cell whose rows are chains stacked below each other.
-- **Row tab:** the form of a collapsed row: its title on one line, which opens the row again.
-- **Group:** what one Back closes: a manual opening together with every default it brought along, named after its root cell.
+- **Group:** a manual opening together with every default it brought along, named after its root cell; `navigator.back()` closes the newest one.
 - **Default:** a cell that opened by itself because its parent names it as `defaultChild` and the row had room; a click on it promotes it into a group of its own.
-- **Compact cell:** a cell shown as a narrow rail because the chain lacks room or the user collapsed it; its content shows in a peek.
-- **Peek:** the overlay beside a rail that holds the compact cell's own content.
+- **Kept cell:** a destination or row the host marks `keep: true`; it stays in view while the cells or rows around it hide, if need be in a compact form the host supplies.
+- **Peek:** the overlay beside a kept cell's rail that holds its own content.
 - **Hint:** the title and bounds an action carries so an unknown destination can open as a provisional cell before its definition loads.
-- **Reveal:** the view window of a chain whose cells do not all fit; a chip names the nearest hidden cell and moves the window.
+- **Window:** the part of the reading order that is in view. It ends at the newest content until Back, or a click on content that is already open, moves its start.
 - **Notice:** temporary feedback with a scope, placed in its source cell or in the workspace region.
 - **Presentation:** the motion and surface treatment of cells, replaceable without changing behaviour.
 
@@ -98,19 +97,25 @@ Do not copy these numbers mechanically. A dense data table may need more width t
 - Open create and edit flows as child cells when they are part of the hierarchy.
 - Use one scroll owner per cell. Headers and task toolbars remain stable while the body scrolls.
 
-When cells no longer fit, hide ancestors from the left. Do not squeeze them into narrow columns and do not add horizontal page scrolling. The first visible header provides a reveal control for the rightmost hidden ancestor; revealing changes what is visible, never what is open. When the first visible cell of a chain is a split, which has no header of its own, that control sits in the navigation bar next to Back. Selecting new content returns focus to the rightmost active cells.
+When cells no longer fit, hide ancestors from the left, entirely. Do not squeeze them into narrow columns and do not add horizontal page scrolling. The Back control in the navigation bar brings them back one at a time; changing what is visible never changes what is open. Selecting new content brings its destination into view and focuses it.
 
 ## Rows
 
-A split spans the full width of its own cell and stacks its rows from top to bottom. Rows never share column boundaries with each other, and no cell spans more than one row. Rows are owned by their split: they open with it, close with it, and cannot be replaced or promoted on their own. A split opens from the workspace's root chain and its rows are plain cells; a split inside a row is refused. Inside a row the horizontal rules above apply unchanged: ancestors hide from the left, the newest cell survives, and the first visible cell's header carries a reveal control for the rightmost hidden ancestor. Revealing is a view change, not navigation: it never opens, closes, or regroups anything, and the next opening in that row or above it resets the view to its newest cells. A Back keeps the view where the user put it; the window only shrinks when the chain does.
+A split spans the full width of its own cell and stacks its rows from top to bottom. Rows never share column boundaries with each other, and no cell spans more than one row. Rows are owned by their split: they open with it, close with it, and cannot be replaced or promoted on their own. A split opens from the workspace's root chain and its rows are plain cells; a split inside a row is refused. Inside a row the horizontal rules above apply unchanged: ancestors hide from the left and the newest cell survives.
 
-Rows declare `minHeight` and `maxHeight`. When the split is too short for every row, rows give way from the top: they shrink to their minimum first and then collapse to a row tab, while the focused row (the row holding the focused occurrence, or the last row) always stays open, at its minimum height if need be. A row tab is compact presentation, not a closed row; activating it focuses that row and lets rows above or below it collapse instead. Keyboard focus follows the same rule: focusing content in a row makes that row the protected one, and when a cell slides out of view the focus moves to the visible cell of the same row. Collapse, resize, focus, and reveal preserve drafts, scroll positions, and every navigation group.
+Rows declare `minHeight` and `maxHeight`. When the split is too short for every row, rows give way from the top: they shrink to their minimum first and then hide entirely, the same way cells hide from the left. There are no row tabs. Hiding, resizing and moving the window preserve drafts, scroll positions and every navigation group, and keyboard focus that sat in hidden content moves to the nearest visible cell.
 
-### Compact cells and peek
+### The window and Back
 
-A destination may declare `compact: { min, content? }`: a narrow form the cell can take instead of hiding. When a chain does not fit, cells with a compact form go compact from the left, at most `maxCompact` per chain (default 2) so a long chain never fills the viewport with rails; only then do cells hide. The first cell of an application, the menu, is the typical compact cell: give it icons through `compact.content` so it stays usable at a glance. A user can collapse any cell except the last one from its header, and expand it again from the `Expand` control in its peek; a collapse is view state, never a group, and user collapses count before automatic ones. When the first visible cell of a chain is compact, the reveal chip for the cells hidden to its left floats over the chain instead of sitting in a hidden header.
+Content has one reading order: a chain from left to right, and at a split each row top to bottom, each row's chain from left to right, before anything after the split. The screen is a window on that order. By default the window ends at the newest content. Back brings the nearest earlier cell in that order that is out of view back into view, names it (`Back to Depth 2`) and focuses it; whether that cell hid to the left or in a row above makes no difference, so the user needs no picture of the larger layout. Back skips kept cells, which are always in view, and is disabled when nothing earlier is hidden. It never closes anything.
 
-A compact cell shows a peek on hover, on keyboard focus and on tap: an overlay beside the rail that holds the cell's own content, so a draft typed in a peek is the same draft in the cell. Enter or Space on the rail, and ArrowRight while the peek is open, move keyboard focus into the peek; a mouse click on the rail keeps the peek open, a second tap on a touch screen closes it. The peek closes on Escape, with its own close control, when focus leaves it, when a navigation starts from inside it, and when the pointer leaves it while nothing inside it holds the keyboard focus, so typing in a peek is never cut short by the mouse. A peek never writes history and never changes a group; a navigation from a peek is an ordinary opening. Peek and collapse stay local to one workspace, a navigation from a peek reaches every workspace that follows the same intents.
+The window remembers its first cell, per chain and per split. More room fills it toward the end; less room hides from the end, so the cell Back brought back stays. There is no Forward control: a click on content whose destination is already open but out of view moves the window just far enough to show it, and a new opening brings its destination into view. The window is local to one workspace and is not part of a shared action log.
+
+### Kept cells and peek
+
+Nothing becomes a narrow rail or a tab by default. A host marks a destination, or a row in a split's `rows`, with `keep: true` when it must stay in view, for example a menu that switches between modes of the application; the cells around it hide while it stays. A kept destination may also declare `compact: { min, content? }`, a narrow form it takes when the chain lacks room; give it icons through `compact.content` so it stays usable at a glance. A `compact` form without `keep` is never used.
+
+A compact kept cell shows a peek on hover, on keyboard focus and on tap: an overlay beside the rail that holds the cell's own content. Enter or Space on the rail, and ArrowRight while the peek is open, move keyboard focus into the peek; a mouse click on the rail keeps the peek open, a second tap on a touch screen closes it. The peek closes on Escape, with its own close control, when focus leaves it, when a navigation starts from inside it, and when the pointer leaves it while nothing inside it holds the keyboard focus. A peek never writes history and never changes a group; a navigation from a peek is an ordinary opening.
 
 ### Preferred sizes and dividers
 
@@ -132,7 +137,7 @@ The demo answers layout definitions and content from the album catalog inside th
 
 `workspace.openModal({ title, content }, { from })` opens one dialog above the cells. The header carries the title and `From <source title>`; the dialog sits anchored just inside its source cell when that cell is visible and full, otherwise centred. `content(modal, workspace)` follows the cell contract, including a promise with the loading and error states, so delayed modal content shows `Loading <title>` and a Retry; content that arrives late does not take focus away from a notice the user moved to. The cells behind the modal are inert, Tab and Shift+Tab cycle through the dialog and the workspace notices, Escape, the close control, the backdrop and `workspace.closeModal(reason)` close it. The navigation bar stays clickable and readable by assistive technology: the shared Back closes the modal and navigates nothing, and any navigation intent closes the modal before it runs. A second `openModal` replaces the open modal; there are no nested modals. A modal writes no history and is local to one workspace.
 
-Closing returns focus in this order: the row tab when the source sits in a collapsed row, the control that opened the modal when the source cell is still visible, otherwise the source cell itself (its rail when compact), otherwise the focused cell or the root, and finally the Back button. When the source closes while the modal is open (a Back from another workspace, for example) the header says `Its source has closed` and the modal stays until the user closes it. The `modal` event reports `open` and `closed` with the reason and the source.
+Closing returns focus in this order: the control that opened the modal when the source cell is still visible, otherwise the source cell itself (its rail when compact), otherwise the focused cell or the root, and finally the Back button. When the source closes while the modal is open (a Back from another workspace, for example) the header says `Its source has closed` and the modal stays until the user closes it. The `modal` event reports `open` and `closed` with the reason and the source.
 
 ### Notices with a scope
 
@@ -148,28 +153,28 @@ Behaviour stays with the workspace, not with the presentation: an override canno
 
 ### Minimum height is validated up front
 
-The application declares the smallest viewport height it supports. Before a split opens, every row is checked: the navigation bar, one row tab per other row (the ancestor chrome budget, bounded by the maximum number of rows per split), and the row's own `minHeight` must fit inside that height. An exact fit passes; one pixel over fails; an empty split, a split with more rows than allowed, a row that is itself a split, two rows with the same destination, and a row or cell whose minimum exceeds its maximum fail. The check runs for a split the user opens and for a split that would open as a default; a default that fails stays closed and becomes a manual choice that reports the same verdict. The result names the row, the required height, the chrome budget, and the supported height, and a refused open touches nothing already open. Those numbers are for the developer; the content that offered the link shows an understandable message and a way on.
+The application declares the smallest viewport height it supports. Before a split opens, every row is checked: the navigation bar and the row's own `minHeight` must fit inside that height, and a split may hold at most the maximum number of rows. An exact fit passes; one pixel over fails; an empty split, a split with more rows than allowed, a row that is itself a split, two rows with the same destination, and a row or cell whose minimum exceeds its maximum fail. The check runs for a split the user opens and for a split that would open as a default; a default that fails stays closed and becomes a manual choice that reports the same verdict. The result names the row, the required height, the chrome budget, and the supported height, and a refused open touches nothing already open. Those numbers are for the developer; the content that offered the link shows an understandable message and a way on.
 
 ![The Lab album refused with its reason under the frame](assets/captures/lab-rejected.png)
 
-Below the supported height the shell keeps the focused row at its minimum and lets the workspace scroll. That is the emergency behaviour for a window the application never promised to support, distinct from an invalid configuration inside the supported range.
+Below the supported height the shell keeps the first row of the window at its minimum and lets the workspace scroll. That is the emergency behaviour for a window the application never promised to support, distinct from an invalid configuration inside the supported range.
 
-## Navigation groups and Back
+## Navigation groups
 
-A manual opening forms a navigation group. Every default that this opening triggers while the row has room belongs to the same group, across any number of levels: opening an album that auto-opens a photo that auto-opens its metadata is one group, and one Back closes all of it. Groups close in reverse order of opening across all rows: after opening photos A, B and C in three rows, Back closes C, then B, then A; after A, C, B it closes B, then C, then A. The selectors remain, and groups opened earlier are untouched.
+A manual opening forms a navigation group. Every default that this opening triggers while the row has room belongs to the same group, across any number of levels: opening an album that auto-opens a photo that auto-opens its metadata is one group. `navigator.back()` closes the newest group, all of it, in reverse order of opening across all rows: after opening photos A, B and C in three rows it closes C, then B, then A; after A, C, B it closes B, then C, then A. The selectors remain, and groups opened earlier are untouched. The shell's Back control does not close groups; in the interface content closes when the user chooses another branch.
 
 A default opens only when the row has room: the sum of the minimum widths of the row's cells plus the candidate must fit the row's width at the moment of opening. Otherwise the default stays visible as a manual choice, and opening it later forms its own group. A wide and a narrow viewport therefore reach the same content through a different number of groups, and the Back history records what actually happened in that viewport.
 
 Two rules cover the cases the three-row example leaves open:
 
-- **Replacing content on the same slot.** Opening Photo B where Photo A was open closes Photo A and everything under it; its group disappears. Back on Photo B returns to the selector. Supermax does not restore the replaced content; that would be an undo system.
-- **An explicit click on content that is already open automatically.** The occurrence and the defaults under it move into a new group with that occurrence as root, so the next Back closes exactly what the user just chose. The defaults that moved along stay automatic, so a later click on one of them promotes it in turn. Without this rule, Back after clicking visible metadata would close the whole album, which contradicts what the user did last. Clicking content that was already opened manually changes nothing.
+- **Replacing content on the same slot.** Opening Photo B where Photo A was open closes Photo A and everything under it; its group disappears. Closing Photo B's group returns to the selector. Supermax does not restore the replaced content; that would be an undo system.
+- **An explicit click on content that is already open automatically.** The occurrence and the defaults under it move into a new group with that occurrence as root, so closing the newest group closes exactly what the user just chose. The defaults that moved along stay automatic, so a later click on one of them promotes it in turn. Without this rule, closing after clicking visible metadata would close the whole album, which contradicts what the user did last. Clicking content that was already opened manually changes nothing.
 
-Hiding, resizing, focusing a row, and revealing an ancestor never create or rewrite groups. The Back control names the content it will close, also when that content lives in another row than the focus or is hidden; the title shows the focused content with its ancestors as context. When nothing is left to close, Back is disabled and says so.
+Hiding, resizing, focusing and moving the window never create or rewrite groups. The title shows the focused content with its ancestors as context.
 
 ### Deep links and browser history
 
-The library ships no router: the host owns the log of actions and how it travels. The demo shows one shape. Its URL carries the ordered log of applied manual actions, including Backs; an action every frame refused stays out. A fresh navigation to such a link replays the log from the start, and every viewport computes its own defaults while replaying, so the result depends on the size each viewport has at that moment, because room is decided when something opens and a resize never rewrites what is open. Within a session each action pushes a history entry that also stores a snapshot of what every frame has open, so browser back, forward and reload restore that earlier state instead of replaying; content that stayed open through such a step keeps its drafts, content that closed was disposed and comes back fresh. The snapshot holds what is open, the groups, the focused occurrence and the reveal windows as they were when the action was taken; a focus or reveal change on its own writes no history entry. An action whose source is no longer open in a viewport is rejected there and reported; the demo never invents hidden steps to make the viewports match.
+The library ships no router: the host owns the log of actions and how it travels. The demo shows one shape. Its URL carries the ordered log of applied manual actions; an action every frame refused stays out, and Back, which only moves a frame's window, never enters it. A fresh navigation to such a link replays the log from the start, and every viewport computes its own defaults while replaying, so the result depends on the size each viewport has at that moment, because room is decided when something opens and a resize never rewrites what is open. Within a session each action pushes a history entry that also stores a snapshot of what every frame has open, so browser back, forward and reload restore that earlier state instead of replaying; content that stayed open through such a step keeps its drafts, content that closed was disposed and comes back fresh. The snapshot holds what is open, the groups, the focused occurrence and the windows as they were when the action was taken; a focus or window change on its own writes no history entry. An action whose source is no longer open in a viewport is rejected there and reported; the demo never invents hidden steps to make the viewports match.
 
 ## Cold start
 
@@ -193,11 +198,11 @@ Before implementing a Supermax adaptation:
 4. Specify each cell's header controls, scroll owner, context bar, and task toolbar.
 5. Define the cold-start selection and the defaults that may open automatically when there is room.
 6. Declare the minimum supported viewport height and check every split against it.
-7. Define narrow behavior: which ancestors hide, which rows collapse first, and what the Back control names.
+7. Define narrow behavior: which cells or rows the host keeps, and what Back brings back first.
 8. Import the workspace stylesheet and give the workspace element a height; theme it through the `--supermax-*` custom properties.
 9. Only then wire the navigator and render the cells.
 
-Verify the result with real content at narrow and wide sizes, preferably side by side. Test deep links, reload, browser back, group-wise Back across rows, selected-row continuity, hidden-ancestor recovery, collapsed rows, drafts surviving a collapse, create/edit child cells, and every control's scope. A green allocator test does not verify the application shell.
+Verify the result with real content at narrow and wide sizes, preferably side by side. Test deep links, reload, browser back, Back across cells and rows, selected-row continuity, hidden rows, drafts surviving while their cell is hidden, create/edit child cells, and every control's scope. A green allocator test does not verify the application shell.
 
 ## Common failures
 

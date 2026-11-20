@@ -32,13 +32,6 @@ export class PeekController {
 		close.setAttribute("aria-label", "Close peek");
 		close.textContent = "×";
 		close.addEventListener("click", () => { this.close(); this.focusRail(entry); });
-		if (workspace.navigator.collapsed.has(occurrenceId)) {
-			const expand = workspace.create("button", "supermax-peek-expand", "Expand");
-			expand.type = "button";
-			expand.setAttribute("aria-label", `Expand ${occurrence.title}`);
-			expand.addEventListener("click", () => { this.close(); workspace.collapse(occurrenceId, false); workspace.focusCell(occurrenceId); });
-			header.append(expand);
-		}
 		header.append(close);
 		overlay.append(header, entry.body);
 		const host = workspace.element.getBoundingClientRect();
@@ -117,20 +110,11 @@ export class PeekController {
 		if (cell.compact && !entry.element.classList.contains("is-compact")) workspace.protectFocus([entry.body], cell.occurrence);
 		entry.element.classList.toggle("is-compact", cell.compact);
 		entry.body.style.width = cell.compact ? `${definition.min}px` : "";
-		entry.collapseButton.hidden = !cell.collapsible || cell.compact;
-		entry.collapseButton.setAttribute("aria-pressed", String(workspace.navigator.collapsed.has(cell.occurrence)));
 		entry.rail.inert = !cell.compact;
 	}
 
 	mount(entry, occurrence, definition) {
 		const workspace = this.workspace;
-		const collapseButton = workspace.create("button", "supermax-collapse");
-		collapseButton.type = "button";
-		collapseButton.hidden = true;
-		collapseButton.setAttribute("aria-label", `Collapse ${occurrence.title}`);
-		collapseButton.textContent = "⌃";
-		collapseButton.addEventListener("click", () => workspace.collapse(occurrence.id, true));
-		entry.header.append(collapseButton);
 		const compact = workspace.create("div", "supermax-compact");
 		const rail = workspace.create("button", "supermax-rail");
 		rail.type = "button";
@@ -169,6 +153,5 @@ export class PeekController {
 		if (extra) compact.append(extra);
 		entry.element.append(compact);
 		entry.rail = rail;
-		entry.collapseButton = collapseButton;
 	}
 }

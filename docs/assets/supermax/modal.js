@@ -135,8 +135,6 @@ export class ModalHost {
 	returnFocus(modal) {
 		const workspace = this.workspace;
 		if (modal.source && workspace.navigator.get(modal.source)) {
-			const row = workspace.collapsedRowFor(modal.source);
-			if (row) { row.focus({ preventScroll: true }); return; }
 			const target = workspace.visibleCellFor(modal.source);
 			if (target === modal.source && modal.returnFocus && workspace.element.contains(modal.returnFocus) && modal.returnFocus.offsetParent !== null) {
 				modal.returnFocus.focus({ preventScroll: true });
