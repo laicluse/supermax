@@ -25,7 +25,6 @@ export const destinations = {
 	"detail:c": { title: "Detail C", min: 150, max: 200 },
 	"notes:a": { title: "Notes A", min: 100, max: 200 },
 	fit: { title: "Fit", header: "title", rows: [{ destination: "list", minHeight: 272, maxHeight: "*", preferredHeight: 300 }, { destination: "grid", minHeight: 100, maxHeight: 200 }] },
-	upside: { title: "Upside", min: 300, max: 200 },
 	"item:nested": { title: "Nested item", min: 100, max: 200, defaultChild: "inner" },
 	inner: { title: "Inner", rows: [{ destination: "list", minHeight: 100, maxHeight: "*", preferredHeight: 300 }, { destination: "grid", minHeight: 100, maxHeight: 200 }] },
 };

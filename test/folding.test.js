@@ -29,6 +29,85 @@ test("opposing fold handles do not compete for a small touch target", () => {
 	}
 });
 
+for (const presentation of ["veil", "origami", "fold"]) test(`a row trade retains the preceding page handle and one gutter below the title (${presentation})`, async () => {
+	const server = await serveDocs();
+	const browser = await chromium.launch({ channel: "chrome", headless: true });
+	try {
+		const page = await browser.newPage({ viewport: { width: 1500, height: 900 } });
+		await page.goto(`${server.url}/?delay=0&presentation=${presentation}`);
+		await page.evaluate(async () => {
+			await window.supermaxDemo.replay([
+				{ type: "open", destination: "album:coast", from: "albums" },
+				{ type: "open", destination: "coast:photo:a", from: "albums/album:coast/coast:people" },
+				{ type: "open", destination: "coast:metadata:a", from: "albums/album:coast/coast:people/coast:photo:a" },
+				{ type: "open", destination: "coast:history:a", from: "albums/album:coast/coast:people/coast:photo:a/coast:metadata:a" },
+			]);
+			window.supermaxDemo.resize([[296, 335], [700, 500]]);
+		});
+		await page.waitForFunction(() => window.supermaxDemo.frames[0].workspace.layout.height === 335 && window.supermaxDemo.pending === 0);
+		const frame = page.locator('.frame[data-frame="a"]');
+		await frame.locator('.supermax-fold-cue.is-vertical[data-fold-occurrence="albums/album:coast/coast:map"]').click();
+		await page.evaluate(() => document.getAnimations().filter((animation) => animation.effect.getTiming().iterations !== Infinity).forEach((animation) => animation.finish()));
+		await page.waitForTimeout(100);
+		const handle = frame.locator('.supermax-fold-cue.is-vertical[data-fold-occurrence="albums/album:coast/coast:people"]');
+		await handle.scrollIntoViewIfNeeded();
+		const box = await handle.boundingBox();
+		await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+		await page.mouse.down();
+		const samples = [];
+		for (const distance of [20, 140, 240, 270, 290, 140]) {
+			await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2 - distance, { steps: 3 });
+			samples.push(await frame.evaluate((frame) => {
+				const title = frame.querySelector('.supermax-cell.is-split > .supermax-cell-title');
+				const rows = [...frame.querySelectorAll('.supermax-row')].filter((row) => row.getBoundingClientRect().height > 1);
+				const previous = frame.querySelector('.supermax-fold-cue.is-vertical[data-fold-occurrence="albums/album:coast/coast:thumbnails"]');
+				return { gap: rows[0].firstElementChild.getBoundingClientRect().top - title.getBoundingClientRect().bottom, previousVisible: !previous.hidden, previousInert: previous.inert, progress: window.supermaxDemo.frames[0].workspace.folds.drag.progress };
+			}));
+		}
+		await page.mouse.up();
+		assert.ok(samples.every((sample) => Math.abs(sample.gap - 1) < .1), `the title shares exactly one gutter with the first moving row: ${JSON.stringify(samples)}`);
+		assert.ok(samples.every((sample) => sample.previousVisible && sample.previousInert), `the preceding page remains visible but inactive throughout the drag: ${JSON.stringify(samples)}`);
+	} finally {
+		await browser.close();
+		await server.close();
+	}
+});
+
+test("zoom retains an exit when its ancestors were already hidden", async () => {
+	const server = await serveDocs();
+	const browser = await chromium.launch({ channel: "chrome", headless: true });
+	try {
+		const page = await browser.newPage();
+		await page.goto(`${server.url}/blank`);
+		await page.addStyleTag({ url: `${server.url}/src/workspace.css` });
+		await page.evaluate(async () => {
+			const { Navigator, Workspace } = await import("/src/index.js");
+			const host = document.createElement("div");
+			host.style.cssText = "position:relative;width:100px;height:100px";
+			document.body.append(host);
+			const navigator = new Navigator({ root: "root", minViewportHeight: 100, destinations: {
+				root: { title: "Root", min: 100, max: 100, fold: false },
+				parent: { title: "Parent", min: 100, max: 100, fold: false },
+				detail: { title: "Detail", min: 100, max: "*", preferred: 100, fold: false, zoomable: true, header: "title" },
+			} });
+			navigator.resize({ width: 100, height: 100 });
+			navigator.open("parent", { from: "root" });
+			navigator.open("detail", { from: "root/parent" });
+			window.zoomCase = new Workspace(host, { navigator, content: () => ({}) });
+			window.zoomCase.zoom("root/parent/detail", { animate: false });
+		});
+		assert.equal(await page.locator(".supermax-up").isVisible(), true, "zoom cannot remove the only route to its ancestors");
+		assert.equal(await page.locator(".supermax-up").getAttribute("aria-label"), "Zoom out");
+		await page.locator(".supermax-up").click();
+		assert.equal(await page.evaluate(() => window.zoomCase.navigator.zoomed), null);
+		await page.locator(".supermax-up").click();
+		assert.equal(await page.evaluate(() => window.zoomCase.layout.cells.get("root/parent").full), true);
+	} finally {
+		await browser.close();
+		await server.close();
+	}
+});
+
 test("adjacent folded cells can be dragged open one page at a time", async () => {
 	const server = await serveDocs();
 	const browser = await chromium.launch({ channel: "chrome", headless: true });
@@ -165,6 +244,52 @@ test("nonfoldable content after the active cell remains scrollable in a split", 
 		assert.ok(result.scrollWidth > result.clientWidth, "horizontal scrolling is enabled");
 		assert.ok(result.after < result.before && result.after < result.viewportRight, "the trailing cell can be brought into the viewport");
 		assert.equal(result.visible, true);
+	} finally {
+		await browser.close();
+		await server.close();
+	}
+});
+
+test("allocated rows and cells remain physically reachable with overflow on both axes", async () => {
+	const server = await serveDocs();
+	const browser = await chromium.launch({ channel: "chrome", headless: true });
+	try {
+		const page = await browser.newPage();
+		await page.goto(`${server.url}/blank`);
+		await page.addStyleTag({ url: `${server.url}/src/workspace.css` });
+		await page.evaluate(async () => {
+			const { Navigator, Workspace } = await import("/src/index.js");
+			const host = document.createElement("div");
+			host.style.cssText = "position:relative;width:120px;height:100px";
+			document.body.append(host);
+			const navigator = new Navigator({ root: "menu", minViewportHeight: 300, destinations: {
+				menu: { title: "Menu", min: 40, max: 40, keep: true },
+				split: { title: "Split", header: "title", rows: [
+					{ destination: "first", minHeight: 180, maxHeight: "*", preferredHeight: 200, fold: false },
+					{ destination: "second", minHeight: 180, maxHeight: 200, fold: false },
+				] },
+				first: { title: "First", min: 200, max: 200, fold: false },
+				second: { title: "Second", min: 200, max: 200, fold: false },
+				item: { title: "Item", min: 200, max: "*", preferred: 200, fold: false },
+			} });
+			navigator.resize({ width: 120, height: 100 });
+			navigator.open("split", { from: "menu" });
+			navigator.open("item", { from: "menu/split/first" });
+			navigator.bringIntoView("menu/split/first");
+			window.overflowCase = new Workspace(host, { navigator, content: (occurrence) => {
+				const element = document.createElement("button");
+				element.textContent = occurrence.title;
+				element.onclick = () => { window.clickedCell = occurrence.id; };
+				return { element };
+			} });
+		});
+		for (const id of ["menu/split/first/item", "menu/split/second"]) {
+			const button = page.locator(`[data-occurrence="${id}"] .supermax-cell-body > button`);
+			await button.click();
+			assert.equal(await page.evaluate(() => window.clickedCell), id, "scrolling brings the allocated cell into the actual hit-test area");
+		}
+		const scroll = await page.locator(".supermax-body").evaluate((body) => ({ width: body.scrollWidth, height: body.scrollHeight, viewportWidth: body.clientWidth, viewportHeight: body.clientHeight }));
+		assert.ok(scroll.width > scroll.viewportWidth && scroll.height > scroll.viewportHeight, JSON.stringify(scroll));
 	} finally {
 		await browser.close();
 		await server.close();

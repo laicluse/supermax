@@ -3,7 +3,6 @@
 
 import { follow, unfollow } from "./follow.js";
 import { FoldDrag } from "./fold-drag.js";
-import { chainRootOf } from "./layout.js";
 import { EASING, TIMING } from "./motion.js";
 
 const CORNERS = ["borderTopLeftRadius", "borderTopRightRadius", "borderBottomRightRadius", "borderBottomLeftRadius"];
@@ -83,6 +82,7 @@ export class FoldController {
 
 	place() {
 		const { workspace } = this;
+		workspace.placeRowGutters();
 		const bounds = workspace.body.getBoundingClientRect();
 		const origin = workspace.element.getBoundingClientRect();
 		const gutter = parseFloat(workspace.document.defaultView.getComputedStyle(workspace.element).getPropertyValue("--supermax-gutter")) || 0;
@@ -97,7 +97,7 @@ export class FoldController {
 				continue;
 			}
 			const state = axis === "horizontal" ? workspace.findCell(occurrence) : workspace.findRow(occurrence);
-			const shown = (this.drag?.active ? this.drag.visible.has(cue) : !!state?.folded && state.inView) && entry.element.isConnected;
+			const shown = (this.drag?.active ? this.drag.visible.has(cue) : state?.foldPage === occurrence && state.inView) && entry.element.isConnected;
 			cue.hidden = !shown;
 			cue.inert = !shown || !!this.drag?.active && this.drag.cue !== cue;
 			if (!shown) continue;
@@ -126,20 +126,15 @@ export class FoldController {
 			const x = horizontal ? seam + (direction === "left" ? gutter - width : 0) : box.left + (box.width - width) / 2;
 			const y = horizontal ? box.top + (box.height - height) / 2 : seam + (direction === "up" ? gutter - height : 0);
 			Object.assign(cue.style, { left: `${x - origin.left}px`, top: `${y - origin.top}px` });
-			const member = workspace.navigator.get(occurrence);
-			const order = horizontal
-				? workspace.layout.chains.get(chainRootOf(workspace.navigator, member).id)?.cells.findIndex((cell) => cell.occurrence === occurrence)
-				: workspace.layout.cells.get(member.parent)?.rows?.rows.findIndex((row) => row.occurrence === occurrence);
 			visible.set(cue, {
 				group: horizontal ? entry.element.closest(".supermax-strip") : entry.element.parentElement,
 				axis,
 				direction,
-				order,
 				rect: cue.getBoundingClientRect(),
 				shape: handleShape(cue),
 			});
 		}
-		this.showNearestPages(visible);
+		if (!this.drag?.active || this.drag.settling) this.showNearestPages(visible);
 		this.visibleCues = visible;
 		if (this.drag && !this.drag.settling || workspace.reducedMotion.matches) return;
 		const leaving = [...previous].filter(([cue]) => !visible.has(cue));
@@ -167,31 +162,6 @@ export class FoldController {
 			const key = `${position.axis}:${position.direction}`;
 			if (!byDirection.has(key)) byDirection.set(key, []);
 			byDirection.get(key).push([cue, position]);
-		}
-		for (const byDirection of groups.values()) for (const candidates of byDirection.values()) {
-			const axis = candidates[0][1].axis;
-			const coordinate = ([, position]) => axis === "horizontal" ? position.rect.left : position.rect.top;
-			candidates.sort((first, second) => coordinate(first) - coordinate(second));
-			const clusters = [];
-			for (const candidate of candidates) {
-				const cluster = clusters.at(-1);
-				if (cluster && coordinate(candidate) - coordinate(cluster.at(-1)) < 44) cluster.push(candidate);
-				else clusters.push([candidate]);
-			}
-			for (const cluster of clusters) {
-				if (cluster.length < 2) continue;
-				const direction = cluster[0][1].direction;
-				const nearest = (this.drag?.cue && cluster.find(([cue]) => cue === this.drag.cue))
-					?? cluster.reduce((best, candidate) => ["right", "down"].includes(direction)
-						? candidate[1].order > best[1].order ? candidate : best
-						: candidate[1].order < best[1].order ? candidate : best);
-				for (const [cue] of cluster) {
-					if (cue === nearest[0]) continue;
-					cue.hidden = true;
-					cue.inert = true;
-					visible.delete(cue);
-				}
-			}
 		}
 		for (const byDirection of groups.values()) for (const [axis, backward, forward] of [["horizontal", "right", "left"], ["vertical", "down", "up"]]) {
 			const earlier = (byDirection.get(`${axis}:${backward}`) ?? []).filter(([cue]) => visible.has(cue));

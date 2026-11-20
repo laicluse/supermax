@@ -18,6 +18,7 @@ Start with [Migrating from v1 to v2](docs/migrating-to-v2.md). A dependency vers
 
 ### Added
 
+- Every layout carries an access route for every open cell. Back preserves previously hidden branches; zoom always retains its exit. Fold page selection comes from the layout, and a drag keeps its initial handles while one gutter follows each moving row boundary.
 - Open cells and rows after the active surface retain a fold handle or a scroll route when space runs out. Show continues to reach earlier hidden content. Notices use the canvas hairline and fold-handle corner radius by default.
 - Navigator and Workspace provide a branching cell shell, layout declarations, Show, dividers, loading content, overlays, presentations and a shared time scale.
 - A cell draws no title bar unless it declares `header: "title"`; the title stays its accessible name. A split may declare it too, one bar above its rows.

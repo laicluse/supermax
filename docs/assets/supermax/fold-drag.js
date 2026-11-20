@@ -57,13 +57,16 @@ export class FoldDrag {
 		for (const animation of this.motionAnimations()) animation.finish();
 		const before = record.entry.element.getBoundingClientRect()[this.horizontal ? "width" : "height"];
 		const previousFocus = workspace.navigator.foldFocuses;
+		const previousZoom = workspace.navigator.zoomed;
 		workspace.navigator.focusFold(record.occurrence, record.axis);
 		this.focus = workspace.navigator.foldFocuses;
+		this.zoomed = workspace.navigator.zoomed;
 		workspace.element.classList.add("is-fold-dragging");
 		this.rendering = true;
 		workspace.render({ animate: true });
 		this.rendering = false;
 		workspace.navigator.foldFocuses = previousFocus;
+		workspace.navigator.zoomed = previousZoom;
 		const state = this.horizontal ? workspace.findCell(record.occurrence) : workspace.findRow(record.occurrence);
 		this.distance = Math.max(1, state[this.horizontal ? "width" : "height"] - before);
 		this.animations = this.motionAnimations();
@@ -110,7 +113,7 @@ export class FoldDrag {
 		if (open) {
 			this.visible = new Set([...this.controller.entries].filter(([, { occurrence, axis }]) => {
 				const state = axis === "horizontal" ? this.workspace.findCell(occurrence) : this.workspace.findRow(occurrence);
-				return !!state?.folded && state.inView;
+				return state?.foldPage === occurrence && state.inView;
 			}).map(([cue]) => cue));
 			this.controller.place();
 		}
@@ -124,7 +127,10 @@ export class FoldDrag {
 			this.seek(from + (target - from) * elapsed * elapsed * (3 - 2 * elapsed));
 			if (elapsed < 1) this.frame = view.requestAnimationFrame(tick);
 			else {
-				if (open) this.workspace.navigator.foldFocuses = this.focus;
+				if (open) {
+					this.workspace.navigator.foldFocuses = this.focus;
+					this.workspace.navigator.zoomed = this.zoomed;
+				}
 				this.cancel();
 				this.workspace.render({ animate: false });
 				if (open) this.controller.announce(this.record.occurrence, this.record.axis);

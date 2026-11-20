@@ -4,6 +4,7 @@
 export const DEFAULT_STRINGS = Object.freeze({
 	up: (title) => `Show ${title}`,
 	back: () => "Back",
+	zoomOut: () => "Zoom out",
 	loading: (title) => `Loading ${title}`,
 	loadFailed: (title) => `${title} could not load.`,
 	retry: () => "Retry",

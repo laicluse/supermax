@@ -25,6 +25,9 @@ export function validateDestinations(destinations, { minViewportHeight, chrome =
 		.map((id) => ({ destination: id, validation: validateSplit(model, id, null) }))
 		.filter((problem) => !problem.validation.ok);
 	for (const id of Object.keys(destinations)) {
+		const definition = destinations[id];
+		if (!isSplit(definition) && (!(Number.isFinite(definition.min) && definition.min > 0) || (definition.max !== ELASTIC && !(Number.isFinite(definition.max) && definition.max >= definition.min)))) problems.push({ destination: id, reason: "invalid-size" });
+		if (!isSplit(definition) && definition.max !== ELASTIC && definition.preferred != null && (!Number.isFinite(definition.preferred) || definition.preferred < definition.min || definition.preferred > definition.max)) problems.push({ destination: id, reason: "invalid-preferred" });
 		if (destinations[id].compact != null) problems.push({ destination: id, reason: "unsupported-compact" });
 		if (destinations[id].height != null && (!isFull(destinations[id]) || isSplit(destinations[id]))) problems.push({ destination: id, reason: "invalid-height" });
 		if (isSplit(destinations[id]) && ["min", "max", "preferred"].some((key) => destinations[id][key] != null)) problems.push({ destination: id, reason: "split-with-width" });
@@ -33,7 +36,7 @@ export function validateDestinations(destinations, { minViewportHeight, chrome =
 	}
 	const elastic = Object.keys(destinations).filter((id) => destinations[id].max === ELASTIC);
 	for (const id of elastic) {
-		if (!(destinations[id].preferred >= destinations[id].min)) problems.push({ destination: id, reason: "elastic-without-preferred" });
+		if (!(Number.isFinite(destinations[id].preferred) && destinations[id].preferred >= destinations[id].min)) problems.push({ destination: id, reason: "elastic-without-preferred" });
 	}
 	if (elastic.length === 0) problems.push({ destination: "(destinations)", reason: "no-elastic-destination" });
 	return { ok: problems.length === 0, problems };
@@ -71,10 +74,12 @@ export class Navigator {
 	focusFold(occurrenceId, axis) {
 		const occurrence = this.get(occurrenceId);
 		const scope = axis === "horizontal" ? chainRootOf(this, occurrence).id : occurrence.parent;
+		this.zoomed = null;
 		this.foldFocuses = [...this.foldFocuses.filter((focus) => focus.axis !== axis || focus.scope !== scope), { occurrence: occurrenceId, axis, scope }];
 	}
 
 	resize(size) {
+		if (![size.width, size.height].every((value) => Number.isFinite(value) && value >= 0)) throw new TypeError("Viewport dimensions must be finite non-negative numbers");
 		this.size = { width: size.width, height: size.height };
 	}
 
@@ -259,6 +264,8 @@ export class Navigator {
 		this.occurrences.delete(occurrence.id);
 		this.windowStarts.delete(occurrence.id);
 		this.rowStarts.delete(occurrence.id);
+		for (const starts of [this.windowStarts, this.rowStarts]) for (const [scope, start] of starts) if (start === occurrence.id) starts.delete(scope);
+		this.foldFocuses = this.foldFocuses.filter((focus) => focus.occurrence !== occurrence.id && focus.scope !== occurrence.id);
 		this.sizes.width.delete(occurrence.id);
 		this.sizes.height.delete(occurrence.id);
 		closed.unshift({ id: occurrence.id, destination: occurrence.destination, title: occurrence.title });
@@ -282,6 +289,7 @@ export class Navigator {
 		}
 		const occurrence = this.get(occurrenceId);
 		if (!occurrence || !this.definitionOf(occurrence.destination).zoomable) return false;
+		this.foldFocuses = [];
 		this.zoomed = occurrence.id;
 		return true;
 	}
@@ -465,18 +473,14 @@ export class Navigator {
 	}
 
 	bringIntoView(occurrenceId, { chains = true } = {}) {
-		const occurrence = this.get(occurrenceId);
-		const path = [];
-		for (let current = occurrence; current; current = current.parent ? this.get(current.parent) : null) path.unshift(current);
-		for (const step of path) {
-			const parent = step.parent ? this.get(step.parent) : null;
-			if (parent && isSplit(this.definitionOf(parent.destination))) {
-				const rows = parent.children.map((id) => (id ? this.get(id) : null));
-				this.reachWindow(rows, step, (layout, id) => layout.rows.get(id), (id) => this.startRows(parent.id, id));
-			}
-			if (!chains || (step !== occurrence && !isSplit(this.definitionOf(step.destination)))) continue;
-			const chainRoot = chainRootOf(this, step);
-			this.reachWindow(chainCells(this, chainRoot), step, (layout, id) => layout.cells.get(id), (id) => this.startWindow(chainRoot.id, id));
+		for (let member = this.get(occurrenceId); member; ) {
+			const root = chainRootOf(this, member);
+			if (chains) this.reachWindow(chainCells(this, root), member, (layout, id) => layout.cells.get(id), (id) => this.startWindow(root.id, id));
+			if (!root.parent) break;
+			const split = this.get(root.parent);
+			const rows = split.children.map((id) => this.get(id));
+			this.reachWindow(rows, root, (layout, id) => layout.rows.get(id), (id) => this.startRows(split.id, id));
+			member = split;
 		}
 	}
 
@@ -503,6 +507,12 @@ export class Navigator {
 	showByClosing(occurrenceId) {
 		const target = this.get(occurrenceId);
 		if (!target) return [];
+		const before = this.layout();
+		const hidden = new Set([...this.occurrences.keys()].filter((id) => !before.cells.get(id)?.full));
+		for (const focus of this.foldFocuses) {
+			if (focus.axis === "horizontal") this.startWindow(focus.scope, focus.occurrence);
+			else this.startRows(focus.scope, focus.occurrence);
+		}
 		this.foldFocuses = [];
 		this.bringIntoView(occurrenceId, { chains: false });
 		const levels = [];
@@ -515,12 +525,19 @@ export class Navigator {
 		for (const { root, member } of levels) {
 			this.windowStarts.delete(root.id);
 			while (this.get(member.id)) {
-				const placement = this.layout().cells.get(member.id);
+				const layout = this.layout();
+				const placement = layout.cells.get(member.id);
 				if (placement?.visible && !placement.folded) break;
 				const cells = chainCells(this, root);
 				const last = cells[cells.length - 1];
 				if (last.id === member.id) break;
-				closed.push(...this.closeSubtree(this.newestWithin(last)));
+				const closing = this.newestWithin(last);
+				const fullyShown = (candidate) => !hidden.has(candidate.id) && !!layout.cells.get(candidate.id)?.full && candidate.children.filter(Boolean).every((id) => fullyShown(this.get(id)));
+				if (!fullyShown(closing)) {
+					this.bringIntoView(occurrenceId);
+					return closed;
+				}
+				closed.push(...this.closeSubtree(closing));
 			}
 		}
 		return closed;
@@ -541,16 +558,19 @@ export class Navigator {
 			if (container !== "in") return container;
 			const rows = layout.cells.get(split.id)?.rows?.rows ?? [];
 			const index = rows.findIndex((row) => row.occurrence === root.id);
+			if (rows[index]?.folded) return rows[index].foldDirection === "down" ? "above" : "after";
 			if (!rows[index]?.visible || rows[index]?.folded) return index < rows.findIndex((row) => row.visible && !row.folded) ? "above" : "after";
 		}
 		const cells = layout.chains.get(root.id)?.cells ?? [];
 		const index = cells.findIndex((cell) => cell.occurrence === occurrence.id);
 		if (cells[index]?.visible && !cells[index]?.folded) return "in";
+		if (cells[index]?.folded) return cells[index].foldDirection === "right" ? "above" : "after";
 		return index < cells.findIndex((cell) => cell.visible && !cell.folded && !cell.kept) ? "above" : "after";
 	}
 
 	upTarget(layout = this.layout()) {
 		const appearance = [...this.occurrences.keys()];
+		const candidates = [];
 		const tipsOf = (members) => members.filter((occurrence) => !occurrence.children.some((childId) => members.some((member) => member.id === childId)));
 		const branches = [...this.groups].reverse().map((group) => appearance.map((id) => this.get(id)).filter((occurrence) => occurrence.group === group.id));
 		branches.push(appearance.map((id) => this.get(id)));
@@ -561,12 +581,15 @@ export class Navigator {
 						const root = chainRootOf(this, current);
 						const row = layout.rows.get(root.id);
 						const target = row?.inView && row.folded ? root : current;
-						return { id: target.id, title: target.title };
+						candidates.push({ id: target.id, title: target.title });
+						break;
 					}
 				}
 			}
 		}
-		return null;
+		const ancestors = new Set();
+		for (const candidate of candidates) for (let parent = this.get(this.get(candidate.id).parent); parent; parent = this.get(parent.parent)) ancestors.add(parent.id);
+		return candidates.find((candidate) => !ancestors.has(candidate.id)) ?? null;
 	}
 
 	startWindow(chainRootId, occurrenceId) {
@@ -617,10 +640,12 @@ export class Navigator {
 		this.occurrences = new Map(snapshot.occurrences.map((occurrence) => [occurrence.id, { ...occurrence, children: [...occurrence.children] }]));
 		this.groups = snapshot.groups.map((group) => ({ ...group }));
 		this.groupSequence = snapshot.groupSequence;
-		this.zoomed = snapshot.zoomed ?? null;
-		this.foldFocuses = (snapshot.foldFocuses ?? []).filter((focus) => this.get(focus.occurrence) && this.get(focus.scope));
-		this.windowStarts = new Map(snapshot.windowStarts ?? []);
-		this.rowStarts = new Map(snapshot.rowStarts ?? []);
+		this.zoomed = this.get(snapshot.zoomed) && this.definitionOf(this.get(snapshot.zoomed).destination).zoomable ? snapshot.zoomed : null;
+		const inChain = (scope, id) => !!this.get(scope) && !!this.get(id) && chainRootOf(this, this.get(id)).id === scope;
+		const inRows = (scope, id) => !!this.get(id) && !!this.get(scope) && isSplit(this.definitionOf(this.get(scope).destination)) && this.get(scope).children.includes(id);
+		this.foldFocuses = (snapshot.foldFocuses ?? []).filter((focus) => focus.axis === "horizontal" ? inChain(focus.scope, focus.occurrence) : focus.axis === "vertical" && inRows(focus.scope, focus.occurrence));
+		this.windowStarts = new Map((snapshot.windowStarts ?? []).filter(([scope, id]) => inChain(scope, id)));
+		this.rowStarts = new Map((snapshot.rowStarts ?? []).filter(([scope, id]) => inRows(scope, id)));
 		this.sizes = { width: new Map(snapshot.sizes?.width ?? []), height: new Map(snapshot.sizes?.height ?? []) };
 		this.root = this.get(this.rootDestination);
 		return true;

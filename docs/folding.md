@@ -2,7 +2,7 @@
 
 Folding keeps a place for intermediate content when a chain or split cannot show every full surface. A fold cue is a narrow seam, distinct from a resize divider. Clicking it gives that surface room and folds the nearest neighbours that must yield space. Clicking another cue trades the space again. Dragging a handle reveals its content continuously along either axis. Release beyond 61.8% of its full unfolding distance to complete the trade; release at or below that threshold to return to the starting state. The remaining distance animates from the release position in either case, with reduced motion settling immediately. The distance is measured in the opening direction, so the threshold mirrors for left/right and up/down. Reversing the gesture before release uses the final position, not its furthest reach. Pointer cancellation and Escape return to the starting state. Every destination stays open, so its draft, scroll position and navigation identity survive. Each horizontal chain and vertical split keeps its own fold focus, so opening a row preserves the horizontal folds inside its neighbours. This is a local layout focus, not a modal or browser-history step. When several folds share one seam, only the nearest folded surface shows a handle. Opening or dragging it reveals the next handle, like turning pages; each surface remains open in the model.
 
-The up/back (Show) control also reaches earlier folded cells and rows, so the seam is not their only entry point. Unlike a fold click, Show navigates backward: it closes trailing cells as needed or moves the row window upward. Further clicks continue to earlier context, never toggling back to a fold on the right or below. Rows remain part of their split. The existing cancelable `show` event lists any cells that would close, and `up` reports those actually closed.
+The up/back (Show) control also reaches earlier folded cells and rows, so the seam is not their only entry point. Unlike a fold click, Show navigates backward: it closes visible trailing cells as needed or moves the row window upward. It never discards a subtree containing content that was hidden before the action; that content keeps a fold or scroll route. Further clicks continue to earlier context, never toggling back to a fold on the right or below. Rows remain part of their split. The existing cancelable `show` event lists any cells that would close, and `up` reports those actually closed. These rules are enforced by the [reachability invariant](reachability.md).
 
 ## Vocabulary
 
@@ -55,9 +55,11 @@ Folding is also the default in the ordinary album scenarios. The [Coast album at
 
 [After two Show steps at 401 × 292px](assets/captures/coast-reachable-after-show.png), Thumbnails is full and the next row remains available through one fold handle. Opening that handle presents the following row's handle.
 
-When a tiny active cell would make opposite 44px hit areas overlap, the following page keeps its handle; the preceding page remains reachable with Back or Up. An active drag keeps its own handle until release.
+When a tiny active cell would make opposite 44px hit areas overlap, the following page keeps its handle; the preceding page remains reachable with Back or Up. During a drag all initially visible page handles stay visible until release, with only the dragged handle active.
 
 [During a reverse drag at 329 × 323px](assets/captures/coast-fold-gutter-drag.png), the handle remains attached to the moving canvas gutter.
+
+At 296 × 335px, [partway through opening History](assets/captures/coast-drag-title-gutter.png) and [near the end of that same drag](assets/captures/coast-drag-page-retained.png), the title keeps one gutter and the preceding page handle remains visible.
 
 ![Horizontal and vertical folds in the main demo](assets/captures/folding.png)
 

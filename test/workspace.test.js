@@ -110,7 +110,9 @@ test("Show never strands later rows without a fold handle", async () => {
 		const later = await page.evaluate(() => window.supermaxDemo.frames[1].workspace.layout.chain.cells[1].rows.rows.filter((candidate) => candidate.visible && candidate.folded).map((candidate) => candidate.occurrence));
 		for (const id of [coast.row("map"), coast.row("people")].filter((id) => id !== expected)) {
 			assert.ok(later.includes(id), `${id} remains folded instead of disappearing after Show`);
-			assert.equal(await page.locator(inFrame("b", `.supermax-fold-cue.is-vertical[data-fold-occurrence="${id}"]`)).isVisible(), true);
+			const route = await page.evaluate((id) => window.supermaxDemo.frames[1].workspace.layout.access.get(id), id);
+			assert.equal(route.kind, "fold", "a later page has a forward fold route");
+			assert.equal(await page.locator(inFrame("b", `.supermax-fold-cue.is-vertical[data-fold-occurrence="${route.occurrence}"]`)).isVisible(), true, "the nearest page handle provides the route");
 		}
 	}
 });
@@ -1355,13 +1357,15 @@ test("in zoom the Show control names only what zooming out brings back, because 
 	await page.evaluate((photo) => window.supermaxDemo.frames[1].workspace.zoom(photo), photo);
 	await settle();
 	await page.evaluate(() => document.getAnimations().forEach((animation) => animation.finish()));
-	const control = await page.locator(inFrame("b", ".supermax-up")).evaluate((button) => ({ hidden: button.hidden, name: button.querySelector(".supermax-up-target")?.textContent ?? "" }));
-	await page.evaluate(() => window.supermaxDemo.frames[1].workspace.zoom(null));
+	const control = await page.locator(inFrame("b", ".supermax-up")).evaluate((button) => ({ hidden: button.hidden, name: button.querySelector(".supermax-up-target")?.textContent ?? "", label: button.getAttribute("aria-label") }));
+	assert.equal(control.hidden, false, "zoom always provides an exit");
+	await page.locator(inFrame("b", ".supermax-up")).click();
 	await settle();
 	await page.evaluate(() => document.getAnimations().forEach((animation) => animation.finish()));
 	const after = await visibleTitles();
 	assert.deepEqual(after, before, "zooming out restores exactly what was in view before zooming in");
-	if (!control.hidden) assert.ok(after.includes(control.name), `the name in the Show control, ${control.name}, is a cell that zooming out brought back into view: ${after}`);
+	if (control.label === "Zoom out") assert.equal(control.name, "Back");
+	else assert.ok(after.includes(control.name), `the name in the Show control, ${control.name}, is a cell that zooming out brought back into view: ${after}`);
 });
 
 test("a replaced cell folds away towards where its own navigation came from, compared with where the new one came from", { skip: PRESENTATION !== "origami" }, async () => {

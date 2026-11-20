@@ -173,12 +173,13 @@ export class Workspace extends EventTarget {
 		return true;
 	}
 
-	// allow-comment: zooming out is the inverse of zooming in, so the Show control only names the hidden parent that zooming out brings back.
+	// allow-comment: zooming out is the inverse of zooming in, so the Show control names an ancestor that returns, or offers an unnamed zoom exit.
 	zoomedFrom(layout) {
-		let current = this.navigator.get(this.navigator.get(this.navigator.zoomed)?.parent);
-		while (current && layout.cells.get(current.id)?.visible) current = this.navigator.get(current.parent);
-		if (!current || !this.navigator.unzoomedLayout().cells.get(current.id)?.visible) return null;
-		return { id: current.id, title: current.title };
+		const unzoomed = this.navigator.unzoomedLayout();
+		for (let current = this.navigator.get(this.navigator.get(this.navigator.zoomed)?.parent); current; current = this.navigator.get(current.parent)) {
+			if (!layout.cells.get(current.id)?.full && unzoomed.cells.get(current.id)?.full) return { id: current.id, title: current.title };
+		}
+		return { id: this.navigator.zoomed, zoomOnly: true };
 	}
 
 	requestUp() {
@@ -435,7 +436,7 @@ export class Workspace extends EventTarget {
 		this.rendered = true;
 		const layout = this.navigator.layout();
 		this.layout = layout;
-		this.upDestination = this.navigator.zoomed ? this.zoomedFrom(layout) : this.navigator.upTarget(layout);
+		this.upDestination = this.navigator.zoomed ? this.zoomedFrom(layout) : layout.back;
 		const animating = this.folds.drag?.rendering || (animate && !this.reducedMotion.matches);
 		this.animating = animating;
 		const rootViewport = this.renderChain(layout.chain, this.body, animating);
@@ -530,13 +531,13 @@ export class Workspace extends EventTarget {
 	renderUp() {
 		const next = this.upDestination && this.navigator.get(this.upDestination.id);
 		this.upButton.hidden = !next;
-		if (next) this.upButton.setAttribute("aria-label", this.strings.up(next.title));
+		if (next) this.upButton.setAttribute("aria-label", this.upDestination.zoomOnly ? this.strings.zoomOut() : this.strings.up(next.title));
 		else this.upButton.removeAttribute("aria-label");
 		const first = this.layout?.chain.cells.find((cell) => cell.inView && !cell.folded) ?? this.layout?.chain.cells.find((cell) => cell.inView);
 		const entry = first ? this.cells.get(first.occurrence) : null;
-		// allow-comment: the visible name says what comes back only when that adds something: a short title that differs from the bar it stands in; otherwise the control says Back, and its accessible name still names the cell.
+		// allow-comment: the visible name says what comes back only when that adds something: a short title that differs from the bar it stands in; otherwise the control says Back, and its accessible name describes the target or zoom exit.
 		const own = first ? this.navigator.get(first.occurrence)?.title : null;
-		const named = next && next.title.length <= UP_NAME_LIMIT && next.title !== own;
+		const named = next && !this.upDestination.zoomOnly && next.title.length <= UP_NAME_LIMIT && next.title !== own;
 		this.upName.textContent = next ? (named ? next.title : this.strings.back()) : "";
 		if (!entry) {
 			this.upButton.remove();
@@ -568,9 +569,7 @@ export class Workspace extends EventTarget {
 			still: !!cell.rows,
 			follow: cell.rows ? () => this.reachOfRows(this.cells.get(cell.occurrence) ?? this.leavingCells.get(cell.occurrence)) : undefined,
 		}));
-		const focusIndex = chain.cells.findIndex((cell) => this.navigator.foldFocuses.some((focus) => focus.axis === "horizontal" && focus.occurrence === cell.occurrence) && cell.full);
-		const activeIndex = focusIndex >= 0 ? focusIndex : chain.cells.findLastIndex((cell) => cell.full);
-		for (const [index, cell] of chain.cells.entries()) this.folds.apply(this.cells.get(cell.occurrence), cell.folded, index < activeIndex ? "right" : "left");
+		for (const cell of chain.cells) this.folds.apply(this.cells.get(cell.occurrence), cell.folded, cell.foldDirection);
 		entry.strip.update(entries, { animate: animating, interactive: !!this.folds.drag?.rendering, arrive: created && this.wasRendered && animating });
 		entry.strip.strip.style.marginLeft = `${chain.spare * ALIGN[this.navigator.spareSpace]}px`;
 		for (const cell of chain.cells) {
@@ -653,8 +652,6 @@ export class Workspace extends EventTarget {
 	renderRows(cell, animating, strip) {
 		const host = this.cells.get(cell.occurrence).body.firstElementChild;
 		host.style.justifyContent = JUSTIFY[this.navigator.spareSpace];
-		const focusIndex = cell.rows.rows.findIndex((row) => this.navigator.foldFocuses.some((focus) => focus.axis === "vertical" && focus.occurrence === row.occurrence) && row.visible && !row.folded);
-		const activeIndex = focusIndex >= 0 ? focusIndex : cell.rows.rows.findLastIndex((row) => row.visible && !row.folded);
 		const firstVisible = cell.rows.rows.find((row) => row.visible);
 		const firstFull = firstVisible?.folded && firstVisible.height === 0 ? cell.rows.rows.find((row) => row.visible && !row.folded) : null;
 		for (const [rowIndex, row] of cell.rows.rows.entries()) {
@@ -671,7 +668,7 @@ export class Workspace extends EventTarget {
 				this.folds.mount(entry, occurrence, "vertical");
 			}
 			const exchangingFold = entry.element.classList.contains("is-folded") !== row.folded;
-			this.folds.apply(entry, row.folded, rowIndex < activeIndex ? "down" : "up");
+			this.folds.apply(entry, row.folded, row.foldDirection);
 			entry.element.classList.toggle("is-unreserved", row.folded && row.height === 0);
 			const leading = row === firstVisible || row === firstFull;
 			entry.leading = leading;
@@ -739,7 +736,6 @@ export class Workspace extends EventTarget {
 		entry.slide?.cancel();
 		entry.animation = null;
 		entry.slide = null;
-		entry.element.classList.remove("is-moving");
 		entry.paper = height;
 		entry.element.style.height = `${height}px`;
 		if (!animating || previous === null || Math.abs(previous - height) < STILL) return;
@@ -747,11 +743,6 @@ export class Workspace extends EventTarget {
 		entry.paper = paper;
 		const timing = strip?.roomTiming?.() ?? this.time.timing({ duration: STRIP_TIMING.duration, easing: STRIP_TIMING.easing });
 		entry.animation = entry.element.animate([{ height: `${previous}px` }, { height: `${height}px` }], { ...timing, fill: "backwards" });
-		entry.element.classList.add("is-moving");
-		const heightAnimation = entry.animation;
-		heightAnimation.finished.then(() => {
-			if (entry.animation === heightAnimation) entry.element.classList.remove("is-moving");
-		}, () => {});
 		if (exchangingFold) {
 			entry.chain.style.marginTop = "0px";
 			const animation = entry.animation;
@@ -774,7 +765,26 @@ export class Workspace extends EventTarget {
 	}
 
 	sizeRowChain(entry, height) {
-		entry.chain.style.height = entry.leading ? `${height}px` : `calc(${height}px - var(--supermax-gutter, 0px))`;
+		entry.chain.style.height = `calc(${height}px - var(--supermax-row-gutter, 0px))`;
+	}
+
+	placeRowGutters() {
+		const gutter = parseFloat(this.document.defaultView.getComputedStyle(this.element).getPropertyValue("--supermax-gutter")) || 0;
+		const preceding = new Set();
+		for (const entry of this.rows.values()) {
+			const host = entry.element.parentElement;
+			if (!host) continue;
+			let height = parseFloat(entry.element.style.height) || 0;
+			const progress = entry.animation?.effect.getComputedTiming().progress;
+			if (progress != null && entry.animation.playState !== "idle") {
+				const frames = entry.animation.effect.getKeyframes();
+				const from = parseFloat(frames[0].height);
+				height = from + (parseFloat(frames.at(-1).height) - from) * progress;
+			}
+			const gap = preceding.has(host) ? Math.min(gutter, Math.max(0, height)) : 0;
+			entry.element.style.setProperty("--supermax-row-gutter", `${gap}px`);
+			if (height > 0) preceding.add(host);
+		}
 	}
 
 	pruneClosed() {

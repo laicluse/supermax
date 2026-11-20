@@ -185,10 +185,8 @@
 @media (prefers-reduced-motion: reduce) { .supermax-presentation-origami .supermax-cell > .supermax-cell-title, .supermax-presentation-origami .supermax-cell > .supermax-cell-body, .supermax-presentation-origami .supermax-row > .supermax-row-chain { transition: none; } }
 @media (prefers-reduced-motion: reduce) { .supermax-presentation-fold .supermax-cell > :is(.supermax-cell-title, .supermax-cell-body), .supermax-presentation-fold .supermax-row > .supermax-row-chain { transition: none; } }
 .supermax-rows { position: relative; display: flex; flex-direction: column; height: 100%; }
-.supermax-row { position: relative; overflow: hidden; border-top: var(--supermax-gutter) solid transparent; background: transparent; flex: none; }
-.supermax-row.is-folded { border-top-width: 0; overflow: hidden; z-index: 2; }
-.supermax-row.is-leading, .supermax-row.is-hidden { border-top-width: 0; }
-.supermax-row.is-moving ~ .supermax-row.is-leading { border-top-width: var(--supermax-gutter); }
+.supermax-row { position: relative; overflow: hidden; border-top: var(--supermax-row-gutter, 0px) solid transparent; background: transparent; flex: none; }
+.supermax-row.is-folded { overflow: hidden; z-index: 2; }
 [data-supermax-folded] { border-width: 0 !important; padding: 0 !important; overflow: hidden; }
 .supermax-row-chain { position: absolute; inset: 0 0 auto 0; }
 
@@ -411,5 +409,4 @@
 @media (any-pointer: coarse) {
 	.supermax-fold-cue::before { content: ""; position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); width: max(44px, 100%); height: max(44px, 100%); }
 }
-.supermax-workspace.is-fold-dragging .supermax-row:not(.is-leading) { border-top-width: var(--supermax-gutter); }
 .supermax-workspace.is-fold-dragging .supermax-cell.is-folded:not(.is-leading) { border-left-width: var(--supermax-gutter); }

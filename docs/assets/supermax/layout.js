@@ -57,8 +57,7 @@ export function boundsOf(model, occurrence) {
 		const cells = rowChain.map((cell) => model.definitionOf(cell.destination));
 		const newest = cells[cells.length - 1];
 		const keptBefore = (count) => cells.slice(0, count).reduce((sum, cell) => sum + (cell.keep ? cell.min : cell.fold === false ? 0 : cell.fold?.size ?? TRANSIENT_FOLD.horizontal), 0);
-		const focus = root && model.foldFocuses.find((candidate) => candidate.axis === "horizontal" && candidate.scope === root.id)?.occurrence;
-		const active = focus ?? (root && model.windowStarts.get(root.id)) ?? rowChain.at(-1)?.id;
+		const active = root ? activeCell(model, root, rowChain) : rowChain.at(-1)?.id;
 		const activeIndex = Math.max(0, rowChain.findIndex((cell) => cell.id === active));
 		const protectedMin = cells.reduce((sum, cell, cellIndex) => {
 			if (cell.keep || cellIndex === activeIndex || (cellIndex > activeIndex && cell.fold === false)) return sum + cell.min;
@@ -87,6 +86,7 @@ export function heightBounds(row) {
 }
 
 function snapAllocation(allocation) {
+	if (allocation.cells.some((cell) => cell.actual > 0 && cell.actual < 1)) return allocation;
 	let edge = 0;
 	for (const cell of allocation.cells) {
 		const actual = cell.actual;
@@ -114,13 +114,15 @@ export function validateSplit(model, definitionId, parentOccurrence) {
 	const results = rows.map((row, index) => {
 		const rowDefinition = model.definitionOf(row.destination);
 		const problems = [];
+		if (!(Number.isFinite(row.minHeight) && row.minHeight > 0) || (row.maxHeight !== ELASTIC && !(Number.isFinite(row.maxHeight) && row.maxHeight > 0))) problems.push("invalid-row-size");
 		if (!rowDefinition) problems.push("unknown-row-destination");
 		if (rowDefinition && isSplit(rowDefinition)) problems.push("split-row");
 		if (rowDefinition && isFull(rowDefinition)) problems.push("full-height-row");
 		if (seen.has(row.destination)) problems.push("duplicate-row-destination");
 		seen.add(row.destination);
 		if (row.minHeight > heightBounds(row).reach) problems.push("row-min-exceeds-max");
-		if (row.maxHeight === ELASTIC && !(row.preferredHeight >= row.minHeight)) problems.push("elastic-without-preferred");
+		if (row.maxHeight === ELASTIC && !(Number.isFinite(row.preferredHeight) && row.preferredHeight >= row.minHeight)) problems.push("elastic-without-preferred");
+		if (row.maxHeight !== ELASTIC && row.preferredHeight != null && (!Number.isFinite(row.preferredHeight) || row.preferredHeight < row.minHeight || row.preferredHeight > row.maxHeight)) problems.push("invalid-preferred");
 		if (row.fold != null && row.fold !== false && (!Number.isFinite(row.fold.size) || row.fold.size < 0 || row.fold.size >= row.minHeight)) problems.push("invalid-fold");
 		if (rowDefinition && rowDefinition.min > widthBounds(rowDefinition).reach) problems.push("cell-min-exceeds-max");
 		const required = chrome + row.minHeight;
@@ -176,7 +178,7 @@ function foldPass(model, cells, width) {
 	const fold = new Map();
 	const root = chainRootOf(model, cells[0]);
 	const focus = model.foldFocuses.find((focus) => focus.axis === "horizontal" && focus.scope === root.id)?.occurrence ?? null;
-	const active = focus ?? model.windowStarts.get(root.id) ?? cells.at(-1)?.id;
+	const active = activeCell(model, root, cells);
 	let required = cells.reduce((sum, occurrence) => sum + boundsOf(model, occurrence).steps[0], 0);
 	const activeIndex = cells.findIndex((cell) => cell.id === active);
 	const candidates = cells.filter((cell) => cell.id !== active).sort((a, b) => focus
@@ -218,13 +220,30 @@ function zoomAnchors(model) {
 	return anchors;
 }
 
+function activeCell(model, root, cells) {
+	const anchors = zoomAnchors(model);
+	return cells.find((cell) => anchors.has(cell.id))?.id
+		?? model.foldFocuses.find((focus) => focus.axis === "horizontal" && focus.scope === root.id)?.occurrence
+		?? model.windowStarts.get(root.id)
+		?? cells.at(-1)?.id;
+}
+
+function activeRow(model, split, roots) {
+	const zoomed = model.zoomed && model.get(model.zoomed);
+	const root = zoomed && chainRootOf(model, zoomed);
+	return (root?.parent === split.id ? root.id : null)
+		?? model.foldFocuses.find((focus) => focus.axis === "vertical" && focus.scope === split.id)?.occurrence
+		?? model.rowStarts.get(split.id)
+		?? roots.at(-1)?.id;
+}
+
 // allow-comment: room gives way in reading order, in one walk from the left: a cell before a split hides first, then the split gives its widest row up one cell at a time from the row's left, then the split itself hides; the newest cell always stays. What is left shares the width with the demand that walk settled on.
 function allocateChain(model, cells, width) {
 	const fold = foldPass(model, cells, width);
 	const anchors = zoomAnchors(model);
 	const anchor = cells.find((occurrence) => anchors.has(occurrence.id))?.id ?? null;
-	const focus = model.foldFocuses.find((candidate) => candidate.axis === "horizontal" && candidate.scope === chainRootOf(model, cells[0]).id)?.occurrence;
-	const protectedIndex = Math.max(0, cells.findIndex((occurrence) => occurrence.id === (focus ?? model.windowStarts.get(chainRootOf(model, cells[0]).id) ?? cells.at(-1)?.id)));
+	const active = activeCell(model, chainRootOf(model, cells[0]), cells);
+	const protectedIndex = Math.max(0, cells.findIndex((occurrence) => occurrence.id === active));
 	const units = cells.map((occurrence, index) => {
 		const definition = model.definitionOf(occurrence.destination);
 		const own = boundsOf(model, occurrence);
@@ -286,7 +305,7 @@ export function layoutWorkspace(model) {
 	const chain = layoutChain(model, model.root, model.size.width, height, true);
 	const index = { cells: new Map(), rows: new Map(), chains: new Map() };
 	indexChain(chain, index);
-	return {
+	const layout = {
 		width: model.size.width,
 		height: model.size.height,
 		overflow: chain.overflow,
@@ -295,6 +314,41 @@ export function layoutWorkspace(model) {
 		chain,
 		...index,
 	};
+	if (![...layout.cells.values()].some((cell) => cell.full && cell.width > 0)) throw new Error("A workspace layout must retain an active cell");
+	layout.back = model.zoomed ? null : model.upTarget(layout);
+	layout.access = accessRoutes(model, layout);
+	return layout;
+}
+
+function planFoldPages(members, focus, axis) {
+	const focused = members.findIndex((member) => member.occurrence === focus && member.visible && !member.folded);
+	const active = focused >= 0 ? focused : members.findLastIndex((member) => member.visible && !member.folded);
+	const before = members.findLast((member, index) => member.folded && index < active);
+	const after = members.find((member, index) => member.folded && index > active);
+	for (const [index, member] of members.entries()) if (member.folded) {
+		member.foldPage = (index < active ? before : after)?.occurrence;
+		member.foldDirection = axis === "horizontal" ? index < active ? "right" : "left" : index < active ? "down" : "up";
+	}
+}
+
+function accessRoutes(model, layout) {
+	const back = layout.back;
+	const routes = new Map();
+	for (const occurrence of model.occurrences.values()) {
+		let route = layout.cells.get(occurrence.id)?.full ? { kind: "visible", occurrence: occurrence.id } : model.zoomed ? { kind: "zoom-out" } : null;
+		for (let member = occurrence; !route && member; member = model.get(member.parent)) {
+			for (const [axis, placement] of [["vertical", layout.rows.get(member.id)], ["horizontal", layout.cells.get(member.id)]]) {
+				if (!placement?.folded || !placement.inView) continue;
+				if (["left", "up"].includes(placement.foldDirection)) route = { kind: "fold", occurrence: placement.foldPage, axis };
+				else if (back) route = { kind: "back", occurrence: back.id };
+				break;
+			}
+		}
+		if (!route && back && model.placeOf(occurrence, layout) === "above") route = { kind: "back", occurrence: back.id };
+		if (!route || (route.kind === "fold" && !route.occurrence)) throw new Error(`No navigation route to open cell ${occurrence.id}`);
+		routes.set(occurrence.id, route);
+	}
+	return routes;
 }
 
 function indexChain(chain, index) {
@@ -332,6 +386,7 @@ function layoutChain(model, chainRoot, width, height, containerInView) {
 		}
 		return cell;
 	});
+	planFoldPages(layoutCells, activeCell(model, chainRoot, cells), "horizontal");
 	const contentWidth = layoutCells.reduce((sum, cell) => sum + (cell.visible ? cell.width : 0), 0);
 	return {
 		root: chainRoot.id,
@@ -354,7 +409,7 @@ function layoutRows(model, split, width, height, containerInView) {
 		const shown = roots.map((root, index) => index);
 		const folded = new Set();
 		const focus = model.foldFocuses.find((focus) => focus.axis === "vertical" && focus.scope === split.id)?.occurrence ?? null;
-		const active = focus ?? model.rowStarts.get(split.id) ?? roots.at(-1)?.id;
+		const active = activeRow(model, split, roots);
 		let required = shown.reduce((sum, index) => sum + definition[index].minHeight, 0);
 		const activeIndex = roots.findIndex((root) => root.id === active);
 		const candidates = shown.filter((index) => roots[index].id !== active).sort((a, b) => focus
@@ -397,6 +452,7 @@ function layoutRows(model, split, width, height, containerInView) {
 			chain: visible ? layoutChain(model, root, width, folded ? definition[index].minHeight : rowHeight, containerInView && !folded) : null,
 		};
 	});
+	planFoldPages(rows, activeRow(model, split, roots), "vertical");
 	const contentHeight = rows.reduce((sum, row) => sum + row.height, 0);
 	return { rows, overflow: overflow || contentHeight > budget, contentHeight, spare: Math.max(0, budget - contentHeight) };
 }

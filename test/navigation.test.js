@@ -164,8 +164,9 @@ scenario("an impossible split is a configuration error for the developer before 
 	assert.equal(validateDestinations(destinations, { minViewportHeight, chrome }).ok, true, "the fixture is a possible configuration");
 	const instance = model(1000, 300);
 	assert.equal(validateSplit(instance, "fit", instance.root).ok, true, "28 of the split's title bar and 272 of row = 300 passes");
-	const report = validateDestinations({ ...destinations, ...invalidSplits }, { minViewportHeight, chrome });
-	const verdict = Object.fromEntries(report.problems.map((problem) => [problem.destination, problem.validation]));
+	const report = validateDestinations({ ...destinations, upside: { title: "Upside", min: 300, max: 200 }, ...invalidSplits }, { minViewportHeight, chrome });
+	assert.ok(report.problems.some((problem) => problem.destination === "upside" && problem.reason === "invalid-size"), "contradictory ordinary cell bounds are rejected too");
+	const verdict = Object.fromEntries(report.problems.filter((problem) => problem.validation).map((problem) => [problem.destination, problem.validation]));
 	assert.deepEqual(Object.keys(verdict).sort(), ["conflict", "crowd", "doubled", "empty", "outer", "over", "rigid", "twins", "unpreferred"]);
 	assert.equal(verdict.rigid.reason, "no-elastic-row", "a split without a row whose maxHeight is \"*\" has nowhere to put spare height");
 	assert.equal(verdict.doubled.reason, "several-elastic-rows", "and a split with two cannot say which one stretches");
