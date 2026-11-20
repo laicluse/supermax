@@ -546,6 +546,58 @@ test("a cell that hides for lack of room, or comes back, only moves and never fo
 	await page.evaluate(() => cancelAnimationFrame(window.__watching));
 });
 
+test("a card keeps its final size while it folds, and only its room opens or closes", { skip: PRESENTATION !== "origami" }, async () => {
+	await openDemo([open("album:coast", "albums")]);
+	await resize([[1400, 640], [420, 640]]);
+	await page.evaluate(() => window.supermaxDemo.prepare("coast:photo:d"));
+	const cell = (id) => inFrame("a", `[data-occurrence="${coast.photo("thumbnails", "d")}${id ? `/${id}` : ""}"]`);
+	await page.click(inFrame("a", `[data-occurrence="${coast.row("thumbnails")}"] .thumb[data-destination="coast:photo:d"]`));
+	const sample = (time) => page.evaluate(({ time, cells }) => {
+		document.getAnimations().forEach((animation) => { animation.pause(); animation.currentTime = time; });
+		return cells.map((selector) => document.querySelector(selector).offsetWidth);
+	}, { time, cells: [cell(""), cell("coast:metadata:d")] });
+	const early = await sample(250);
+	const late = await sample(350);
+	await page.evaluate(() => document.getAnimations().forEach((animation) => animation.play()));
+	await settle();
+	const final = await page.evaluate((cells) => cells.map((selector) => document.querySelector(selector).offsetWidth), [cell(""), cell("coast:metadata:d")]);
+	assert.deepEqual(early, final, "early in the fold the cards already have their final size");
+	assert.deepEqual(late, final, "and keep it until the fold ends");
+	const closing = await page.evaluate((selector) => {
+		window.supermaxDemo.dispatch({ type: "close" }, window.supermaxDemo.frames[0].workspace);
+		const element = document.querySelector(selector);
+		const widths = [];
+		for (const time of [0, 100, 190]) {
+			document.getAnimations().forEach((animation) => { animation.pause(); animation.currentTime = time; });
+			widths.push(element.offsetWidth);
+		}
+		return widths;
+	}, cell(""));
+	assert.ok(closing.every((width) => width === final[0]), `a closing card keeps its size while its room closes: ${closing}`);
+	await page.evaluate(() => document.getAnimations().forEach((animation) => animation.play()));
+	await settle();
+});
+
+test("a folding card is clipped to its own room and never covers its gutter", { skip: PRESENTATION !== "origami" }, async () => {
+	await openDemo([open("album:coast", "albums"), open("coast:photo:b", coast.row("map"))]);
+	await page.evaluate(() => window.supermaxDemo.prepare("coast:photo:c"));
+	await page.click(inFrame("a", `[data-occurrence="${coast.row("map")}"] .pin[data-destination="coast:photo:c"]`));
+	await page.evaluate(() => document.getAnimations().forEach((animation) => { animation.pause(); animation.currentTime = 30; }));
+	const leaving = await page.evaluate((selector) => {
+		const cell = document.querySelector(selector);
+		const room = cell.parentElement;
+		const style = getComputedStyle(room);
+		const gutter = parseFloat(getComputedStyle(cell).borderLeftWidth);
+		return { room: room.classList.contains("supermax-room"), overflow: style.overflowX, clip: style.clipPath, gutter, projected: cell.getBoundingClientRect().left, rest: room.getBoundingClientRect().left };
+	}, inFrame("a", `[data-occurrence="${coast.metadata("map", "b")}"]`));
+	assert.equal(leaving.room, true, "the card folds inside a room of its own");
+	assert.equal(leaving.overflow, "clip", "which clips whatever the perspective draws outside it");
+	assert.ok(leaving.projected < leaving.rest, "the perspective pulls the card past its own left edge here");
+	assert.equal(leaving.clip, `inset(0px 0px 0px ${leaving.gutter}px)`, "and the room cuts that off at the gutter");
+	await page.evaluate(() => document.getAnimations().forEach((animation) => animation.play()));
+	await settle();
+});
+
 test("clicks faster than a stroke tear the earlier cells off from where they are, and nothing jumps", { skip: PRESENTATION !== "origami" }, async () => {
 	await openDemo([open("album:coast", "albums")]);
 	await page.evaluate(() => Promise.all(["b", "c", "d"].map((id) => window.supermaxDemo.prepare(`coast:photo:${id}`))));
@@ -573,6 +625,10 @@ test("clicks faster than a stroke tear the earlier cells off from where they are
 	assert.equal((await folds("a")).find((fold) => fold.cell === "coast:photo:c" && !fold.leaving)?.delay, 0, "a place in motion does not wait: the next cell folds open at once");
 	await page.evaluate((selector) => document.querySelector(selector).click(), thumb("d"));
 	assert.ok(await page.locator(inFrame("a", `[data-supermax-exiting][data-occurrence$="coast:photo:b"], [data-supermax-exiting][data-occurrence$="coast:photo:c"]`)).count() >= 2, "every superseded layer stays on its own path");
+	const paint = await page.evaluate((row) => [...document.querySelector(`.frame[data-frame="a"] [data-row="${row}"] .supermax-strip`).children]
+		.map((box) => (box.querySelector(".supermax-cell") ?? box).dataset.occurrence.split("/").pop())
+		.filter((id) => id.startsWith("coast:photo:")), coast.row("thumbnails"));
+	assert.deepEqual(paint, ["coast:photo:a", "coast:photo:b", "coast:photo:c", "coast:photo:d"], "the oldest layer lies lowest and the cell that arrives now on top");
 	await page.evaluate(() => document.getAnimations().forEach((animation) => animation.play()));
 	await settle();
 	assert.equal(await page.locator(inFrame("a", "[data-supermax-exiting]")).count(), 0, "and leaves when its own motion ends");

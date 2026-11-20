@@ -41,6 +41,7 @@ export class CellStrip {
 		this.entries = [];
 		this.geometry = [];
 		this.motions = new Map();
+		this.rooms = new WeakMap();
 		this.finished = Promise.resolve();
 		this.initialized = false;
 		this.reducedMotion = viewport.ownerDocument.defaultView.matchMedia("(prefers-reduced-motion: reduce)");
@@ -63,12 +64,17 @@ export class CellStrip {
 
 		const view = this.viewport.ownerDocument.defaultView;
 		const startingTransform = view.getComputedStyle(this.strip).transform;
-		const previous = new Map(this.entries.map((entry) => [entry.id, {
-			...entry,
-			currentWidth: parseFloat(view.getComputedStyle(entry.element).width) || 0,
-			currentLeft: entry.element.offsetLeft,
-			currentRect: entry.element.getBoundingClientRect().left,
-		}]));
+		const previous = new Map(this.entries.map((entry) => {
+			const box = this.boxOf(entry);
+			return [entry.id, {
+				...entry,
+				box,
+				currentWidth: parseFloat(view.getComputedStyle(box).width) || 0,
+				currentMargin: parseFloat(view.getComputedStyle(box).marginRight) || 0,
+				currentLeft: box.offsetLeft,
+				currentRect: box.getBoundingClientRect().left,
+			}];
+		}));
 
 		const next = entries.map((entry) => ({ ...entry, departing: false, overlay: false }));
 		const leaving = this.entries.filter((entry) => !ids.has(entry.id)).map((entry) => ({ ...entry, visible: false }));
@@ -92,7 +98,7 @@ export class CellStrip {
 		}
 
 		this.cancelGeometry();
-		this.entries = [...next, ...leaving];
+		this.entries = [...leaving.filter((entry) => entry.overlay), ...next, ...leaving.filter((entry) => !entry.overlay)];
 		const firstVisible = next.findIndex((entry) => entry.visible);
 		const lastVisible = next.findLastIndex((entry) => entry.visible);
 		let offset = 0;
@@ -103,6 +109,8 @@ export class CellStrip {
 			totalWidth += entry.displayWidth;
 		});
 		for (const entry of leaving) entry.displayWidth = 0;
+		const unfolding = (entry) => ["enter", "return"].includes(this.motions.get(entry.id)?.kind);
+		for (const entry of this.entries) entry.card = !!this.motion && !entry.overlay && (entry.departing || arriving.includes(entry) || returning.includes(entry) || unfolding(entry));
 		this.place(previous);
 		const targetTransform = `translateX(${-offset}px)`;
 		this.strip.style.width = `${totalWidth}px`;
@@ -126,46 +134,73 @@ export class CellStrip {
 		for (const entry of this.entries) {
 			if (entry.overlay) continue;
 			const old = previous.get(entry.id);
-			const from = old && !old.overlay ? old.currentWidth : partners.has(entry.id) ? previous.get(partners.get(entry.id).id).currentWidth : 0;
+			const room = (record) => record.currentWidth + record.currentMargin;
+			const from = old && !old.overlay ? room(old) : partners.has(entry.id) ? room(previous.get(partners.get(entry.id).id)) : 0;
 			const to = entry.displayWidth;
-			if (Math.abs(from - to) > 0.01) this.geometry.push(entry.element.animate([{ width: `${from}px` }, { width: `${to}px` }], timing(entry.departing ? 0 : wait)));
+			if (Math.abs(from - to) <= 0.01) continue;
+			const delay = timing(entry.departing ? 0 : wait);
+			const box = this.boxOf(entry);
+			if (entry.card) {
+				const card = parseFloat(box.style.width) || 0;
+				this.geometry.push(box.animate([{ marginRight: `${from - card}px` }, { marginRight: `${to - card}px` }], delay));
+			} else {
+				this.geometry.push(box.animate([{ width: `${from}px` }, { width: `${to}px` }], delay));
+			}
 		}
 		if (!this.motion) this.slide(previous, timing(wait));
 		return this.awaitSettled();
 	}
 
+	boxOf(entry) {
+		if (!this.motion) return entry.element;
+		let room = this.rooms.get(entry.element);
+		if (!room) {
+			room = this.viewport.ownerDocument.createElement("div");
+			room.className = "supermax-room";
+			this.rooms.set(entry.element, room);
+		}
+		if (entry.element.parentElement !== room) room.append(entry.element);
+		return room;
+	}
+
 	place(previous) {
 		for (const entry of this.entries) {
 			const old = previous.get(entry.id);
-			if (old && old.element !== entry.element) old.element.replaceWith(entry.element);
-			const style = entry.element.style;
+			const box = this.boxOf(entry);
+			if (old && old.box !== box) old.box.replaceWith(box);
+			const style = box.style;
 			style.flex = "0 0 auto";
 			style.boxSizing = "border-box";
 			style.minWidth = "0";
 			style.maxWidth = "none";
 			style.height = "100%";
-			style.visibility = "";
+			if (box !== entry.element) Object.assign(entry.element.style, { width: "100%", height: "100%", boxSizing: "border-box" });
+			entry.element.style.visibility = "";
 			if (entry.overlay) {
 				Object.assign(style, { position: "absolute", top: "0", left: `${old?.overlay ? parseFloat(style.left) : old?.currentLeft ?? 0}px`, width: `${old?.overlay ? parseFloat(style.width) : old?.currentWidth ?? entry.width}px` });
 			} else {
 				for (const property of ["position", "top", "left"]) style.removeProperty(property);
-				style.width = `${entry.displayWidth}px`;
+				const card = entry.card && entry.departing ? (old?.departing ? parseFloat(style.width) : old?.currentWidth ?? 0) : entry.displayWidth;
+				style.width = `${card}px`;
+				if (entry.card) style.marginRight = `${entry.displayWidth - card}px`;
+				else style.removeProperty("margin-right");
 			}
 			entry.element.inert = !entry.visible;
 			entry.element.toggleAttribute("data-supermax-exiting", entry.departing);
 			entry.element.toggleAttribute("data-supermax-folded", !entry.departing && entry.displayWidth === 0);
-			if (!this.strip.contains(entry.element)) this.strip.append(entry.element);
+			if (!this.strip.contains(box)) this.strip.append(box);
 		}
 		const siblings = new Map();
 		for (const entry of this.entries) {
-			const parent = entry.element.parentElement;
+			const box = this.boxOf(entry);
+			const parent = box.parentElement;
 			if (!siblings.has(parent)) siblings.set(parent, []);
-			siblings.get(parent).push(entry.element);
+			siblings.get(parent).push(box);
 		}
-		for (const [parent, elements] of siblings) {
-			const currentOrder = [...parent.children].filter((element) => elements.includes(element));
-			if (elements.every((element, index) => element === currentOrder[index])) continue;
-			for (let index = elements.length - 2; index >= 0; index -= 1) parent.insertBefore(elements[index], elements[index + 1]);
+		for (const [parent, boxes] of siblings) {
+			const currentOrder = [...parent.children].filter((box) => boxes.includes(box));
+			if (boxes.every((box, index) => box === currentOrder[index])) continue;
+			for (let index = boxes.length - 2; index >= 0; index -= 1) parent.insertBefore(boxes[index], boxes[index + 1]);
 		}
 	}
 
@@ -232,8 +267,10 @@ export class CellStrip {
 	}
 
 	drop(entry) {
-		entry.element.remove();
-		for (const property of ["position", "top", "left", "transform-origin"]) entry.element.style.removeProperty(property);
+		const box = this.boxOf(entry);
+		box.remove();
+		for (const property of ["position", "top", "left", "margin-right"]) box.style.removeProperty(property);
+		entry.element.style.removeProperty("transform-origin");
 		this.entries = this.entries.filter((candidate) => candidate !== entry);
 	}
 
@@ -263,7 +300,10 @@ export class CellStrip {
 		this.cancelGeometry();
 		for (const entry of [...this.entries]) {
 			if (entry.departing && !this.motions.has(entry.id)) this.drop(entry);
-			else if (!entry.departing) entry.element.style.visibility = entry.visible ? "" : "hidden";
+			else if (!entry.departing) {
+				entry.element.style.visibility = entry.visible ? "" : "hidden";
+				this.boxOf(entry).style.removeProperty("margin-right");
+			}
 		}
 	}
 
@@ -293,6 +333,7 @@ export class CellStrip {
 		this.place(new Map());
 		for (const entry of this.entries) {
 			entry.element.style.removeProperty("transform-origin");
+			this.boxOf(entry).style.removeProperty("margin-right");
 			entry.element.style.visibility = entry.visible ? "" : "hidden";
 		}
 		this.strip.style.width = `${totalWidth}px`;

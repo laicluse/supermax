@@ -102,6 +102,8 @@
 
 .supermax-chain { position: relative; height: 100%; perspective: var(--supermax-perspective); }
 .supermax-strip { transform-style: preserve-3d; }
+.supermax-room { overflow: clip; perspective: var(--supermax-perspective); }
+.supermax-room:has(> .supermax-cell:not(.is-leading, .is-split)) { clip-path: inset(0 0 0 var(--supermax-gutter)); }
 .supermax-cell {
 	position: relative;
 	display: flex;

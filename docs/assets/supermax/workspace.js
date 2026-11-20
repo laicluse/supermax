@@ -382,6 +382,10 @@ export class Workspace extends EventTarget {
 		for (const entry of this.chains.values()) {
 			const box = entry.viewport.getBoundingClientRect();
 			entry.viewport.style.perspectiveOrigin = `${Math.round(x - box.left)}px ${Math.round(y - box.top)}px`;
+			for (const room of entry.strip.strip.querySelectorAll(":scope > .supermax-room")) {
+				const place = room.getBoundingClientRect();
+				room.style.perspectiveOrigin = `${Math.round(x - place.left)}px ${Math.round(y - place.top)}px`;
+			}
 		}
 	}
 
