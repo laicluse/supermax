@@ -488,6 +488,9 @@
 .supermax-notice-action:hover {
 	background: color-mix(in srgb, var(--notice-ink) 20%, transparent);
 }
+.supermax-notice-action.has-progress {
+	background-image: linear-gradient(to right, color-mix(in srgb, var(--notice-ink) 28%, transparent) var(--action-progress), transparent var(--action-progress));
+}
 .supermax-notice-go[aria-disabled="true"],
 .supermax-notice-action[aria-disabled="true"] {
 	cursor: default;

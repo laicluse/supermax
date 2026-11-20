@@ -117,6 +117,10 @@ const factories = {
 				message.textContent = (state.sourceLabel ? " " : "") + state.message;
 				show.textContent = state.actions.show.label;
 				act.textContent = state.actions.action.label;
+				const progress = state.actions.action.progress;
+				act.classList.toggle("has-progress", Number.isFinite(progress));
+				if (Number.isFinite(progress)) act.style.setProperty("--action-progress", `${Math.max(0, Math.min(1, progress)) * 100}%`);
+				else act.style.removeProperty("--action-progress");
 				spinner.hidden = !state.busy;
 				if (state.busy) controls.setAttribute("aria-busy", "true");
 				else controls.removeAttribute("aria-busy");

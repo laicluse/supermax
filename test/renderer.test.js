@@ -3,6 +3,35 @@ import { test } from "node:test";
 import { chromium } from "playwright";
 import { serveDocs } from "./serve-docs.js";
 
+test("notice action progress fills its button and clears when the action changes", async () => {
+	const server = await serveDocs();
+	const browser = await chromium.launch({ channel: "chrome", headless: true });
+	try {
+		const page = await browser.newPage();
+		await page.goto(`${server.url}/blank`);
+		await page.evaluate(async () => {
+			const { Navigator, Workspace } = await import("/src/index.js");
+			const sheet = document.createElement("link");
+			sheet.rel = "stylesheet";
+			sheet.href = "/src/workspace.css";
+			document.head.append(sheet);
+			await new Promise(resolve => sheet.onload = resolve);
+			const host = document.createElement("div");
+			host.style.cssText = "width:600px;height:400px";
+			document.body.append(host);
+			window.workspace = new Workspace(host, { navigator: new Navigator({ root: "home", minViewportHeight: 100, destinations: { home: { title: "Home", min: 200, max: "*", preferred: 300 } } }), content: () => document.createElement("main") });
+			window.workspace.notify({ id: "countdown", scope: "workspace", persistent: true, message: "Starting automatically", action: { label: "Cancel · 3s", progress: 0.4, run() {} } });
+		});
+		const button = page.getByRole("button", { name: "Cancel · 3s" });
+		assert.match(await button.evaluate(el => getComputedStyle(el).backgroundImage), /40%/);
+		await page.evaluate(() => window.workspace.updateNotice("countdown", { action: { label: "Start server", run() {} } }));
+		assert.equal(await page.getByRole("button", { name: "Start server" }).evaluate(el => getComputedStyle(el).backgroundImage), "none");
+	} finally {
+		await browser.close();
+		await server.close();
+	}
+});
+
 test("host renderers own paint and native controls while shell retains navigation and lifecycle", async () => {
 	const server = await serveDocs();
 	const browser = await chromium.launch({ channel: "chrome", headless: true });

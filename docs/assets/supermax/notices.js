@@ -172,7 +172,7 @@ export class NoticeBoard {
 		notice.element.classList.toggle("is-busy", !!notice.busy);
 		const state = { id: notice.id, kind: notice.kind, message: notice.message, busy: !!notice.busy, source: notice.source, sourceTitle: title, sourceOpen: !!source, sourceVisible: !!(notice.source && workspace.findCell(notice.source)?.full), sourceLabel: notice.named ? (source ? workspace.strings.noticeSource(title) : workspace.strings.noticeSourceClosed(title)) : null, actions: {
 			show: { offered: notice.named && notice.reachable, busy: notice.busy, label: workspace.strings.noticeShow(title) },
-			action: { offered: !!notice.action, busy: notice.busy, label: notice.action?.label ?? "" },
+			action: { offered: !!notice.action, busy: notice.busy, label: notice.action?.label ?? "", progress: notice.action?.progress ?? null },
 			dismiss: { label: workspace.strings.dismissNotice(notice.message) },
 		} };
 		if (notice.part) notice.part.update(state);
