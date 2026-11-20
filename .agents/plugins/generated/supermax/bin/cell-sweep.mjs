@@ -69,11 +69,14 @@ function connect(endpoint) {
 	const socket = new WebSocket(endpoint);
 	const waiting = new Map();
 	const requests = new Map();
-	let sequence = 0, lastRequest = 0;
+	const lastActivity = new Map();
+	let sequence = 0;
+	const originOf = (url) => { try { return new URL(url).origin; } catch { return null; } };
+	const touch = (url) => lastActivity.set(originOf(url), Date.now());
 	socket.addEventListener("message", (event) => {
 		const message = JSON.parse(event.data);
-		if (message.method === "Network.requestWillBeSent" && !["EventSource", "WebSocket"].includes(message.params.type)) { requests.set(message.params.requestId, Date.now()); lastRequest = Date.now(); }
-		if (message.method === "Network.loadingFinished" || message.method === "Network.loadingFailed") { requests.delete(message.params.requestId); lastRequest = Date.now(); }
+		if (message.method === "Network.requestWillBeSent" && !["EventSource", "WebSocket"].includes(message.params.type)) { const redirected = requests.get(message.params.requestId); if (redirected) touch(redirected.url); requests.set(message.params.requestId, { started: Date.now(), url: message.params.request.url }); touch(message.params.request.url); }
+		if (message.method === "Network.loadingFinished" || message.method === "Network.loadingFailed") { const request = requests.get(message.params.requestId); if (request) touch(request.url); requests.delete(message.params.requestId); }
 		const pending = waiting.get(message.id);
 		if (!pending) return;
 		waiting.delete(message.id);
@@ -91,13 +94,14 @@ function connect(endpoint) {
 		socket.send(JSON.stringify({ id, method, params, ...(sessionId ? { sessionId } : {}) }));
 	});
 	// allow-comment: a host may open more cells once its own data arrives, so a page counts as loaded only after its requests have been quiet for a while. A page that polls never goes quiet and falls back on its content standing still; a request that hangs past the deadline is reported, because what it would have opened is unknown.
-	const quiet = async (deadline, span = 700) => {
-		while (Date.now() < deadline && (requests.size > 0 || Date.now() - lastRequest < span)) await new Promise((done) => setTimeout(done, 100));
-		const hanging = [...requests.values()].filter((started) => Date.now() - started > 5000).length;
+	const own = (origin) => [...requests.values()].filter((request) => originOf(request.url) === origin);
+	const quiet = async (deadline, origin, span = 700) => {
+		while (Date.now() < deadline && (own(origin).length > 0 || Date.now() - (lastActivity.get(origin) ?? 0) < span)) await new Promise((done) => setTimeout(done, 100));
+		const hanging = own(origin).filter((request) => Date.now() - request.started > 5000).length;
 		requests.clear();
 		return hanging;
 	};
-	const requested = () => lastRequest;
+	const requested = (origin) => lastActivity.get(origin) ?? 0;
 	return new Promise((opened, failed) => {
 		socket.addEventListener("open", () => opened({ send, quiet, requested, close: () => socket.close() }));
 		socket.addEventListener("error", () => failed(new Abort("Could not reach Chrome's DevTools endpoint")));
@@ -240,10 +244,10 @@ async function record(config, endpoint, out, scratch, report) {
 		const deadline = Date.now() + 10000;
 		let hanging = 0;
 		while (true) {
-			hanging = await browser.quiet(deadline);
-			const before = browser.requested();
+			hanging = await browser.quiet(deadline, new URL(config.url).origin);
+			const before = browser.requested(new URL(config.url).origin);
 			await evaluate(loaded(deadline - Date.now()));
-			if (browser.requested() === before || Date.now() >= deadline) break;
+			if (browser.requested(new URL(config.url).origin) === before || Date.now() >= deadline) break;
 		}
 		if (hanging > 0 && !report.unsettled.includes(config.url)) report.unsettled.push(config.url);
 	};
@@ -282,7 +286,7 @@ async function record(config, endpoint, out, scratch, report) {
 		const from = cell.min, to = target(cell);
 		const smallest = await evaluate(sizeTo(cell.id, from)), largest = await evaluate(sizeTo(cell.id, to));
 		if (!smallest || !largest) { miss(`not on screen in a window of ${room}px`); continue; }
-		if (smallest.width === largest.width) { miss(`stays ${largest.width}px whatever width is set`); continue; }
+		if (from !== to && smallest.width === largest.width) { miss(`stays ${largest.width}px whatever width is set`); continue; }
 		const high = Math.max(smallest.height, largest.height);
 		const frames = join(scratch, `frames-${index}`);
 		mkdirSync(frames);

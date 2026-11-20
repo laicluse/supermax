@@ -21,6 +21,7 @@ test("the cell-sweep helper records every cell of a route alone, from its smalle
 		assert.equal(result.code, 0, result.stderr);
 		const { clips, splits, missed } = JSON.parse(readFileSync(join(out, "sweeps.json"), "utf8"));
 		assert.deepEqual(clips.map((clip) => [clip.title, clip.declared, clip.reached]), [
+			["Rail", { min: 84, max: 84 }, { min: 84, max: 84 }],
 			["Menu", { min: 80, max: 240 }, { min: 80, max: 240 }],
 			["Lanes", { min: 200, max: 420 }, { min: 200, max: 420 }],
 			["Summary", { min: 200, max: 420 }, { min: 200, max: 420 }],
@@ -28,8 +29,9 @@ test("the cell-sweep helper records every cell of a route alone, from its smalle
 		], "every cell with a width of its own, also the ones without a divider, down to the smaller form that only shows when room is scarce");
 		assert.deepEqual(splits.map((split) => split.title), ["Board"], "a split has no width of its own");
 		assert.deepEqual(missed, []);
-		assert.equal(await frameOf(join(out, clips[0].file)), "240,760", "a clip is as wide as its cell at its largest and shows nothing beside it");
-		assert.equal((await frameOf(join(out, clips[2].file))).split(",")[0], "420");
+		assert.equal(await frameOf(join(out, clips[0].file)), "84,760", "a fixed-width cell still gets a clip");
+		assert.equal(await frameOf(join(out, clips[1].file)), "240,760", "a clip is as wide as its cell at its largest and shows nothing beside it");
+		assert.equal((await frameOf(join(out, clips[3].file))).split(",")[0], "420");
 		assert.equal(result.stdout.trim().split("\n").length, clips.length, "one line per clip");
 
 		const none = await run(`${server.url}/test/fixtures/sweep.html`, "--out", join(out, "none"), "--only", "no such cell");

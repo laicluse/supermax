@@ -13,9 +13,10 @@
 import { Navigator, Workspace } from "/src/index.js";
 
 const navigator = new Navigator({
-	root: "menu",
+	root: "rail",
 	minViewportHeight: 300,
 	destinations: {
+		rail: { title: "Rail", min: 84, max: 84 },
 		menu: { title: "Menu", min: 160, max: 240, preferred: 200, variants: [{ id: "labels", when: { minWidth: 160 } }, { id: "icons", min: 80, preferred: 80, max: 159 }] },
 		board: { title: "Board", rows: [
 			{ destination: "lanes", minHeight: 120, maxHeight: "*", preferredHeight: 300 },
@@ -34,7 +35,7 @@ const workspace = new Workspace(document.getElementById("host"), {
 		return { element };
 	},
 });
-workspace.sync(["menu", "board", "lanes", "detail"], { animate: false, origin: null });
+workspace.sync(["rail", "menu", "board", "lanes", "detail"], { animate: false, origin: null });
 </script>
 </body>
 </html>
