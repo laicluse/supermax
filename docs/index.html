@@ -4,6 +4,8 @@
 		<meta charset="utf-8">
 		<meta name="viewport" content="width=device-width, initial-scale=1">
 		<title>Supermax Demo</title>
+		<link rel="icon" href="data:,">
+		<link rel="stylesheet" href="./assets/supermax/workspace.css">
 		<link rel="stylesheet" href="./assets/demo.css">
 	</head>
 	<body>
@@ -11,43 +13,29 @@
 			<header class="topbar">
 				<div class="brand">
 					<h1>Supermax</h1>
-					<p>Responsive cell distribution for left-to-right drilldown interfaces.</p>
+					<p>Branching rows with one Back history, computed per viewport.</p>
 				</div>
 				<a class="github-link" href="https://github.com/laicluse/supermax">GitHub</a>
 			</header>
 			<main class="demo">
 				<aside class="controls" aria-label="Demo controls">
 					<section class="control-group">
-						<div class="control-row">
-							<label class="label" for="columns">Column budget</label>
-							<span class="value"><span data-columns-value>24</span> cols</span>
-						</div>
-						<input id="columns" data-columns type="range" min="8" max="48" value="24">
+						<div class="label">Scenarios</div>
+						<div class="scenario-list" data-scenarios></div>
 					</section>
 					<section class="control-group">
-						<div class="label">Anchor</div>
-						<div class="segments">
-							<button class="segment" type="button" data-anchor="" aria-pressed="true">Normal</button>
-							<button class="segment" type="button" data-anchor="board" aria-pressed="false">Board</button>
-						</div>
+						<div class="label">Frame sizes</div>
+						<div class="size-presets" data-size-presets></div>
 					</section>
-					<section class="stats" aria-label="Layout result">
-						<div class="stat"><span>Used</span><strong><span data-total>0</span> cols</strong></div>
-						<div class="stat"><span>Spare</span><strong><span data-spare>0</span> cols</strong></div>
-						<div class="stat"><span>Hidden</span><strong data-hidden-count>0</strong></div>
-						<div class="stat"><span>Rightmost hidden</span><strong data-rightmost-hidden>none</strong></div>
+					<section class="control-group">
+						<button class="reset" type="button" data-reset>Reset scenario</button>
+					</section>
+					<section class="control-group explain">
+						<p>Both frames receive every click and Back. Each frame computes its own layout, auto-opening and Back history from its own size. Drag a frame's bottom-right corner to resize it.</p>
 					</section>
 				</aside>
-				<section class="stage" aria-label="Supermax layout demo">
-					<div class="stage-header">
-						<div>
-							<h2>Cells resize before they disappear.</h2>
-							<p>Move the budget slider to watch Supermax fit a drilldown surface into a fixed column budget. Use the board anchor to model a zoomable workspace that stays in view while earlier cells collapse.</p>
-						</div>
-						<div class="budget-pill">Live from <code>CellCollection</code></div>
-					</div>
-					<div class="cell-layout" data-layout aria-live="polite"></div>
-					<div class="hidden-cells" data-hidden-cells></div>
+				<section class="stage" aria-label="Paired viewports">
+					<div class="frames" data-frames></div>
 				</section>
 			</main>
 		</div>

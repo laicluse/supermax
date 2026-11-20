@@ -1,0 +1,242 @@
+import { chainCells, chainRootOf, isSplit, layoutWorkspace, rowWidth, validateSplit } from "./layout.js";
+
+const DEFAULT_CHROME = { navbar: 44, rowTab: 32, maxRows: 4 };
+
+export class Navigator {
+	constructor({ destinations, root, minViewportHeight, chrome = {} }) {
+		if (!Number.isFinite(minViewportHeight)) throw new TypeError("minViewportHeight must be a finite number of pixels");
+		this.destinations = destinations;
+		this.rootDestination = root;
+		this.minViewportHeight = minViewportHeight;
+		this.chrome = { ...DEFAULT_CHROME, ...chrome };
+		this.size = { width: 0, height: 0 };
+		this.reset();
+	}
+
+	reset() {
+		this.occurrences = new Map();
+		this.groups = [];
+		this.groupSequence = 0;
+		this.revealOffsets = new Map();
+		this.root = this.createOccurrence(this.rootDestination, null, 0, null);
+		this.focused = this.root.id;
+	}
+
+	resize(size) {
+		this.size = { width: size.width, height: size.height };
+	}
+
+	destination(id) {
+		return Object.hasOwn(this.destinations, id) ? this.destinations[id] : null;
+	}
+
+	get(id) {
+		return this.occurrences.get(id) ?? null;
+	}
+
+	child(occurrence) {
+		const id = occurrence?.children[0];
+		return id ? this.get(id) : null;
+	}
+
+	groupOf(occurrence) {
+		return this.groups.find((group) => group.id === occurrence.group) ?? null;
+	}
+
+	isAuto(occurrence) {
+		const group = this.groupOf(occurrence);
+		return group ? group.root !== occurrence.id : false;
+	}
+
+	membersOf(group) {
+		return [...this.occurrences.values()].filter((occurrence) => occurrence.group === group.id).map((occurrence) => occurrence.id);
+	}
+
+	createOccurrence(destinationId, parent, row, group) {
+		const definition = this.destination(destinationId);
+		const occurrence = {
+			id: parent ? `${parent.id}/${destinationId}` : destinationId,
+			destination: destinationId,
+			title: definition.title,
+			parent: parent ? parent.id : null,
+			row,
+			children: [],
+			group: group ? group.id : null,
+		};
+		this.occurrences.set(occurrence.id, occurrence);
+		if (parent) parent.children[row] = occurrence.id;
+		return occurrence;
+	}
+
+	open(destinationId, { from } = {}) {
+		const parent = this.get(from ?? this.root.id);
+		if (!parent) return { ok: false, reason: "source-closed", source: from };
+		const definition = this.destination(destinationId);
+		if (!definition) return { ok: false, reason: "unknown-destination", destination: destinationId };
+		if (isSplit(this.destination(parent.destination))) return { ok: false, reason: "split-source", source: parent.id };
+		if (isSplit(definition)) {
+			const validation = validateSplit(this, destinationId, parent);
+			if (!validation.ok) return { ok: false, reason: "invalid-rows", validation };
+		}
+		const existing = this.child(parent);
+		if (existing && existing.destination === destinationId) {
+			this.focus(existing.id);
+			if (!this.isAuto(existing)) return { ok: true, noop: true, occurrence: existing };
+			const group = this.promote(existing);
+			return { ok: true, promoted: true, occurrence: existing, group };
+		}
+		if (existing) this.closeSubtree(existing);
+		const occurrence = this.createOccurrence(destinationId, parent, 0, null);
+		const group = this.createGroup(occurrence);
+		this.focus(occurrence.id);
+		this.openDefaults(occurrence, group);
+		return { ok: true, occurrence, group };
+	}
+
+	createGroup(rootOccurrence) {
+		this.groupSequence += 1;
+		const group = { id: this.groupSequence, title: rootOccurrence.title, root: rootOccurrence.id };
+		this.groups.push(group);
+		rootOccurrence.group = group.id;
+		return group;
+	}
+
+	promote(occurrence) {
+		const previousGroup = occurrence.group;
+		const group = this.createGroup(occurrence);
+		const move = (current) => {
+			for (const childId of current.children) {
+				const child = this.get(childId);
+				if (child && child.group === previousGroup) {
+					child.group = group.id;
+					move(child);
+				}
+			}
+		};
+		move(occurrence);
+		this.dropEmptyGroups();
+		return group;
+	}
+
+	openDefaults(occurrence, group) {
+		const definition = this.destination(occurrence.destination);
+		if (isSplit(definition)) {
+			const rowRoots = definition.rows.map((row, index) => this.createOccurrence(row.destination, occurrence, index, group));
+			rowRoots.forEach((rowRoot) => this.openDefaults(rowRoot, group));
+			return;
+		}
+		const candidate = definition.defaultChild;
+		if (!candidate || !this.destination(candidate)) return;
+		if (isSplit(this.destination(candidate)) && !validateSplit(this, candidate, occurrence).ok) return;
+		if (!this.fits(occurrence, candidate)) return;
+		const child = this.createOccurrence(candidate, occurrence, 0, group);
+		this.openDefaults(child, group);
+	}
+
+	fits(parentOccurrence, candidateId) {
+		const chainRoot = chainRootOf(this, parentOccurrence);
+		const width = rowWidth(this, chainRoot);
+		const sumOfMins = chainCells(this, chainRoot).reduce((sum, occurrence) => sum + this.destination(occurrence.destination).min, 0);
+		return sumOfMins + this.destination(candidateId).min <= width;
+	}
+
+	closeSubtree(occurrence) {
+		const closed = [];
+		for (const childId of occurrence.children) {
+			const child = this.get(childId);
+			if (child) closed.push(...this.closeSubtree(child));
+		}
+		const parent = occurrence.parent ? this.get(occurrence.parent) : null;
+		if (parent && parent.children[occurrence.row] === occurrence.id) parent.children[occurrence.row] = undefined;
+		this.occurrences.delete(occurrence.id);
+		this.revealOffsets.delete(occurrence.id);
+		if (this.focused === occurrence.id) this.focused = parent ? parent.id : this.root.id;
+		closed.unshift({ id: occurrence.id, title: occurrence.title });
+		this.dropEmptyGroups();
+		return closed;
+	}
+
+	dropEmptyGroups() {
+		const live = new Set([...this.occurrences.values()].map((occurrence) => occurrence.group));
+		this.groups = this.groups.filter((group) => live.has(group.id));
+	}
+
+	nextBack() {
+		const group = this.groups[this.groups.length - 1];
+		return group ? { id: group.id, title: group.title } : null;
+	}
+
+	back() {
+		const group = this.groups[this.groups.length - 1];
+		if (!group) return { ok: false, reason: "history-empty" };
+		const root = this.get(group.root);
+		const focusAfterClose = root.parent ?? this.root.id;
+		const closed = this.closeSubtree(root);
+		this.focus(focusAfterClose);
+		return { ok: true, closed, title: group.title, focus: this.focused };
+	}
+
+	focus(occurrenceId, { resetReveal = true } = {}) {
+		const occurrence = this.get(occurrenceId);
+		if (!occurrence) return;
+		this.focused = occurrence.id;
+		if (!resetReveal) return;
+		let current = occurrence;
+		while (current) {
+			this.revealOffsets.delete(chainRootOf(this, current).id);
+			current = current.parent ? this.get(current.parent) : null;
+		}
+	}
+
+	reveal(chainRootId, delta) {
+		const chainRoot = this.get(chainRootId);
+		if (!chainRoot) return;
+		const length = chainCells(this, chainRoot).length;
+		const current = this.revealOffsets.get(chainRootId) ?? 0;
+		const next = Math.max(0, Math.min(length - 1, current + delta));
+		if (next === 0) this.revealOffsets.delete(chainRootId);
+		else this.revealOffsets.set(chainRootId, next);
+	}
+
+	focusInfo() {
+		const occurrence = this.get(this.focused) ?? this.root;
+		const context = [];
+		let current = occurrence.parent ? this.get(occurrence.parent) : null;
+		while (current) {
+			context.unshift(current.title);
+			current = current.parent ? this.get(current.parent) : null;
+		}
+		return { occurrence: occurrence.id, title: occurrence.title, context };
+	}
+
+	layout() {
+		return layoutWorkspace(this);
+	}
+
+	snapshot() {
+		return {
+			occurrences: [...this.occurrences.values()].map((occurrence) => ({ ...occurrence, children: [...occurrence.children] })),
+			groups: this.groups.map((group) => ({ ...group })),
+			groupSequence: this.groupSequence,
+			focused: this.focused,
+			revealOffsets: [...this.revealOffsets],
+		};
+	}
+
+	restore(snapshot) {
+		this.occurrences = new Map(snapshot.occurrences.map((occurrence) => [occurrence.id, { ...occurrence, children: [...occurrence.children] }]));
+		this.groups = snapshot.groups.map((group) => ({ ...group }));
+		this.groupSequence = snapshot.groupSequence;
+		this.focused = snapshot.focused;
+		this.revealOffsets = new Map(snapshot.revealOffsets);
+		this.root = this.get(this.rootDestination);
+	}
+
+	state() {
+		return {
+			occurrences: [...this.occurrences.keys()],
+			groups: this.groups.map((group) => ({ id: group.id, title: group.title, root: group.root, members: this.membersOf(group) })),
+			focused: this.focused,
+		};
+	}
+}

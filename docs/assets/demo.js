@@ -1,132 +1,315 @@
-import { CellCollection } from "./cell-collection.js";
+import { Navigator, Workspace } from "./supermax/index.js";
+import { albums, destinations, ids, minViewportHeight, paths } from "./album.js";
+import { decodeLog, encodeLog } from "./deeplink.js";
 
-const cellConfigs = [
-	{
-		id: "vault",
-		title: "Vault",
-		min: 3,
-		max: 4,
-		color: "#0f766e",
-		description: "A narrow source column that can disappear first when the viewport gets tight.",
-	},
-	{
-		id: "epics",
-		title: "Epics",
-		min: 4,
-		max: 7,
-		color: "#7c3aed",
-		description: "Context that should stay readable, but not at the cost of the active work surface.",
-	},
-	{
-		id: "board",
-		title: "Board",
-		min: 8,
-		max: 28,
-		zoomable: true,
-		color: "#0b6bcb",
-		description: "A zoomable workspace that can claim the remaining budget when it becomes the anchor.",
-	},
-	{
-		id: "details",
-		title: "Details",
-		min: 6,
-		max: 18,
-		color: "#be123c",
-		description: "A right-hand panel that remains visible so selection context and details can coexist.",
-	},
+const definitions = destinations();
+const coast = paths(albums[0]);
+
+const frames = [
+	{ key: "a", name: "Frame A", width: 960, height: 640 },
+	{ key: "b", name: "Frame B", width: 420, height: 640 },
 ];
 
-const state = {
-	columns: 24,
-	anchorId: null,
+const sizePresets = [
+	{ label: "Wide and narrow", sizes: [[960, 640], [420, 640]] },
+	{ label: "Both wide", sizes: [[960, 640], [960, 640]] },
+	{ label: "Short frame B", sizes: [[960, 640], [420, 400]] },
+	{ label: "Below minimum B", sizes: [[960, 640], [420, 300]] },
+];
+
+const open = (destination, from) => ({ type: "open", destination, from });
+const scenarios = [
+	{ label: "Open the Coast album", actions: [open("album:coast", "albums")] },
+	{
+		label: "Three rows: A, B, C",
+		actions: [open("album:coast", "albums"), open("coast:photo:a", coast.row("thumbnails")), open("coast:photo:b", coast.row("map")), open("coast:photo:c", coast.row("people"))],
+	},
+	{
+		label: "Three rows: A, C, B",
+		actions: [open("album:coast", "albums"), open("coast:photo:a", coast.row("thumbnails")), open("coast:photo:c", coast.row("people")), open("coast:photo:b", coast.row("map"))],
+	},
+	{
+		label: "Click metadata that is already open",
+		actions: [open("album:coast", "albums"), open("coast:metadata:a", coast.photo("thumbnails", "a"))],
+	},
+	{
+		label: "Replace Photo A by B in one row",
+		actions: [open("album:coast", "albums"), open("coast:photo:a", coast.row("thumbnails")), open("coast:photo:b", coast.row("thumbnails"))],
+	},
+	{ label: "Empty album", actions: [open(ids(albums[1]).album, "albums")] },
+	{ label: "Lab: exact fit", actions: [open(ids(albums[2]).album, "albums")] },
+	{ label: "Lab: one pixel over", actions: [open(ids(albums[3]).album, "albums")] },
+];
+
+function element(tag, className, text) {
+	const node = document.createElement(tag);
+	if (className) node.className = className;
+	if (text != null) node.textContent = text;
+	return node;
+}
+
+const renderers = {
+	albums: renderAlbums,
+	selector: renderSelector,
+	photo: renderPhoto,
+	metadata: renderMetadata,
 };
 
-const elements = {
-	root: document.documentElement,
-	columns: document.querySelector("[data-columns]"),
-	columnsValue: document.querySelector("[data-columns-value]"),
-	layout: document.querySelector("[data-layout]"),
-	hiddenCells: document.querySelector("[data-hidden-cells]"),
-	total: document.querySelector("[data-total]"),
-	hiddenCount: document.querySelector("[data-hidden-count]"),
-	spare: document.querySelector("[data-spare]"),
-	rightmostHidden: document.querySelector("[data-rightmost-hidden]"),
-	anchorButtons: Array.from(document.querySelectorAll("[data-anchor]")),
+function renderContent(occurrence, definition, workspace) {
+	return renderers[definition.data.kind](occurrence, definition.data, workspace);
+}
+
+function renderAlbums(occurrence, data, workspace) {
+	const list = element("ul", "album-list");
+	const notes = new Map();
+	for (const album of albums) {
+		const item = element("li");
+		const button = element("button", "album-item", album.title);
+		button.type = "button";
+		button.dataset.destination = ids(album).album;
+		button.addEventListener("click", () => workspace.navigate(ids(album).album, { from: occurrence.id }));
+		const note = element("p", "album-note");
+		note.hidden = true;
+		notes.set(ids(album).album, note);
+		item.append(button, note);
+		list.append(item);
+	}
+	const onRejected = (event) => {
+		const { action, result } = event.detail;
+		const note = notes.get(action.destination);
+		if (!note || result.reason !== "invalid-rows") return;
+		note.hidden = false;
+		note.textContent = "This album needs a taller window than the app supports. Pick another album.";
+	};
+	const onChange = (event) => {
+		if (event.detail.result.ok) for (const note of notes.values()) note.hidden = true;
+	};
+	workspace.addEventListener("rejected", onRejected);
+	workspace.addEventListener("change", onChange);
+	return {
+		element: list,
+		update(current) {
+			const selected = workspace.navigator.child(current)?.destination ?? null;
+			for (const button of list.querySelectorAll(".album-item")) {
+				button.setAttribute("aria-current", button.dataset.destination === selected ? "true" : "false");
+			}
+		},
+		dispose() {
+			workspace.removeEventListener("rejected", onRejected);
+			workspace.removeEventListener("change", onChange);
+		},
+	};
+}
+
+const selectorShapes = {
+	thumbnails: {
+		host: () => element("div", "thumb-grid"),
+		button: (photo) => ({ className: "thumb", label: photo.title }),
+	},
+	map: {
+		host: () => element("div", "map"),
+		button: (photo, index) => ({ className: "pin", label: `${photo.title} at ${photo.place}`, style: { left: `${18 + index * 22}%`, top: `${30 + (index % 2) * 30}%` } }),
+	},
+	people: {
+		host: () => element("div", "people"),
+		button: (photo, index) => ({ className: "avatar", label: `Person ${index + 1} in ${photo.title}`, text: String.fromCharCode(65 + index) }),
+	},
 };
 
-function formatColumns(value) {
-	return Number.isInteger(value) ? String(value) : value.toFixed(2);
-}
-
-function render() {
-	state.columns = Number(elements.columns.value);
-	const layout = new CellCollection(cellConfigs).distribute(state.columns, state.anchorId);
-	const renderedCells = layout.cells.map((cell) => ({
-		...cell,
-		config: cell.config,
-	}));
-	const visibleCells = renderedCells.filter((cell) => cell.visible);
-	const hiddenCells = renderedCells.filter((cell) => !cell.visible);
-	const usedColumns = visibleCells.reduce((sum, cell) => sum + cell.actual, 0);
-
-	elements.root.style.setProperty("--columns", String(state.columns));
-	elements.columnsValue.textContent = state.columns;
-	elements.total.textContent = formatColumns(usedColumns);
-	elements.hiddenCount.textContent = hiddenCells.length;
-	elements.spare.textContent = formatColumns(layout.spareColumns);
-	elements.rightmostHidden.textContent = layout.rightmostHiddenTitle ?? "none";
-
-	elements.anchorButtons.forEach((button) => {
-		button.setAttribute("aria-pressed", String(button.dataset.anchor === (state.anchorId ?? "")));
+function renderSelector(occurrence, data, workspace) {
+	const { album, row } = data;
+	const key = ids(album);
+	const host = element("div", `selector selector-${row.key}`);
+	if (album.photos.length === 0) {
+		host.append(element("p", "empty-state", "No photos in this album."));
+		return { element: host };
+	}
+	const shape = selectorShapes[row.key];
+	const container = shape.host();
+	const buttons = album.photos.map((photo, index) => {
+		const spec = shape.button(photo, index);
+		const button = element("button", spec.className, spec.text);
+		button.type = "button";
+		button.style.setProperty("--hue", String(photo.hue));
+		button.setAttribute("aria-label", spec.label);
+		button.dataset.destination = key.photo(photo);
+		button.addEventListener("click", () => workspace.navigate(key.photo(photo), { from: occurrence.id }));
+		Object.assign(button.style, spec.style ?? {});
+		container.append(button);
+		return button;
 	});
-
-	elements.layout.replaceChildren(...renderedCells.map(renderCell));
-	elements.hiddenCells.replaceChildren(
-		hiddenCells.length === 0 ? document.createTextNode("All cells are visible.") : document.createTextNode("Hidden:"),
-		...hiddenCells.map((cell) => {
-			const chip = document.createElement("span");
-			chip.className = "hidden-chip";
-			chip.textContent = cell.config.title;
-			return chip;
-		}),
-	);
+	host.append(container);
+	return {
+		element: host,
+		update(current) {
+			const selected = workspace.navigator.child(current)?.destination ?? null;
+			for (const button of buttons) button.setAttribute("aria-pressed", button.dataset.destination === selected ? "true" : "false");
+		},
+	};
 }
 
-function renderCell(cell) {
-	const card = document.createElement("article");
-	card.className = `cell-card ${cell.visible ? "is-visible" : "is-hidden"}`;
-	card.style.setProperty("--share", String(cell.actual || 1));
-	card.style.setProperty("--max", String(cell.config.max));
-	card.style.setProperty("--color", cell.config.color);
-
-	const title = document.createElement("div");
-	title.className = "cell-title";
-	title.append(document.createTextNode(cell.config.title));
-
-	const tag = document.createElement("span");
-	tag.className = "cell-tag";
-	tag.textContent = `${formatColumns(cell.actual)} cols`;
-	title.append(tag);
-
-	const body = document.createElement("p");
-	body.className = "cell-body";
-	body.textContent = cell.config.description;
-
-	const meter = document.createElement("div");
-	meter.className = "cell-meter";
-	const fill = document.createElement("span");
-	meter.append(fill);
-
-	card.append(title, body, meter);
-	return card;
+function renderPhoto(occurrence, data, workspace) {
+	const { album, photo } = data;
+	const key = ids(album);
+	const host = element("div", "photo");
+	const picture = element("div", "picture", photo.title);
+	picture.style.setProperty("--hue", String(photo.hue));
+	const caption = element("textarea", "caption");
+	caption.placeholder = "Caption draft";
+	caption.setAttribute("aria-label", `Caption draft for ${photo.title}`);
+	caption.rows = 2;
+	const link = element("button", "metadata-link", "Metadata");
+	link.type = "button";
+	link.addEventListener("click", () => workspace.navigate(key.metadata(photo), { from: occurrence.id }));
+	host.append(picture, caption, link);
+	return {
+		element: host,
+		update(current) {
+			const child = workspace.navigator.child(current);
+			link.setAttribute("aria-current", child ? "true" : "false");
+			link.textContent = child && workspace.navigator.isAuto(child) ? "Metadata (opened automatically)" : "Metadata";
+		},
+	};
 }
 
-elements.columns.addEventListener("input", render);
-elements.anchorButtons.forEach((button) => {
-	button.addEventListener("click", () => {
-		state.anchorId = button.dataset.anchor || null;
-		render();
-	});
+function renderMetadata(occurrence, data) {
+	const { album, photo } = data;
+	const host = element("div", "metadata");
+	const list = element("dl");
+	for (const [term, value] of [["Date", photo.date], ["Place", photo.place], ["Tags", photo.tags], ["Album", album.title]]) {
+		list.append(element("dt", null, term), element("dd", null, value));
+	}
+	host.append(list);
+	const history = element("ol", "history");
+	for (let index = 1; index <= 24; index += 1) history.append(element("li", null, `Edit ${index}: adjusted exposure by ${(index % 5) - 2} stops`));
+	host.append(element("h4", null, "Edit history"), history);
+	return { element: host };
+}
+
+class Session {
+	constructor() {
+		this.log = [];
+		this.frames = frames.map((frame) => this.buildFrame(frame));
+		window.addEventListener("popstate", (event) => this.arrive(event.state));
+		this.arrive(history.state);
+	}
+
+	buildFrame(frame) {
+		const wrapper = element("div", "frame-wrapper");
+		const box = element("div", "frame");
+		box.dataset.frame = frame.key;
+		box.style.width = `${frame.width}px`;
+		box.style.height = `${frame.height}px`;
+		const root = element("div", "frame-workspace");
+		box.append(root);
+		const readout = element("div", "readout");
+		const size = element("span", "readout-size");
+		const limit = element("span", "readout-limit", `below the supported minimum of ${minViewportHeight}px`);
+		limit.hidden = true;
+		const rejection = element("span", "readout-rejection");
+		rejection.hidden = true;
+		readout.append(element("strong", null, frame.name), size, limit, rejection);
+		wrapper.append(box, readout);
+		document.querySelector("[data-frames]").append(wrapper);
+		const navigator = new Navigator({ destinations: definitions, root: "albums", minViewportHeight });
+		const workspace = new Workspace(root, { navigator, content: renderContent, onIntent: (action, origin) => this.dispatch(action, origin) });
+		workspace.addEventListener("rejected", (event) => {
+			rejection.hidden = false;
+			rejection.textContent = describeRejection(event.detail);
+		});
+		workspace.addEventListener("change", (event) => {
+			if (event.detail.result.ok) rejection.hidden = true;
+		});
+		workspace.addEventListener("render", (event) => {
+			const { layout } = event.detail;
+			size.textContent = `${layout.width} × ${layout.height} px`;
+			limit.hidden = !layout.belowMinimum;
+		});
+		return { ...frame, box, workspace };
+	}
+
+	dispatch(action, origin) {
+		const results = this.frames.map((frame) => frame.workspace.apply(action));
+		const originResult = results[this.frames.findIndex((frame) => frame.workspace === origin)];
+		origin.focusAfter(action, originResult);
+		if (results.some((result) => result.ok && !result.noop)) {
+			this.log.push(action);
+			this.record("push");
+		}
+		return originResult;
+	}
+
+	record(mode) {
+		const state = { log: this.log, snapshots: this.frames.map((frame) => frame.workspace.navigator.snapshot()) };
+		const url = this.log.length ? `#${encodeLog(this.log)}` : location.pathname + location.search;
+		history[`${mode}State`](state, "", url);
+	}
+
+	arrive(state) {
+		if (state?.snapshots) {
+			this.log = state.log;
+			this.frames.forEach((frame, index) => frame.workspace.restore(state.snapshots[index]));
+			return;
+		}
+		this.replay(decodeLog(location.hash), { mode: "replace" });
+	}
+
+	replay(log, { mode = "push" } = {}) {
+		this.log = [...log];
+		for (const frame of this.frames) frame.workspace.replay(this.log);
+		this.record(mode);
+	}
+
+	reset() {
+		this.replay([]);
+	}
+
+	resize(sizes) {
+		this.frames.forEach((frame, index) => {
+			frame.box.style.width = `${sizes[index][0]}px`;
+			frame.box.style.height = `${sizes[index][1]}px`;
+		});
+	}
+}
+
+function describeRejection({ action, result }) {
+	switch (result.reason) {
+		case "source-closed": return `Rejected here: ${titleOf(action.from)} is closed in this frame.`;
+		case "split-source": return `Rejected: ${titleOf(action.from)} owns its rows; nothing opens next to them.`;
+		case "unknown-destination": return `Rejected: ${action.destination} is not a destination.`;
+		case "invalid-rows": {
+			const row = result.validation.rows.find((candidate) => !candidate.ok);
+			if (!row) return `Rejected: ${result.validation.reason}.`;
+			return `Rejected: row ${row.title} needs ${row.required}px (${row.chrome}px chrome), supported ${row.supported}px.`;
+		}
+		case "history-empty": return "Nothing left to close.";
+		default: return `Rejected: ${result.reason}`;
+	}
+}
+
+function titleOf(path) {
+	const id = (path ?? "").split("/").pop();
+	return Object.hasOwn(definitions, id) ? definitions[id].title : id;
+}
+
+const session = new Session();
+window.supermaxDemo = session;
+
+const scenarioHost = document.querySelector("[data-scenarios]");
+for (const scenario of scenarios) {
+	const button = element("button", "scenario", scenario.label);
+	button.type = "button";
+	button.addEventListener("click", () => session.replay(scenario.actions.map((action) => ({ ...action }))));
+	scenarioHost.append(button);
+}
+const presetHost = document.querySelector("[data-size-presets]");
+for (const preset of sizePresets) {
+	const button = element("button", "scenario", preset.label);
+	button.type = "button";
+	button.addEventListener("click", () => session.resize(preset.sizes));
+	presetHost.append(button);
+}
+document.querySelector("[data-reset]").addEventListener("click", () => {
+	session.reset();
+	session.resize(sizePresets[0].sizes);
 });
-
-render();
