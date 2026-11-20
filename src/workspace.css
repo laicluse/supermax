@@ -102,6 +102,15 @@
 
 .supermax-chain { position: relative; height: 100%; perspective: var(--supermax-perspective); }
 .supermax-strip { transform-style: preserve-3d; }
+.supermax-strip::after {
+	content: "";
+	position: absolute;
+	inset: 0 auto 0 100%;
+	width: 100vw;
+	border-left: var(--supermax-gutter) solid transparent;
+	background: var(--supermax-surface);
+	background-clip: padding-box;
+}
 .supermax-cell {
 	position: relative;
 	display: flex;

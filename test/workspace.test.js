@@ -308,6 +308,22 @@ test("cells stand one gutter apart over the canvas, and rows never run past thei
 	assert.equal(geometry.radius, "0px", "no rounded rectangles");
 });
 
+test("a chain whose cells all reach their maximum ends in empty surface, not canvas", async () => {
+	await openDemo([open("album:coast", "albums")]);
+	const ends = await page.evaluate(() => [...document.querySelectorAll('.frame[data-frame="b"] .supermax-row .supermax-chain')].map((chain) => {
+		const strip = chain.querySelector(".supermax-strip");
+		const box = chain.getBoundingClientRect();
+		const spare = box.right - strip.getBoundingClientRect().right;
+		const hit = document.elementFromPoint(box.right - 2, box.top + box.height / 2);
+		return { spare, hit: hit === strip, fill: getComputedStyle(strip, "::after").backgroundColor, surface: (() => { const probe = chain.appendChild(document.createElement("i")); probe.style.background = "var(--supermax-surface)"; const color = getComputedStyle(probe).backgroundColor; probe.remove(); return color; })() };
+	}).filter((end) => end.spare > 4));
+	assert.ok(ends.length > 0, "frame B has a row whose cells stop short of its edge");
+	for (const end of ends) {
+		assert.ok(end.hit, "the strip owns the space after its last cell");
+		assert.equal(end.fill, end.surface, "that space shows the surface token");
+	}
+});
+
 test("origami folds a new cell open, folds a closed one back in reverse, and turns a replaced cell over", { skip: PRESENTATION !== "origami" }, async () => {
 	await openDemo(THREE_ROWS);
 	const motion = () => page.evaluate(() => document.getAnimations().filter((animation) => animation.effect?.target?.matches?.('.frame[data-frame="a"] .supermax-cell')).map((animation) => ({
