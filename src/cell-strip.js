@@ -349,10 +349,25 @@ export class CellStrip {
 		waiters.forEach((resolve) => resolve());
 	}
 
+	resting() {
+		const busy = (animation) => !!animation && animation.playState !== "finished" && animation.playState !== "idle";
+		return this.driven.size === 0 && !this.geometry.some(busy) && ![...this.motions.values()].some((motion) => busy(motion.animation)) && !this.entries.some((entry) => entry.departing || entry.overlay);
+	}
+
+	// allow-comment: a cell paints the gutters around it only while its chain rests; in motion every room clips to itself, so the outer gutters read zero.
 	placeGutters() {
 		const view = this.viewport.ownerDocument.defaultView;
 		const viewport = this.viewport.getBoundingClientRect();
 		const gutter = parseFloat(view.getComputedStyle(this.viewport).getPropertyValue("--supermax-gutter")) || 0;
+		const resting = this.resting() && !this.viewport.closest(".supermax-rows.is-moving");
+		this.viewport.classList.toggle("is-resting", resting);
+		const frame = resting && this.viewport.parentElement?.matches(".supermax-row-chain") ? view.getComputedStyle(this.viewport.parentElement) : null;
+		const length = (name) => parseFloat(frame?.getPropertyValue(name)) || 0;
+		const hostLead = Math.max(length("--supermax-cell-gutter"), length("--supermax-cell-gutter-lead"));
+		const hostAfter = length("--supermax-cell-gutter-after");
+		const put = (box, name, value) => {
+			if (box.style.getPropertyValue(name) !== value) box.style.setProperty(name, value);
+		};
 		const drawn = this.entries.map((entry) => {
 			const box = this.boxOf(entry);
 			const rectangle = box.getBoundingClientRect();
@@ -361,8 +376,20 @@ export class CellStrip {
 		});
 		for (const member of drawn) {
 			const preceding = member.visible && drawn.some((other) => other !== member && !other.entry.overlay && other.visible && other.left < member.left && other.right <= member.left + .5);
-			const value = `${preceding ? Math.min(gutter, member.extent) : 0}px`;
-			if (member.box.style.getPropertyValue("--supermax-cell-gutter") !== value) member.box.style.setProperty("--supermax-cell-gutter", value);
+			member.gutter = preceding ? Math.min(gutter, member.extent) : 0;
+			member.first = member.visible && !preceding;
+			put(member.box, "--supermax-cell-gutter", `${member.gutter}px`);
+		}
+		for (const member of drawn) {
+			const paints = resting && member.visible && !member.entry.folded;
+			const next = paints ? drawn.filter((other) => other !== member && other.visible && other.left >= member.right - .5).sort((a, b) => a.left - b.left)[0] : null;
+			const trailing = paints && !next && !!frame && member.right >= viewport.right - .5 && hostAfter > 0;
+			const after = !paints ? 0 : next ? next.gutter : trailing ? hostAfter : 0;
+			const lead = paints && member.first && frame && member.left <= viewport.left + .5 ? hostLead : 0;
+			put(member.box, "--supermax-cell-gutter-after", `${after}px`);
+			put(member.box, "--supermax-cell-gutter-lead", `${lead}px`);
+			member.box.classList.toggle("is-lead", lead > 0);
+			member.box.classList.toggle("is-trailing", trailing);
 		}
 	}
 

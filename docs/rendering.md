@@ -40,9 +40,9 @@ Hidden or folded content stays mounted. Closing disposes its visual parts after 
 | Part | Root and state | Additional inputs |
 | --- | --- | --- |
 | `canvas` | Workspace background; allocated `width`, `height` after layout | Decorative root, outside product content |
-| `cell` | Persistent material; `occurrence`, `title`, `split`, `headerHeight`, allocated `width`, `height`, `variant`, `rowVariant`, `folded`, `visible` | A split has material only in its header region; its rows own their surfaces |
-| `header` | Cell title bar; `occurrence`, `title`, `navigationText` | `actions.navigation`; required `slots.utilities` |
-| `navigation` | Floating navigation when the cell has no title bar; the same state as `header` | `actions.navigation` |
+| `cell` | Persistent material; `occurrence`, `title`, `split`, `headerHeight`, allocated `width`, `height`, `variant`, `rowVariant`, `folded`, `visible`, `gutter` | `raise(on)`. A split has material only in its header region; its rows own their surfaces |
+| `header` | Cell title bar; `occurrence`, `title`, `navigationText`, `gutter` | `actions.navigation`; required `slots.utilities`; `raise(on)` |
+| `navigation` | Floating navigation when the cell has no title bar; the same state as `header` | `actions.navigation`; `raise(on)` |
 | `fold` | Native fold button; `title`, `occurrence`, `axis`, available label extent | `axis`; `refresh()` requests repositioning when the cue's drawn size changes |
 | `divider` | Resize gesture region; orientation and current size | Supermax owns pointer handling |
 | `reset` | Native reset button; orientation and sizing state | Supermax owns activation and hit area |
@@ -52,7 +52,7 @@ Hidden or folded content stays mounted. Closing disposes its visual parts after 
 | `modal` | Dialog; `title`, `titleId` | `actions.close`; required `slots.body` and `slots.utilities`; `dragHandle(element)` |
 | `backdrop` | Modal scrim | Decorative root; no pointer interception |
 | `noticeBackdrop` | Shared notice-stack veil | Decorative root |
-| `veil` | Cell cover above foreground; cell state | Supermax drives opacity |
+| `veil` | Cell cover above foreground; cell state including `gutter` | Supermax drives opacity |
 | `frustum` | Stable SVG polygon for one face; `kind`, `side` | `defs`, unique `id`, `side`; optional `paint` |
 
 Dimensions can be unavailable at initial mount and arrive in allocation updates. Use CSS to fill the supplied root rather than deriving another layout from rendered measurements. Allocation sizes are target CSS-pixel sizes; Supermax retains responsibility for intermediate geometry.
@@ -87,7 +87,7 @@ Required outlets and attached buttons must remain descendants of the supplied ro
 
 Declare title-bar height once through `Navigator({ chrome: { header } })`. That reservation includes its separator. Workspace derives the real title-bar height from the navigator and publishes the result to its containers. A renderer does not separately declare or measure header height.
 
-The shell's room clips and gutters remain in force. Borders, inner shadows, gradients, textures and images can be drawn inside each paint root. Paint outside a room can be clipped; there is no extra overlay or expanded clipping region for cell shadows. A split's surface renderer cannot fill the gaps between its rows. Product content keeps its own scroll region.
+Borders, inner shadows, gradients, textures and images can be drawn inside each paint root. Paint beyond the gutters around a cell is clipped; there is no extra overlay for cell shadows. A split's surface renderer cannot fill the gaps between its rows; the cells in those rows paint them. Product content keeps its own scroll region and never moves into a gutter.
 
 ```js
 renderer: {
@@ -103,12 +103,30 @@ renderer: {
 ```css
 .paper-material {
   background: radial-gradient(ellipse at top left, #fffdf2, #e7dfca);
+  background-clip: padding-box;
   box-shadow: inset 0 0 0 1px #746b53;
 }
 .paper-veil {
   background: repeating-linear-gradient(45deg, transparent 0 3px, #29332e22 3px 6px);
 }
 ```
+
+## Painting the gutters
+
+A cell paints the gutters around it. The roots of `cell`, `veil` and `header` span the cell and the gutter on each side that has one: the gutter before the cell, the one after it, the one above its row and the one below. Each gutter is a border of the root, transparent until the renderer colours it, so the padding box is the cell itself and the border box includes its gutters.
+
+```css
+.selected-material { border-color: #2f6fed; }               /* a ring in all the cell's gutters */
+.band-header { background: #20242b; background-clip: border-box; } /* a title bar that runs through its gutters */
+```
+
+`state.gutter` is `{ size, top, right, bottom, left }` in CSS pixels: `size` is the host's `--supermax-gutter`, and each side is the width the root may paint there now, 0 where the cell meets the workspace edge or the canvas. The same widths are on the root as `--supermax-gutter-top`, `-right`, `-bottom` and `-left`; a `navigation` root has no box of its own and receives only these values. The custom properties are live; `state.gutter` holds the widths at the last render or rest, and Supermax calls `update` when a chain or row settles on other widths. Style from the properties, and read the state only for decisions.
+
+The header's bottom border is its title seam, the gap between a title bar and the content below it. The material has a slot there, so a seam shows the canvas unless the header paints it. The leading cell of a split row paints the split's own gutter with its material; its title bar stops at that gutter.
+
+Two neighbours share the gutter between them and both may paint it. The later cell lies on top: the one to the right, or the one in the lower row. `raise(true)` puts a cell above its neighbours, which keeps a ring or a shadow whole on every side; `raise(false)` puts it back. A raised cell in a split row lifts its row, so the other cells of that row leave the gutter under them to it, and a raised cell that reaches the trailing edge of a split lifts the split over the cell beside it. Use it for a state that stands out, such as a selection or the source of a notice.
+
+Gutter paint shows while a chain rests. While its cells or rows move, each room clips to itself as before, the outer gutters read 0, and the paint returns when the motion ends.
 
 Cell material persists during Veil transitions. The foreground and visual cover are siblings: Supermax conceals the foreground and drives the cover on the same timeline. The default cover is transparent during Veil; the single foreground fade preserves the opaque default surface's reveal. A host may add a visible shroud. Its compositing with the foreground fade is part of its chosen appearance, while timings, interruption, reversal and drag seeking remain Supermax's.
 
@@ -138,7 +156,31 @@ A frustum handle may also supply `paint({ progress, from, to, side, kind, gradie
 
 ## Built-in style
 
-`DEFAULT_RENDERER` is a complete implementation of these same factories. A host can delegate a part to it and then adapt that part's result. Its stylesheet is `default-renderer.css`; its paint tokens use the `--supermax-default-` namespace. They configure that renderer's chosen design, not arbitrary custom renderers. Load host styles normally; no stylesheet installer or global renderer state is required.
+`DEFAULT_RENDERER` is a complete implementation of these same factories. A host can call a default part first and then add to it, the way a subclass calls its parent:
+
+```js
+import { DEFAULT_RENDERER } from "@laicluse/supermax";
+
+renderer: {
+  header(context) {
+    const base = DEFAULT_RENDERER.header(context);
+    context.root.classList.add("band-header");
+    return base;
+  },
+  cell(context) {
+    DEFAULT_RENDERER.cell(context);
+    return {
+      update(state) {
+        const selected = state.occurrence === selection;
+        context.root.classList.toggle("selected-material", selected);
+        context.raise(selected);
+      },
+    };
+  },
+}
+```
+
+Pass the context on unchanged and forward `update` and `dispose` to the handle the default returns when you wrap it. The default part has already attached its action buttons, so reach an existing one through `actions.navigation.element` instead of attaching a second. The default surfaces fill only the cell and leave every gutter transparent, so an extension decides what its gutters show. Its stylesheet is `default-renderer.css`; its paint tokens use the `--supermax-default-` namespace. They configure that renderer's chosen design, not arbitrary custom renderers. Load host styles normally; no stylesheet installer or global renderer state is required.
 
 Geometry variables such as `--supermax-gutter`, `--supermax-overlay-inset`, `--supermax-notice-width` and `--supermax-perspective` remain shell geometry. The derived `--supermax-cell-title` is output from `navigator.chrome.header`, not a second configuration input. Motion uses the existing presentation strategies and `TimeScale`. The Veil motion declares `concealContent: true`, so renaming a presentation does not change its concealment behavior. Host renderers do not add transitions to shell geometry or shell-controlled opacity.
 

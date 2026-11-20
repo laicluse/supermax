@@ -35,6 +35,7 @@ const JUSTIFY = Object.freeze({ start: "flex-start", center: "center", end: "fle
 
 // allow-comment: the longest title the Show control spells out; a longer one would crowd the bar it stands in.
 const UP_NAME_LIMIT = 20;
+const NO_GUTTER = Object.freeze({ size: 0, top: 0, right: 0, bottom: 0, left: 0 });
 
 // allow-comment: a split's body holds its rows, so its content is asked only for the controls in its title bar.
 const asksContent = (definition) => !isSplit(definition) || definition.header === "title";
@@ -483,6 +484,7 @@ export class Workspace extends EventTarget {
 		this.refreshContent();
 		this.renderUp();
 		this.folds.positionMarks();
+		this.settleGutters();
 		this.modalHost.render();
 		this.notices.render();
 		this.announce(new CustomEvent("render", { detail: { layout } }));
@@ -494,6 +496,7 @@ export class Workspace extends EventTarget {
 		this.placeHorizon();
 		this.scheduleOrigins();
 		Promise.all([...this.chains.values()].map((entry) => entry.strip.finished)).then(() => {
+			this.settleGutters();
 			this.folds.positionMarks();
 			this.scheduleOrigins();
 		});
@@ -575,11 +578,13 @@ export class Workspace extends EventTarget {
 			if (!occurrence) continue;
 			const offered = !!next && first?.occurrence === id;
 			const named = next && !this.upDestination.zoomOnly && next.title.length <= UP_NAME_LIMIT && next.title !== occurrence.title;
-			const state = { occurrence: id, title: occurrence.title, navigationText: next ? (named ? next.title : this.strings.back()) : "", actions: { navigation: { offered, label: next ? (this.upDestination.zoomOnly ? this.strings.zoomOut() : this.strings.up(next.title)) : this.strings.back() } } };
+			const state = { occurrence: id, title: occurrence.title, gutter: entry.chromeState?.gutter ?? NO_GUTTER, navigationText: next ? (named ? next.title : this.strings.back()) : "", actions: { navigation: { offered, label: next ? (this.upDestination.zoomOnly ? this.strings.zoomOut() : this.strings.up(next.title)) : this.strings.back() } } };
+			entry.chromeState = state;
 			entry.chromePart.update(state);
 			const cell = this.layout?.cells.get(id);
-			const paintState = { ...state, split: entry.element.classList.contains("is-split"), folded: !!cell?.folded, visible: !!cell?.full, width: cell?.width, height: cell?.height, headerHeight: entry.header ? this.navigator.chrome.header : 0, variant: entry.variantState?.variant ?? cell?.variant, rowVariant: entry.variantState?.rowVariant ?? cell?.rowVariant };
+			const paintState = { ...state, gutter: entry.paintState?.gutter ?? NO_GUTTER, split: entry.element.classList.contains("is-split"), folded: !!cell?.folded, visible: !!cell?.full, width: cell?.width, height: cell?.height, headerHeight: entry.header ? this.navigator.chrome.header : 0, variant: entry.variantState?.variant ?? cell?.variant, rowVariant: entry.variantState?.rowVariant ?? cell?.rowVariant };
 			entry.element.toggleAttribute("data-supermax-conceal", !!this.presentation.motion?.concealContent);
+			entry.paintState = paintState;
 			entry.materialPart.update(paintState); entry.veilPart.update(paintState);
 			if (offered) this.upButton = entry.chromePart.actions.navigation.element;
 		}
@@ -708,7 +713,7 @@ export class Workspace extends EventTarget {
 		const material = this.create("div", "supermax-material");
 		const veil = this.create("div", "supermax-veil");
 		material.setAttribute("aria-hidden", "true"); veil.setAttribute("aria-hidden", "true");
-		const state = { occurrence: occurrenceId, title: occurrence.title, split: isSplit(definition), headerHeight: definition.header === "title" ? this.navigator.chrome.header : 0, actions: { navigation: { offered: false, label: this.strings.back() } } };
+		const state = { occurrence: occurrenceId, title: occurrence.title, gutter: NO_GUTTER, split: isSplit(definition), headerHeight: definition.header === "title" ? this.navigator.chrome.header : 0, actions: { navigation: { offered: false, label: this.strings.back() } } };
 		const utilities = this.create("div", "supermax-utilities");
 		let header = null;
 		if (isSplit(definition)) { element.classList.add("is-split"); body.append(this.create("div", "supermax-rows")); }
@@ -716,8 +721,13 @@ export class Workspace extends EventTarget {
 		if (definition.header === "title") header = chrome;
 		else element.classList.add("is-headless");
 		element.append(material, chrome, body, veil);
-		const chromePart = mountPart(this, header ? "header" : "navigation", chrome, state, { actions: { navigation: { run: () => this.requestUp() } }, slots: header ? { utilities } : {} });
-		const materialPart = mountPart(this, "cell", material, state);
+		const raised = new Set();
+		const raise = (part) => (on = true) => {
+			if (on) raised.add(part); else raised.delete(part);
+			element.toggleAttribute("data-supermax-raised", raised.size > 0);
+		};
+		const chromePart = mountPart(this, header ? "header" : "navigation", chrome, state, { actions: { navigation: { run: () => this.requestUp() } }, slots: header ? { utilities } : {}, raise: raise("chrome") });
+		const materialPart = mountPart(this, "cell", material, state, { raise: raise("cell") });
 		const veilPart = mountPart(this, "veil", veil, state);
 		element.supermaxPaint = { veil, foreground: [chrome, body], concealContent: () => !!this.presentation.motion?.concealContent };
 		entry = { element, body, header, chromePart, materialPart, veilPart, slot: new ContentSlot(this, { element, body: isSplit(definition) ? null : body, header: header ? utilities : null, id: occurrenceId }), parent: occurrence.parent };
@@ -771,12 +781,16 @@ export class Workspace extends EventTarget {
 		if (!strip?.motions.get(rowId)?.follows) return;
 		entry.animation?.cancel();
 		entry.animation = null;
+		entry.following = true;
+		entry.element.parentElement?.classList.add("is-moving");
 		const view = this.document.defaultView;
 		follow(entry.element, () => {
 			const cell = (this.cells.get(rowId) ?? this.leavingCells.get(rowId))?.element;
 			if (!strip.motions.has(rowId) || !cell?.isConnected) {
 				cell?.style.removeProperty("margin-top");
 				if (entry.height !== null) entry.element.style.height = `${entry.height}px`;
+				entry.following = false;
+				this.settleGutters();
 				return false;
 			}
 			const gutter = parseFloat(view.getComputedStyle(entry.element).borderTopWidth) || 0;
@@ -808,6 +822,7 @@ export class Workspace extends EventTarget {
 		unfollow(entry.element);
 		entry.followed?.style.removeProperty("margin-top");
 		entry.followed = null;
+		entry.following = false;
 		const previous = animating && entry.height !== null ? entry.element.offsetHeight : null;
 		entry.height = height;
 		entry.animation?.cancel();
@@ -821,6 +836,9 @@ export class Workspace extends EventTarget {
 		entry.paper = paper;
 		const timing = strip?.roomTiming?.() ?? this.time.timing({ duration: STRIP_TIMING.duration, easing: STRIP_TIMING.easing });
 		entry.animation = animateGeometry(entry.element, [{ height: `${previous}px` }, { height: `${height}px` }], { ...timing, fill: "backwards" });
+		entry.element.parentElement?.classList.add("is-moving");
+		const settled = () => this.rows.has(entry.element.dataset.row) && this.settleGutters();
+		entry.animation.finished.then(settled, () => {});
 		if (exchangingFold) {
 			entry.chain.style.marginTop = "0px";
 			const animation = entry.animation;
@@ -839,6 +857,7 @@ export class Workspace extends EventTarget {
 			entry.slide = null;
 			entry.paper = entry.height;
 			this.sizeRowChain(entry, entry.height);
+			settled();
 		}, () => {});
 	}
 
@@ -849,9 +868,13 @@ export class Workspace extends EventTarget {
 	placeRowGutters() {
 		const gutter = parseFloat(this.document.defaultView.getComputedStyle(this.element).getPropertyValue("--supermax-gutter")) || 0;
 		const preceding = new Set();
+		const above = new Map();
+		const moving = (entry) => !!entry.element.parentElement?.classList.contains("is-moving");
+		this.markRows();
 		for (const entry of this.rows.values()) {
 			const host = entry.element.parentElement;
 			if (!host) continue;
+			entry.element.style.setProperty("--supermax-row-gutter-below", "0px");
 			let height = parseFloat(entry.element.style.height) || 0;
 			const progress = entry.animation?.effect.getComputedTiming().progress;
 			if (progress != null && entry.animation.playState !== "idle") {
@@ -861,7 +884,57 @@ export class Workspace extends EventTarget {
 			}
 			const gap = preceding.has(host) ? Math.min(gutter, Math.max(0, height)) : 0;
 			entry.element.style.setProperty("--supermax-row-gutter", `${gap}px`);
-			if (height > 0) preceding.add(host);
+			if (height <= 0) continue;
+			const upper = above.get(host);
+			if (upper && !moving(upper) && !moving(entry) && !upper.element.classList.contains("is-folded")) upper.element.style.setProperty("--supermax-row-gutter-below", `${gap}px`);
+			above.set(host, entry);
+			preceding.add(host);
+		}
+	}
+
+	// allow-comment: gutters follow the drawn neighbours, so they are read again once every chain and row has come to rest, outer chains first because a row reads the gutters of its split.
+	rowMoves(entry) {
+		const busy = (animation) => !!animation && animation.playState !== "finished" && animation.playState !== "idle";
+		return busy(entry.animation) || busy(entry.slide) || !!entry.following;
+	}
+
+	// allow-comment: one row that changes height moves the rows after it, so the rows of a split rest or move together.
+	markRows() {
+		const hosts = new Map();
+		for (const entry of this.rows.values()) {
+			const host = entry.element.parentElement;
+			if (host) hosts.set(host, hosts.get(host) || this.rowMoves(entry));
+		}
+		for (const [host, moving] of hosts) host.classList.toggle("is-moving", moving);
+	}
+
+	settleGutters() {
+		this.markRows();
+		for (const { strip } of this.chains.values()) strip.placeGutters?.();
+		this.placeRowGutters();
+		this.publishGutters();
+	}
+
+	gutterOf(root) {
+		const style = this.document.defaultView.getComputedStyle(root);
+		const side = (name) => parseFloat(style.getPropertyValue(`--supermax-gutter-${name}`)) || 0;
+		return Object.freeze({ size: parseFloat(style.getPropertyValue("--supermax-gutter")) || 0, top: side("top"), right: side("right"), bottom: side("bottom"), left: side("left") });
+	}
+
+	publishGutters() {
+		const same = (a, b) => !!a && ["size", "top", "right", "bottom", "left"].every((key) => a[key] === b[key]);
+		for (const entry of this.cells.values()) {
+			if (!entry.paintState) continue;
+			const paint = this.gutterOf(entry.materialPart.root);
+			const chrome = this.gutterOf(entry.chromePart.root);
+			if (!same(entry.paintState.gutter, paint)) {
+				entry.paintState = { ...entry.paintState, gutter: paint };
+				entry.materialPart.update(entry.paintState); entry.veilPart.update(entry.paintState);
+			}
+			if (!same(entry.chromeState.gutter, chrome)) {
+				entry.chromeState = { ...entry.chromeState, gutter: chrome };
+				entry.chromePart.update(entry.chromeState);
+			}
 		}
 	}
 

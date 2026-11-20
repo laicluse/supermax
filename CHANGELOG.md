@@ -4,6 +4,11 @@
 
 Start with [Migrating from v1 to v2](docs/migrating-to-v2.md). A dependency version bump alone does not migrate the host's behavior, and adopting the new Workspace is a separate choice.
 
+### Rendering
+
+- A cell paints the gutters around it. The roots of `cell`, `veil` and `header` now span the cell and its gutters, each gutter as a transparent border, and their state carries `gutter: { size, top, right, bottom, left }`. `raise(on)` puts a cell above the neighbours it shares a gutter with. A custom renderer that fills its root with a background now fills those gutters and the title seam as well; add `background-clip: padding-box` to keep them open. See [Painting the gutters](docs/rendering.md#painting-the-gutters).
+- The gutter between two cells of one chain is one `--supermax-gutter` wide. The default surface used to start a second gutter width into the cell.
+
 ### Workspace composition
 
 - A following split yields preferred width to a resized column while keeping its row content visible at the declared minimums. A wide list no longer stops at the split’s preferred width.

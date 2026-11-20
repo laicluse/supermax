@@ -81,6 +81,6 @@ The host controls gutter thickness with `--supermax-gutter` (1px by default, inc
 
 [Host with 0px gutters](assets/captures/folding-gutterless.png).
 
-Gutters are unpainted gaps revealing the canvas, not borders painted over cell content. Every ordinary gap remains 1px by default before, during and after folding, including the split boundary and a trailing folded viewport edge. The handle is drawn above the clipped content; its inset rim follows the gutter thickness, with a 1px minimum when the host explicitly disables gutters.
+In the default look gutters are unpainted gaps revealing the canvas, not borders painted over cell content; a host renderer may [paint them](rendering.md#painting-the-gutters). Every ordinary gap remains 1px by default before, during and after folding, including the split boundary and a trailing folded viewport edge. The handle is drawn above the clipped content; its inset rim follows the gutter thickness, with a 1px minimum when the host explicitly disables gutters.
 
 [Split and viewport gutters after opening a fold](assets/captures/folding-gutters.png) · [Drag a row open, return, and complete it](assets/captures/folding-drag.mp4) · [The moving row gutter during a drag](assets/captures/folding-drag.png).

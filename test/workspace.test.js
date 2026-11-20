@@ -84,7 +84,7 @@ test("ordinary demo albums retain fold access at narrow widths and heights", asy
 		const frame = document.querySelector('.frame[data-frame="b"]');
 		const title = frame.querySelector('.supermax-cell.is-split > .supermax-cell-title');
 		const active = frame.querySelector(`.supermax-row[data-row="${row}"]`);
-		return { gap: parseFloat(getComputedStyle(title).marginBottom) + parseFloat(getComputedStyle(active).borderTopWidth), painted: parseFloat(getComputedStyle(title).borderBottomWidth) };
+		return { gap: parseFloat(getComputedStyle(title).borderBottomWidth) + parseFloat(getComputedStyle(active).borderTopWidth), painted: getComputedStyle(title).borderBottomColor === "rgba(0, 0, 0, 0)" ? 0 : 1 };
 	}, coast.row("people"));
 	assert.deepEqual(topGutter, { gap: 1, painted: 0 }, "consecutive zero-height folds share one transparent gutter below the title");
 	await page.evaluate(() => window.supermaxDemo.resize([[960, 640], [415, 200]]));
@@ -159,11 +159,11 @@ test("demo cell borders expose only the canvas gutter in every motion style", as
 			return {
 				cellBorder: getComputedStyle(cell).borderLeftColor,
 				rowBorder: getComputedStyle(row).borderTopColor,
-				titleBorder: getComputedStyle(title).borderBottomWidth,
+				titleBorder: getComputedStyle(title).borderBottomColor,
 				paperInset: getComputedStyle(cell).boxShadow.includes("inset"),
 			};
 		}, coast.photo("thumbnails", "a"));
-		assert.deepEqual(edges, { cellBorder: "rgba(0, 0, 0, 0)", rowBorder: "rgba(0, 0, 0, 0)", titleBorder: "0px", paperInset: false }, presentation);
+		assert.deepEqual(edges, { cellBorder: "rgba(0, 0, 0, 0)", rowBorder: "rgba(0, 0, 0, 0)", titleBorder: "rgba(0, 0, 0, 0)", paperInset: false }, presentation);
 	}
 });
 
@@ -747,6 +747,7 @@ test("cells stand one gutter apart over the canvas, and rows never run past thei
 			gutters: cells.map((cell) => [cell.dataset.occurrence.split("/").pop(), getComputedStyle(cell).borderLeftWidth]),
 			rows: [...root.querySelectorAll(".supermax-row")].map((row) => getComputedStyle(row).borderTopWidth),
 			frames: [...root.querySelectorAll(".supermax-row-chain")].map((frame) => getComputedStyle(frame).clipPath),
+			leads: [...root.querySelectorAll(".supermax-row-chain > .supermax-chain > .supermax-strip > .is-lead")].map((room) => room.style.getPropertyValue("--supermax-cell-gutter-lead")),
 			overflow: cells.filter((cell) => cell.closest(".supermax-row")).some((cell) => cell.getBoundingClientRect().right > split.right + 0.5),
 			radius: getComputedStyle(root.querySelector(".supermax-up")).borderRadius,
 		};
@@ -765,7 +766,8 @@ test("cells stand one gutter apart over the canvas, and rows never run past thei
 		"coast:photo:c": "1px",
 		"coast:metadata:c": "1px",
 	}, "one gutter before every cell but the first of its chain");
-	assert.deepEqual(geometry.frames, ["inset(0px 0px 0px 1px)", "inset(0px 0px 0px 1px)", "inset(0px 0px 0px 1px)"], "and the split's own gutter is the left edge of each row's frame, which stays in place");
+	assert.deepEqual(geometry.frames, ["none", "none", "none"], "and at rest each row's frame opens, so its leading cell can paint the split's own gutter");
+	assert.deepEqual(geometry.leads, ["1px", "1px", "1px"], "which the leading cell of each row keeps clear of its content");
 	assert.deepEqual(geometry.rows, ["0px", "1px", "1px"], "one gutter between rows");
 	assert.equal(geometry.overflow, false);
 	assert.equal(geometry.radius, "0px", "no rounded rectangles");
@@ -2277,7 +2279,7 @@ test("a split draws its own title above its rows, which stays while the rows cha
 			title: bar?.querySelector(".supermax-cell-title-text")?.textContent,
 			barHeight: Math.round(bar.getBoundingClientRect().height),
 			barGap: parseFloat(getComputedStyle(bar).marginBottom),
-			barWidth: Math.round(bar.getBoundingClientRect().width),
+			barWidth: bar.clientWidth,
 			cellWidth: Math.round(cell.getBoundingClientRect().width),
 			firstRowTop: Math.round(rows[0].getBoundingClientRect().top - top),
 			rowsHeight: Math.round(rows.reduce((sum, row) => sum + row.getBoundingClientRect().height, 0)),
@@ -2291,11 +2293,11 @@ test("a split draws its own title above its rows, which stays while the rows cha
 		const cell = workspace.querySelector('[data-occurrence="albums/album:coast"]');
 		const bar = cell.querySelector(':scope > .supermax-cell-title');
 		const colour = getComputedStyle(workspace.querySelector(".supermax-canvas")).backgroundColor;
-		const gap = { width: getComputedStyle(bar).marginBottom, border: getComputedStyle(bar).borderBottomWidth, cell: getComputedStyle(cell).backgroundColor };
+		const gap = { width: getComputedStyle(bar).borderBottomWidth, border: getComputedStyle(bar).borderBottomColor, cell: getComputedStyle(cell).backgroundColor };
 		workspace.style.removeProperty("--supermax-default-canvas");
 		return { colour, ...gap };
 	});
-	assert.deepEqual(seam, { colour: "rgb(10, 20, 30)", width: "1px", border: "0px", cell: "rgba(0, 0, 0, 0)" }, "the gap under the bar exposes the host's canvas without painting a line");
+	assert.deepEqual(seam, { colour: "rgb(10, 20, 30)", width: "1px", border: "rgba(0, 0, 0, 0)", cell: "rgba(0, 0, 0, 0)" }, "the gap under the bar exposes the host's canvas without painting a line");
 	assert.equal(measured.barHeight + measured.barGap, 28, "the bar and its canvas gap occupy the chrome height counted by the model");
 	assert.equal(measured.barWidth, measured.cellWidth - 1, "across the whole split, leaving the gutter beside it free as its rows do");
 	assert.equal(measured.firstRowTop, 28, "the rows start below it");
@@ -2334,8 +2336,8 @@ for (const splitHeader of [true, false]) test(`a cell inside a row that declares
 			splitBar: host.querySelector('[data-occurrence="albums/album"] > .supermax-cell-title .supermax-cell-title-text')?.textContent,
 			title: bar?.querySelector(".supermax-cell-title-text")?.textContent,
 			controls: bar?.querySelector(".supermax-cell-title-trailing")?.textContent,
-			barHeight: Math.round(bar.getBoundingClientRect().height + parseFloat(getComputedStyle(bar).marginBottom)),
-			barTop: Math.round(bar.getBoundingClientRect().top - photos.getBoundingClientRect().top),
+			barHeight: Math.round(bar.getBoundingClientRect().height - parseFloat(getComputedStyle(bar).borderTopWidth)),
+			barTop: Math.round(bar.getBoundingClientRect().top + parseFloat(getComputedStyle(bar).borderTopWidth) - photos.getBoundingClientRect().top),
 			bodyTop: Math.round(photos.querySelector(".supermax-cell-body").getBoundingClientRect().top - photos.getBoundingClientRect().top),
 			bottom: Math.round(photos.getBoundingClientRect().bottom - row.bottom),
 			detailBars: cell("details").querySelectorAll(":scope > .supermax-cell-title").length,

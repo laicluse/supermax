@@ -229,7 +229,7 @@ Supermax writes as few words as it can: the control's chevron and title, Retry a
 
 `DEFAULT_RENDERER` draws flat surfaces, narrow title bars, canvas-coloured recovery controls and semantic notice tints. Its `--supermax-default-*` paint tokens belong to this particular style. Hosts can use it, override selected parts or replace the complete visual treatment through the same renderer interface.
 
-The shell owns transparent gutters (`--supermax-gutter`, 1px by default), room clipping, title seams and recovery hit areas. Renderers fill the provided paint regions without covering those gaps. Cell material remains under the foreground, and a split's own material is restricted to its title region so row gaps remain canvas. Shadows outside a room can be clipped.
+The shell owns the size and place of the gutters (`--supermax-gutter`, 1px by default), room clipping and recovery hit areas. Each cell may paint the gutters around it, and its header paints its title seam; the default look leaves them transparent, so the canvas shows. See [Painting the gutters](rendering.md#painting-the-gutters). Cell material remains under the foreground, and a split's own material is restricted to its title region so row gaps remain canvas. Shadows outside a room can be clipped.
 
 Loading and error regions retain shell-managed roles and lifecycle while their contents are renderer-defined. A title bar consumes `navigator.chrome.header` including its separator; the actual container derives its height from that one declaration. Supermax does not move keyboard focus. See [Host rendering](rendering.md) for composition, geometry and the [working comparison](renderers.html).
 

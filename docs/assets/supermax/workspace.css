@@ -43,13 +43,61 @@
 	inherits: false;
 	initial-value: 0px;
 }
+@property --supermax-cell-gutter-after {
+	syntax: "<length>";
+	inherits: false;
+	initial-value: 0px;
+}
+@property --supermax-cell-gutter-lead {
+	syntax: "<length>";
+	inherits: false;
+	initial-value: 0px;
+}
+@property --supermax-gutter-top {
+	syntax: "<length>";
+	inherits: false;
+	initial-value: 0px;
+}
+@property --supermax-gutter-right {
+	syntax: "<length>";
+	inherits: false;
+	initial-value: 0px;
+}
+@property --supermax-gutter-bottom {
+	syntax: "<length>";
+	inherits: false;
+	initial-value: 0px;
+}
+@property --supermax-gutter-left {
+	syntax: "<length>";
+	inherits: false;
+	initial-value: 0px;
+}
 .supermax-room > .supermax-cell,
-.supermax-cell > :is(.supermax-material, .supermax-veil, .supermax-cell-title, .supermax-cell-body),
+.supermax-cell > :is(.supermax-material, .supermax-veil, .supermax-cell-title, .supermax-navigation, .supermax-cell-body),
 .supermax-cell.is-split > .supermax-cell-body > .supermax-rows,
 .supermax-cell.is-split > .supermax-cell-body > .supermax-rows > .supermax-row,
 .supermax-cell.is-split > .supermax-cell-body > .supermax-rows > .supermax-row > .supermax-row-chain,
+.supermax-cell.is-split > .supermax-cell-body > .supermax-rows > .supermax-row > .supermax-row-chain > .supermax-chain {
+	--supermax-cell-gutter: inherit;
+	--supermax-cell-gutter-after: inherit;
+	--supermax-cell-gutter-lead: inherit;
+}
 .supermax-cell[data-supermax-variant-paper] > .supermax-cell-body > [data-supermax-content] {
 	--supermax-cell-gutter: inherit;
+}
+/* allow-comment: a paint root spans its cell and the gutters around it; each gutter is one of its borders, transparent until a renderer colours it. */
+.supermax-cell > :is(.supermax-material, .supermax-veil, .supermax-cell-title, .supermax-navigation) {
+	--supermax-gutter-top: var(--supermax-row-gutter, 0px);
+	--supermax-gutter-right: var(--supermax-cell-gutter-after, 0px);
+	--supermax-gutter-bottom: var(--supermax-row-gutter-below, 0px);
+	--supermax-gutter-left: var(--supermax-cell-gutter, 0px);
+}
+.supermax-cell > :is(.supermax-material, .supermax-veil) {
+	--supermax-gutter-left: max(var(--supermax-cell-gutter, 0px), var(--supermax-cell-gutter-lead, 0px));
+}
+.supermax-cell > .supermax-cell-title {
+	--supermax-gutter-bottom: var(--supermax-gutter);
 }
 .supermax-room {
 	contain: paint;
@@ -57,8 +105,43 @@
 	perspective: var(--supermax-perspective);
 	clip-path: inset(0 0 0 var(--supermax-cell-gutter, 0px));
 }
+.supermax-chain.is-resting > .supermax-strip > .supermax-room {
+	contain: none;
+	overflow: visible;
+	clip-path: inset(calc(-1 * var(--supermax-row-gutter, 0px)) calc(-1 * var(--supermax-cell-gutter-after, 0px)) calc(-1 * var(--supermax-row-gutter-below, 0px)) 0);
+}
+/* allow-comment: a raised cell lifts its own place in its strip; the split around it rises only when that cell reaches the split's trailing edge, where it shares a gutter with the cell beside the split. */
+.supermax-strip > .supermax-room:has(> [data-supermax-raised]),
+.supermax-strip > .supermax-cell[data-supermax-raised],
+.supermax-strip > :is(.supermax-room, .supermax-cell):has(.supermax-room.is-trailing > [data-supermax-raised], .supermax-cell.is-trailing[data-supermax-raised]) {
+	z-index: 1;
+}
+/* allow-comment: raising a cell lifts its whole row over the row below, so the other cells of that row give up the gutter under them. */
+.supermax-row:has([data-supermax-raised]) > .supermax-row-chain > .supermax-chain.is-resting > .supermax-strip > :is(.supermax-room:not(:has([data-supermax-raised])), .supermax-cell:not([data-supermax-raised], :has([data-supermax-raised]))) {
+	clip-path: inset(calc(-1 * var(--supermax-row-gutter, 0px)) calc(-1 * var(--supermax-cell-gutter-after, 0px)) 0 0);
+}
 .supermax-cell.is-split .supermax-row-chain {
 	clip-path: inset(0 0 0 var(--supermax-cell-gutter, 0px));
+}
+.supermax-cell.is-split .supermax-row-chain:has(> .supermax-chain.is-resting) {
+	clip-path: none;
+}
+.supermax-row-chain > .supermax-chain.is-resting {
+	overflow: visible !important;
+	clip-path: inset(calc(-1 * var(--supermax-row-gutter, 0px)) calc(-1 * var(--supermax-cell-gutter-after, 0px)) calc(-1 * var(--supermax-row-gutter-below, 0px)) 0);
+}
+.supermax-row-chain > .supermax-chain.is-resting.has-trailing-fold {
+	clip-path: inset(calc(-1 * var(--supermax-row-gutter, 0px)) var(--supermax-gutter) calc(-1 * var(--supermax-row-gutter-below, 0px)) 0);
+}
+/* allow-comment: a chain in motion shows no gutter paint, also where no room clips its cells. */
+.supermax-chain:not(.is-resting) > .supermax-strip > .supermax-cell > :is(.supermax-material, .supermax-veil, .supermax-cell-title),
+.supermax-chain:not(.is-resting) > .supermax-strip > .supermax-room > .supermax-cell > :is(.supermax-material, .supermax-veil, .supermax-cell-title) {
+	border-color: transparent !important;
+	background-clip: padding-box !important;
+}
+.is-lead > .supermax-cell:not(.is-split) > :is(.supermax-cell-title, .supermax-cell-body),
+.supermax-cell.is-lead:not(.is-split) > :is(.supermax-cell-title, .supermax-cell-body) {
+	clip-path: inset(0 0 0 var(--supermax-cell-gutter-lead, 0px));
 }
 .supermax-cell {
 	position: relative;
@@ -76,7 +159,8 @@
 	overflow: auto;
 }
 .supermax-cell.is-split > .supermax-cell-body {
-	overflow: hidden;
+	overflow: visible;
+	clip-path: inset(0 calc(-1 * var(--supermax-cell-gutter-after, 0px)) 0 0);
 }
 /* allow-comment: an inherited property set on the cell would restyle its whole content at every variant change; the path to the content inherits it explicitly instead. */
 @property --supermax-variant-width {
@@ -209,6 +293,13 @@
 	overflow: hidden;
 	border-top: var(--supermax-row-gutter, 0px) solid transparent;
 	flex: none;
+}
+.supermax-rows:not(.is-moving) > .supermax-row:not(.is-folded, .is-hidden) {
+	overflow: visible;
+	clip-path: inset(0 calc(-1 * var(--supermax-cell-gutter-after, 0px)) calc(-1 * var(--supermax-row-gutter-below, 0px)) 0);
+}
+.supermax-row:has([data-supermax-raised]) {
+	z-index: 1;
 }
 .supermax-row.is-folded {
 	overflow: hidden;
@@ -365,8 +456,16 @@
 .supermax-material,
 .supermax-veil {
 	position: absolute;
-	inset: 0 0 0 var(--supermax-cell-gutter, 0px);
+	inset: calc(-1 * var(--supermax-gutter-top)) calc(-1 * var(--supermax-gutter-right)) calc(-1 * var(--supermax-gutter-bottom)) calc(-1 * var(--supermax-cell-gutter, 0px));
+	border: 0 solid transparent;
+	border-width: var(--supermax-gutter-top) var(--supermax-gutter-right) var(--supermax-gutter-bottom) var(--supermax-gutter-left);
 	pointer-events: none;
+}
+.supermax-cell:is(.is-split, .is-folded, [data-supermax-folded]) > :is(.supermax-material, .supermax-veil) {
+	left: 0;
+}
+.supermax-workspace.is-fold-dragging .supermax-cell.is-folded:not(.is-split, [data-supermax-folded]) > :is(.supermax-material, .supermax-veil) {
+	left: calc(-1 * var(--supermax-cell-gutter, 0px));
 }
 .supermax-material {
 	z-index: -1;
@@ -376,18 +475,23 @@
 	opacity: 0;
 }
 .supermax-cell-title {
-	height: calc(var(--supermax-cell-title) - var(--supermax-gutter));
-	margin-bottom: var(--supermax-gutter);
+	height: calc(var(--supermax-cell-title) + var(--supermax-gutter-top));
+	margin: calc(-1 * var(--supermax-gutter-top)) calc(-1 * var(--supermax-gutter-right)) 0 calc(-1 * var(--supermax-cell-gutter, 0px));
+	border: 0 solid transparent;
+	border-width: var(--supermax-gutter-top) var(--supermax-gutter-right) var(--supermax-gutter-bottom) var(--supermax-gutter-left);
 	flex: none;
 	min-width: 0;
+}
+.supermax-cell:is(.is-split, .is-folded, [data-supermax-folded]) > .supermax-cell-title {
+	margin-left: 0;
+}
+.supermax-workspace.is-fold-dragging .supermax-cell.is-folded:not(.is-split, [data-supermax-folded]) > .supermax-cell-title {
+	margin-left: calc(-1 * var(--supermax-cell-gutter, 0px));
 }
 .supermax-cell-body {
 	flex: 1;
 	min-height: 0;
 	overflow: auto;
-}
-.supermax-cell.is-split > .supermax-cell-body {
-	overflow: hidden;
 }
 .supermax-navigation {
 	position: absolute;
@@ -508,7 +612,7 @@
 
 .supermax-cell.is-split > .supermax-material {
 	bottom: auto;
-	height: var(--supermax-cell-title);
+	border-bottom-width: 0;
 }
 .supermax-cell.is-split.is-headless > .supermax-material {
 	display: none;
@@ -517,18 +621,26 @@
 .supermax-cell-title {
 	contain: paint;
 }
+/* allow-comment: the title seam is a slot in the material between its side gutters; the header's bottom border paints it. */
 .supermax-cell:not(.is-headless, .is-split) > .supermax-material {
+	--supermax-seam-top: calc(var(--supermax-gutter-top) + var(--supermax-cell-title) - var(--supermax-gutter));
+	--supermax-seam-bottom: calc(var(--supermax-gutter-top) + var(--supermax-cell-title));
+	--supermax-seam-right: calc(100% - var(--supermax-gutter-right));
 	clip-path: polygon(
+		evenodd,
 		0 0,
 		100% 0,
-		100% calc(var(--supermax-cell-title) - var(--supermax-gutter)),
-		0 calc(var(--supermax-cell-title) - var(--supermax-gutter)),
-		0 var(--supermax-cell-title),
-		100% var(--supermax-cell-title),
 		100% 100%,
-		0 100%
+		0 100%,
+		0 var(--supermax-seam-bottom),
+		var(--supermax-gutter-left) var(--supermax-seam-bottom),
+		var(--supermax-seam-right) var(--supermax-seam-bottom),
+		var(--supermax-seam-right) var(--supermax-seam-top),
+		var(--supermax-gutter-left) var(--supermax-seam-top),
+		var(--supermax-gutter-left) var(--supermax-seam-bottom),
+		0 var(--supermax-seam-bottom)
 	);
 }
 .supermax-cell.is-split > .supermax-material {
-	height: calc(var(--supermax-cell-title) - var(--supermax-gutter));
+	height: calc(var(--supermax-cell-title) - var(--supermax-gutter) + var(--supermax-gutter-top));
 }

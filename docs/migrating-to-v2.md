@@ -72,6 +72,17 @@ Check console warnings, page errors and actual captures with representative cont
 
 Finish a dependency update with the exact installed source/version, the chosen lane, applicable compatibility changes, tested tasks and any unresolved gap. A blocker stays explicit; it is not a reason to discard a user capability to get a green build.
 
+## Updating a host that already runs the v2 Workspace
+
+A host built on the Workspace before cells could [paint their gutters](rendering.md#painting-the-gutters) needs one pass. The shell's layout is unchanged; what moved is the box of three paint roots.
+
+- **Custom `cell`, `veil` or `header` parts.** Their roots now span the cell and its gutters, with each gutter as a transparent border. A root that fills itself with a `background` therefore fills its gutters and its title seam too. Add `background-clip: padding-box` to keep the look the host had; leave it out, or set `border-color`, where the host wants the gutter painted.
+- **Host CSS on shell elements.** Remove rules that set a `clip-path`, `overflow` or border on `.supermax-room`, `.supermax-cell`, `.supermax-row`, `.supermax-row-chain`, `.supermax-material`, `.supermax-veil` or `.supermax-cell-title`. They now override the shell's own gutter rules.
+- **Measurements of the title bar.** The bar's border box includes its gutters and its seam, and it has no bottom margin. A test or script that read `getBoundingClientRect()` or `margin-bottom` for the bar reads the padding box instead: `clientWidth`, `clientHeight`, or the rectangle less the border widths.
+- **The default look.** Two cells of one chain stand one `--supermax-gutter` apart; the surface of the second cell used to start a second gutter width in. A host with the default renderer sees only that.
+
+Compare the host before and after in its real routes at its narrowest and widest layouts, at rest and during a transition, before deciding whether to use the gutters.
+
 ## Audit evidence and scope
 
 The source comparison was performed on 23 October 2026 against these repository snapshots, identified by their manifests rather than assumed registry releases:

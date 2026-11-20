@@ -61,7 +61,7 @@ for (const presentation of ["veil", "origami", "fold"]) test(`a row trade retain
 				const title = frame.querySelector('.supermax-cell.is-split > .supermax-cell-title');
 				const rows = [...frame.querySelectorAll('.supermax-row')].filter((row) => row.getBoundingClientRect().height > 1);
 				const previous = frame.querySelector('.supermax-fold-cue.is-vertical[data-fold-occurrence="albums/album:coast/coast:thumbnails"]');
-				return { gap: rows[0].firstElementChild.getBoundingClientRect().top - title.getBoundingClientRect().bottom, previousVisible: !previous.hidden, previousInert: previous.inert, progress: window.supermaxDemo.frames[0].workspace.folds.drag.progress };
+				return { gap: rows[0].firstElementChild.getBoundingClientRect().top - (title.getBoundingClientRect().bottom - parseFloat(getComputedStyle(title).borderBottomWidth)), previousVisible: !previous.hidden, previousInert: previous.inert, progress: window.supermaxDemo.frames[0].workspace.folds.drag.progress };
 			}));
 		}
 		await page.mouse.up();
@@ -224,7 +224,7 @@ test("a reverse vertical page drag keeps a canvas gutter under its handle", asyn
 			const cue = frame.querySelector('.supermax-fold-cue.is-vertical[data-direction="down"]:not([hidden])');
 			const row = frame.querySelector('.supermax-row[data-row="albums/album:coast/coast:map"]');
 			const title = row.closest('.supermax-cell').querySelector(':scope > .supermax-cell-title');
-			return { cue: cue?.querySelector('.supermax-fold-mark').getBoundingClientRect().top, title: title.getBoundingClientRect().bottom, row: row.getBoundingClientRect().top };
+			return { cue: cue?.querySelector('.supermax-fold-mark').getBoundingClientRect().top, title: title.getBoundingClientRect().bottom - parseFloat(getComputedStyle(title).borderBottomWidth), row: row.getBoundingClientRect().top };
 		});
 		assert.ok(Math.abs(titleSeam.cue - titleSeam.title) < .5, `the first page handle outlines the title's canvas gutter: ${JSON.stringify(titleSeam)}`);
 		for (let step = 0; step < 2; step += 1) await page.locator(`${frame} .supermax-up:not([hidden])`).click();

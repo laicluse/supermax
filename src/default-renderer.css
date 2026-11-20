@@ -87,14 +87,12 @@
 .supermax-cell:not(.is-headless) {
 	background: transparent;
 }
-.supermax-cell.is-split > .supermax-cell-title:where([data-supermax-default]) {
-	margin-left: var(--supermax-cell-gutter, 0px);
-}
 .supermax-cell.is-split {
 	background: transparent;
 }
 .supermax-cell-title:where([data-supermax-default]) {
 	background: var(--supermax-default-surface);
+	background-clip: padding-box;
 	padding: 0 10px;
 	display: flex;
 	align-items: center;
@@ -596,6 +594,9 @@
 }
 .supermax-cell[data-supermax-conceal] > .supermax-veil[data-supermax-default] {
 	background: transparent;
+}
+.supermax-cell > :is(.supermax-material, .supermax-veil)[data-supermax-default] {
+	background-clip: padding-box;
 }
 .supermax-backdrop[data-supermax-default] {
 	background: var(--supermax-default-backdrop);

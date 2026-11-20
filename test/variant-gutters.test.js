@@ -43,8 +43,8 @@ test("moving split and row seams expose one gutter throughout responsive exchang
 						const split = strip.entries.find((entry) => entry.id === "albums/album:coast");
 						const room = strip.boxOf(split).getBoundingClientRect();
 						const points = [10, 150, 600].map((offset) => ({ axis: "x", x: room.left, y: room.top + offset, name: `split at ${offset}` }));
-						const title = workspace.cells.get(split.id).header.getBoundingClientRect();
-						points.push({ axis: "y", x: room.left + room.width / 2, y: title.bottom, name: "title seam" });
+						const header = workspace.cells.get(split.id).header;
+						points.push({ axis: "y", x: room.left + room.width / 2, y: header.getBoundingClientRect().bottom - parseFloat(getComputedStyle(header).borderBottomWidth), name: "title seam" });
 						for (const row of workspace.rows.values()) if (!row.leading) points.push({ axis: "y", x: room.left + room.width / 2, y: row.element.getBoundingClientRect().top, name: "row seam" });
 						return points;
 					}, fraction);
