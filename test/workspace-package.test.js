@@ -59,12 +59,12 @@ test("the package stylesheet alone renders the chrome at the sizes the model com
 	assert.deepEqual(measured.rows, [0, 136, 136], "a row that does not fit takes no height at all, and the rows share what the split's own title bar leaves");
 });
 
-test("a split owns the title bar even when a cell in its row declares one", async () => {
+test("a split and a cell in its row that declares a title header each draw their own bar", async () => {
 	const titles = await page.evaluate(() => ({
 		split: document.querySelector('[data-occurrence="root/gallery"] > .supermax-cell-title')?.textContent,
 		row: document.querySelector('[data-occurrence="root/gallery/grid"] > .supermax-cell-title')?.textContent ?? null,
 	}));
-	assert.deepEqual(titles, { split: "Gallery", row: null });
+	assert.deepEqual(titles, { split: "Gallery", row: "Grid" });
 });
 
 test("the workspace composes its overlays behind one surface", async () => {

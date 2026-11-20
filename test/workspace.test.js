@@ -1261,7 +1261,7 @@ test("a root cell places content controls in its title bar, which keeps them vis
 	assert.equal(await page.locator(inFrame("a", ".host-search")).count(), 0, "and the controls leave with their content");
 });
 
-test("a cell inside a split row keeps content controls in its body", async () => {
+test("a cell inside a split row that declares a title header puts content controls in its bar", async () => {
 	await openDemo([open("album:coast", "albums"), open("coast:history:a", coast.metadata("thumbnails", "a"))]);
 	const history = coast.history("thumbnails", "a");
 	const placement = await page.evaluate(async (id) => {
@@ -1276,9 +1276,9 @@ test("a cell inside a split row keeps content controls in its body", async () =>
 		workspace.reload((occurrence) => occurrence.id === id);
 		await new Promise((resolve) => setTimeout(resolve, 50));
 		const cell = document.querySelector(`.frame[data-frame="a"] [data-occurrence="${id}"]`);
-		return { bar: !!cell.querySelector(":scope > .supermax-cell-title"), body: !!cell.querySelector(".supermax-cell-body .host-search") };
+		return { bar: !!cell.querySelector(":scope > .supermax-cell-title .supermax-cell-title-trailing .host-search"), body: !!cell.querySelector(":scope > .supermax-cell-body .host-search") };
 	}, history);
-	assert.deepEqual(placement, { bar: false, body: true });
+	assert.deepEqual(placement, { bar: true, body: false }, "the history cell declares its bar, so its search goes there as it would outside a row");
 });
 
 test("a cell's title can change after it opened, in its bar, accessible name and location", async () => {
@@ -2190,7 +2190,7 @@ test("a split draws its own title above its rows, which stays while the rows cha
 			firstRowTop: Math.round(rows[0].getBoundingClientRect().top - top),
 			rowsHeight: Math.round(rows.reduce((sum, row) => sum + row.getBoundingClientRect().height, 0)),
 			cellHeight: Math.round(cell.getBoundingClientRect().height),
-			rowBars: rows.map((row) => row.querySelectorAll(".supermax-cell > .supermax-cell-title").length > 0),
+			rowBars: rows.map((row) => [...row.querySelectorAll(".supermax-cell > .supermax-cell-title-text, .supermax-cell > .supermax-cell-title .supermax-cell-title-text")].map((text) => text.textContent)),
 		};
 	});
 	assert.equal(measured.title, "Coast", "the split's bar carries the split's title");
@@ -2208,13 +2208,51 @@ test("a split draws its own title above its rows, which stays while the rows cha
 	assert.equal(measured.barWidth, measured.cellWidth - 1, "across the whole split, leaving the gutter beside it free as its rows do");
 	assert.equal(measured.firstRowTop, 28, "the rows start below it");
 	assert.equal(measured.rowsHeight, measured.cellHeight - 28, "and share the height that is left");
-	assert.deepEqual(measured.rowBars, [false, false, false], "the split owns the title bar above all its rows");
+	assert.deepEqual(measured.rowBars, [["History A"], ["History B"], ["History C"]], "the split's bar stands above all its rows, and inside them only the cells that declare a bar draw one");
 	assert.equal(await page.locator(inFrame("a", `[data-occurrence="${coast.row("people")}"] .selector-label`)).textContent(), "People", "the lettered avatars are named in their content");
 	await page.click(inFrame("a", `[data-occurrence="${coast.row("thumbnails")}"] .thumb[data-destination="coast:photo:d"]`));
 	await settle();
 	assert.equal(await page.locator(album + " > .supermax-cell-title .supermax-cell-title-text").textContent(), "Coast", "the bar stays while a row opens another cell");
 	assert.equal(await page.evaluate(() => window.supermaxDemo.frames[0].workspace.setTitle("albums/album:coast", "Coast, 4 photos")), true);
 	assert.equal(await page.locator(album + " > .supermax-cell-title .supermax-cell-title-text").textContent(), "Coast, 4 photos", "and setTitle renames it");
+});
+
+for (const splitHeader of [true, false]) test(`a cell inside a row that declares a title header draws its own bar inside the row, ${splitHeader ? "below the split's" : "in a split without one"}`, async () => {
+	await page.goto(`${server.url}/blank`);
+	await page.addStyleTag({ url: "/src/workspace.css" });
+	const measured = await page.evaluate(async (splitHeader) => {
+		const { Navigator, Workspace } = await import("/src/index.js");
+		const host = Object.assign(document.body.appendChild(document.createElement("div")), { style: "position:relative;width:800px;height:500px" });
+		const navigator = new Navigator({ root: "albums", minViewportHeight: 500, destinations: {
+			albums: { title: "Albums", min: 200, max: 200 },
+			album: { title: "Coast", ...(splitHeader ? { header: "title" } : {}), rows: [
+				{ destination: "details", minHeight: 120, maxHeight: 120 },
+				{ destination: "photos", minHeight: 160, maxHeight: "*", preferredHeight: 300 },
+			] },
+			details: { title: "Details", min: 300, max: "*", preferred: 500 },
+			photos: { title: "Photos", header: "title", min: 300, max: "*", preferred: 500 },
+		} });
+		navigator.open("album", { from: "albums" });
+		const workspace = new Workspace(host, { navigator, content: (occurrence) => ({ element: Object.assign(document.createElement("div"), { textContent: occurrence.title }), header: occurrence.destination === "photos" ? Object.assign(document.createElement("button"), { textContent: "Import" }) : undefined }) });
+		const cell = (id) => host.querySelector(`[data-occurrence="albums/album/${id}"]`);
+		const photos = cell("photos");
+		const bar = photos.querySelector(":scope > .supermax-cell-title");
+		const row = photos.closest(".supermax-row").getBoundingClientRect();
+		const result = {
+			splitBar: host.querySelector('[data-occurrence="albums/album"] > .supermax-cell-title .supermax-cell-title-text')?.textContent,
+			title: bar?.querySelector(".supermax-cell-title-text")?.textContent,
+			controls: bar?.querySelector(".supermax-cell-title-trailing")?.textContent,
+			barHeight: Math.round(bar.getBoundingClientRect().height + parseFloat(getComputedStyle(bar).marginBottom)),
+			barTop: Math.round(bar.getBoundingClientRect().top - photos.getBoundingClientRect().top),
+			bodyTop: Math.round(photos.querySelector(".supermax-cell-body").getBoundingClientRect().top - photos.getBoundingClientRect().top),
+			bottom: Math.round(photos.getBoundingClientRect().bottom - row.bottom),
+			detailBars: cell("details").querySelectorAll(":scope > .supermax-cell-title").length,
+		};
+		workspace.destroy();
+		host.remove();
+		return result;
+	}, splitHeader);
+	assert.deepEqual(measured, { splitBar: splitHeader ? "Coast" : undefined, title: "Photos", controls: "Import", barHeight: 28, barTop: 0, bodyTop: 28, bottom: 0, detailBars: 0 }, "the row cell carries its title and its content's controls in its own bar, its body below it within the row, and a row cell without the declaration stays headless");
 });
 
 test("a full-height cell opened from a row breaks out beside its split, and Back closes it alone", async () => {

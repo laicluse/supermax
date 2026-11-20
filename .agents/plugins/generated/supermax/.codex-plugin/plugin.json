@@ -1,6 +1,6 @@
 {
   "name": "supermax",
-  "version": "0.1.36",
+  "version": "0.1.38",
   "description": "Build on Supermax the way it is meant to be used: task-led horizontal and vertical composition, the per-click contract, and what a host never does. Use whenever Supermax, @laicluse/supermax, supermax- classes or a Supermax Workspace come up.",
   "author": {
     "name": "l'Aicluse"

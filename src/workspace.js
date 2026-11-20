@@ -570,7 +570,7 @@ export class Workspace extends EventTarget {
 		}
 		const entries = chain.cells.map((cell, index) => ({
 			id: cell.occurrence,
-			element: this.mountCell(cell.occurrence, inRow),
+			element: this.mountCell(cell.occurrence),
 			width: cell.width,
 			visible: cell.visible,
 			folded: cell.folded,
@@ -656,7 +656,7 @@ export class Workspace extends EventTarget {
 		return items;
 	}
 
-	mountCell(occurrenceId, inRow = false) {
+	mountCell(occurrenceId) {
 		let entry = this.cells.get(occurrenceId);
 		if (entry) return entry.element;
 		entry = this.leavingCells.get(occurrenceId);
@@ -680,7 +680,7 @@ export class Workspace extends EventTarget {
 			body.append(this.create("div", "supermax-rows"));
 		}
 		// allow-comment: a title bar has three parts in a fixed order: leading holds the Show control, the centre the title, trailing the content's own controls; each is there even when empty, so an application styles the bar once.
-		if (inRow || definition.header !== "title") element.classList.add("is-headless");
+		if (definition.header !== "title") element.classList.add("is-headless");
 		else {
 			header = this.create("header", "supermax-cell-title");
 			leading = this.create("div", "supermax-cell-title-leading");
