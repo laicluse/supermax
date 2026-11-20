@@ -183,6 +183,13 @@
 		transition: none;
 	}
 }
+@media (prefers-reduced-motion: reduce) {
+	.supermax-presentation-veil .supermax-cell > :is(.supermax-cell-title, .supermax-cell-body),
+	.supermax-presentation-veil .supermax-cell.is-folded > :is(.supermax-cell-title, .supermax-cell-body),
+	.supermax-presentation-veil .supermax-row.is-folded > .supermax-row-chain :is(.supermax-cell-title, .supermax-cell-body) {
+		transition: none;
+	}
+}
 .supermax-rows {
 	position: relative;
 	display: flex;

@@ -12,6 +12,7 @@ Start with [Migrating from v1 to v2](docs/migrating-to-v2.md). A dependency vers
 
 - Independent splits can follow full-height cells along the root chain, retaining their own row windows and correct path sync and zoom. The guides document `Navigator.startRows()` for the initial task row.
 - A fold between two full cells or rows opens toward the neighbour that yields. Its handle, hinge and drag direction follow that moving gutter, where a drag used to grow the fold away from a handle left on the other edge.
+- Reduced motion stills the Veil presentation's content fade as well. A cell that opened or folded under `prefers-reduced-motion: reduce` still ran a 70 to 160ms opacity transition on its title and body.
 - Starting or cancelling a fold drag no longer restyles the content inside the cells it trades. The shell keeps its cell gutter and paper widths from inheriting into content, leaves `inert` alone until the drag settles, and relies on `inert` instead of `pointer-events` for a folded body. With about 52000 elements in a folding cell, the first drag frame dropped from 146 to 89 ms and the cancel from 145 ms to below 50 ms; the rest is the content's own layout and paint.
 - A cell with responsive variants that folds keeps the form it was last shown in. The allocator picks the preferred form for a cell it does not show, so an icon column that folded while a neighbour opened used to switch to its label form halfway through the fold.
 
