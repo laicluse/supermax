@@ -31,11 +31,11 @@ beforeEach(async () => {
 	await page.emulateMedia({ reducedMotion: "no-preference" });
 });
 
-const PRESENTATION = process.env.SUPERMAX_PRESENTATION ?? "slide";
+const PRESENTATION = process.env.SUPERMAX_PRESENTATION ?? "origami";
 
 async function openDemo(log = []) {
 	await page.goto("about:blank");
-	await page.goto(`${server.url}/${PRESENTATION === "slide" ? "" : `?presentation=${PRESENTATION}`}${log.length ? `#${encodeLog(log)}` : ""}`);
+	await page.goto(`${server.url}/?delay=0${PRESENTATION === "origami" ? "" : `&presentation=${PRESENTATION}`}${log.length ? `#${encodeLog(log)}` : ""}`);
 	await page.waitForFunction(() => window.supermaxDemo?.frames.length === 2);
 	await settle();
 }
@@ -68,7 +68,7 @@ async function closeNewest(key) {
 
 async function resize(sizes) {
 	await page.evaluate((next) => window.supermaxDemo.resize(next), sizes);
-	await page.waitForFunction((expected) => window.supermaxDemo.frames.every((candidate, index) => candidate.workspace.navigator.size.width === expected[index][0] - 2 && candidate.workspace.navigator.size.height === expected[index][1] - 2), sizes);
+	await page.waitForFunction((expected) => window.supermaxDemo.frames.every((candidate, index) => candidate.workspace.navigator.size.width === expected[index][0] && candidate.workspace.navigator.size.height === expected[index][1]), sizes);
 	await settle();
 }
 
@@ -262,6 +262,71 @@ test("a modal opens at its preferred size, moves by its header and resizes only 
 	const viewport = await page.locator(frame("a")).boundingBox();
 	assert.ok(tall.top + tall.height <= viewport.y + viewport.height - 15, "growing stops at the viewport inset");
 	await page.keyboard.press("Escape");
+});
+
+test("a modal wider than its viewport shrinks to fit inside the inset", async () => {
+	await openDemo([open("album:coast", "albums")]);
+	await page.evaluate(() => window.supermaxDemo.frames[1].workspace.openModal({ title: "Wide", min: 280, max: 720, preferred: 640, content: () => ({ element: document.createElement("p") }) }, {}));
+	await settle();
+	const viewport = await page.locator(frame("b")).boundingBox();
+	const dialog = await page.locator(inFrame("b", ".supermax-modal")).boundingBox();
+	assert.ok(viewport.width < 640, "the frame is narrower than the preferred width");
+	assert.ok(Math.abs(dialog.x - viewport.x - 16) <= 1 && Math.abs(viewport.x + viewport.width - dialog.x - dialog.width - 16) <= 1, "the dialog keeps the inset on both sides");
+	await page.keyboard.press("Escape");
+});
+
+test("cells stand one gutter apart over the canvas, and rows never run past their split", async () => {
+	await openDemo(THREE_ROWS);
+	const geometry = await page.evaluate(() => {
+		const root = document.querySelector('.frame[data-frame="a"]');
+		const cells = [...root.querySelectorAll(".supermax-cell")].filter((cell) => cell.getBoundingClientRect().width > 0 && getComputedStyle(cell).visibility !== "hidden");
+		const split = root.querySelector(".supermax-cell.is-split").getBoundingClientRect();
+		return {
+			canvas: getComputedStyle(root.querySelector(".supermax-workspace")).backgroundColor,
+			gutters: cells.map((cell) => [cell.dataset.occurrence.split("/").pop(), getComputedStyle(cell).borderLeftWidth]),
+			rows: [...root.querySelectorAll(".supermax-row")].map((row) => getComputedStyle(row).borderTopWidth),
+			overflow: cells.filter((cell) => cell.closest(".supermax-row")).some((cell) => cell.getBoundingClientRect().right > split.right + 0.5),
+			radius: getComputedStyle(root.querySelector(".supermax-up")).borderRadius,
+		};
+	});
+	assert.equal(geometry.canvas, "rgb(0, 0, 0)", "the canvas is black in light mode");
+	assert.deepEqual(Object.fromEntries(geometry.gutters), {
+		albums: "0px",
+		"album:coast": "0px",
+		"coast:thumbnails": "1px",
+		"coast:photo:a": "1px",
+		"coast:metadata:a": "1px",
+		"coast:map": "1px",
+		"coast:photo:b": "1px",
+		"coast:metadata:b": "1px",
+		"coast:people": "1px",
+		"coast:photo:c": "1px",
+		"coast:metadata:c": "1px",
+	}, "one gutter before every cell but the first, the split passing its own to each row");
+	assert.deepEqual(geometry.rows, ["0px", "1px", "1px"], "one gutter between rows");
+	assert.equal(geometry.overflow, false);
+	assert.equal(geometry.radius, "0px", "no rounded rectangles");
+});
+
+test("origami folds a new cell open, folds a closed one back in reverse, and turns a replaced cell over", { skip: PRESENTATION !== "origami" }, async () => {
+	await openDemo(THREE_ROWS);
+	const motion = () => page.evaluate(() => document.getAnimations().filter((animation) => animation.effect?.target?.matches?.('.frame[data-frame="a"] .supermax-cell')).map((animation) => ({
+		cell: animation.effect.target.dataset.occurrence.split("/").pop(),
+		leaving: animation.effect.target.hasAttribute("data-supermax-exiting"),
+		direction: animation.effect.getTiming().direction,
+		transforms: animation.effect.getKeyframes().map((frame) => frame.transform).filter(Boolean),
+	})).filter((animation) => animation.transforms.some((transform) => transform.includes("rotate"))));
+	await page.click(inFrame("a", '[data-occurrence$="coast:metadata:a"] .metadata-link:not(.album-export)'));
+	await settle();
+	await page.evaluate(() => window.supermaxDemo.dispatch({ type: "close" }, window.supermaxDemo.frames[0].workspace));
+	const closing = await motion();
+	assert.ok(closing.some((animation) => animation.leaving && animation.direction === "reverse" && animation.transforms.includes("rotateY(90deg)")), "the closed cell folds back on its hinge");
+	await settle();
+	await page.click(inFrame("a", `[data-occurrence="${coast.row("thumbnails")}"] .thumb[data-destination="coast:photo:b"]`));
+	const turning = await motion();
+	assert.ok(turning.some((animation) => animation.leaving && animation.cell === "coast:photo:a" && animation.transforms.at(-1) === "rotateY(180deg)"), "the replaced cell turns away");
+	assert.ok(turning.some((animation) => !animation.leaving && animation.cell === "coast:photo:b" && animation.transforms[0] === "rotateY(-180deg)"), "its successor is on the back");
+	await settle();
 });
 
 test("rows span the split and no cell crosses a row", async () => {
@@ -944,7 +1009,7 @@ test("each frame resizes through its own handle and the readout follows", async 
 	const handleAfter = await page.locator(frame("b")).boundingBox();
 	assert.ok(handleAfter.width > handleBefore.width + 150, "the corner handle widens the frame");
 	assert.ok(handleAfter.height < handleBefore.height - 50, "the corner handle shortens the frame");
-	await page.waitForFunction((expected) => document.querySelector('.frame[data-frame="b"] + .readout .readout-size').textContent === expected, `${Math.round(handleAfter.width) - 2} × ${Math.round(handleAfter.height) - 2} px`);
+	await page.waitForFunction((expected) => document.querySelector('.frame[data-frame="b"] + .readout .readout-size').textContent === expected, `${Math.round(handleAfter.width)} × ${Math.round(handleAfter.height)} px`);
 	assert.deepEqual(await page.locator(frame("a")).boundingBox(), otherBefore, "resizing one frame leaves the other untouched");
 });
 

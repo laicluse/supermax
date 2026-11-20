@@ -1,0 +1,37 @@
+export const HORIZON = 1 - 2 / (1 + Math.sqrt(5));
+
+const EASE = "cubic-bezier(0.2, 0, 0, 1)";
+
+function hinge(element) {
+	const rowRoot = !!element.closest(".supermax-row-chain") && element.parentElement?.firstElementChild === element;
+	return rowRoot ? { origin: "center top", folded: "rotateX(-90deg)" } : { origin: "left center", folded: "rotateY(90deg)" };
+}
+
+function unfold(element, timing, direction) {
+	const { origin, folded } = hinge(element);
+	element.style.transformOrigin = origin;
+	const options = { ...timing, easing: "linear", direction };
+	const animations = [
+		element.animate([{ transform: folded, opacity: 0, offset: 0 }, { transform: folded, opacity: 0, offset: 0.3, easing: EASE }, { transform: "none", opacity: 1, offset: 1 }], { ...options, composite: "add" }),
+	];
+	const body = element.querySelector(":scope > .supermax-cell-body");
+	if (body) animations.push(body.animate([{ opacity: 0, offset: 0 }, { opacity: 0, offset: 0.55 }, { opacity: 1, offset: 1 }], options));
+	return animations;
+}
+
+function flip(element, timing, from, to) {
+	element.style.transformOrigin = "center center";
+	element.style.backfaceVisibility = "hidden";
+	const animation = element.animate([{ transform: `rotateY(${from}deg)` }, { transform: `rotateY(${to}deg)` }], { ...timing, easing: EASE, composite: "add" });
+	animation.finished.then(() => element.style.removeProperty("backface-visibility"), () => {});
+	return animation;
+}
+
+export const ORIGAMI_PRESENTATION = Object.freeze({
+	name: "origami",
+	motion: Object.freeze({
+		enter: (element, timing, { replacing } = {}) => (replacing ? flip(element, timing, -180, 0) : unfold(element, timing, "normal")),
+		leave: (element, timing, { replacedBy } = {}) => (replacedBy ? flip(element, timing, 0, 180) : unfold(element, timing, "reverse")),
+	}),
+	createStrip: null,
+});

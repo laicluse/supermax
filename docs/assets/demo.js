@@ -1,10 +1,10 @@
-import { Navigator, SLIDE_PRESENTATION, Workspace } from "./supermax/index.js";
+import { Navigator, ORIGAMI_PRESENTATION, SLIDE_PRESENTATION, Workspace } from "./supermax/index.js";
 import { albums, depthCount, depthId, edits, hintFor, ids, localDestinations, minViewportHeight, paths, remoteKinds } from "./album.js";
 import { decodeLog, encodeLog } from "./deeplink.js";
 import { foldPresentation } from "./presentation-fold.js";
 import { fetchFromCatalog } from "./api.js";
 
-const presentations = { slide: SLIDE_PRESENTATION, fold: foldPresentation };
+const presentations = { origami: ORIGAMI_PRESENTATION, slide: SLIDE_PRESENTATION, fold: foldPresentation };
 
 const coast = paths(albums[0]);
 const open = (destination, from, hint = null) => ({ type: "open", destination, from, hint });
@@ -420,7 +420,9 @@ class Session {
 		this.controls.presentation.addEventListener("change", () => this.setPresentation(this.controls.presentation.value));
 		this.frames = frames.map((frame) => this.buildFrame(frame));
 		this.presentations = presentations;
-		const requested = new URLSearchParams(location.search).get("presentation");
+		const query = new URLSearchParams(location.search);
+		if (query.has("delay")) this.controls.delay.value = query.get("delay");
+		const requested = query.get("presentation");
 		if (requested && presentations[requested]) this.setPresentation(requested);
 		window.addEventListener("popstate", (event) => this.arrive(event.state));
 		this.arrive(history.state);
@@ -435,7 +437,9 @@ class Session {
 	}
 
 	network() {
-		return { context: this.context, delay: Number(this.controls.delay.value) || 0, fail: this.controls.fail.value };
+		const chosen = this.controls.delay.value;
+		const delay = chosen === "random" ? Math.round(100 + Math.random() * 600) : Number(chosen) || 0;
+		return { context: this.context, delay, fail: this.controls.fail.value };
 	}
 
 	request(kind, id) {
@@ -655,7 +659,7 @@ class Session {
 
 	setPresentation(name) {
 		this.controls.presentation.value = name;
-		for (const frame of this.frames) frame.workspace.setPresentation(presentations[name] ?? SLIDE_PRESENTATION);
+		for (const frame of this.frames) frame.workspace.setPresentation(presentations[name] ?? ORIGAMI_PRESENTATION);
 	}
 
 	setNetwork({ delay, fail }) {
@@ -703,7 +707,7 @@ for (const scenario of scenarios) {
 	const button = element("button", "scenario", scenario.label);
 	button.type = "button";
 	button.addEventListener("click", async () => {
-		session.setNetwork(scenario.network ?? { delay: "0", fail: "" });
+		session.setNetwork(scenario.network ?? { delay: new URLSearchParams(location.search).get("delay") ?? "random", fail: "" });
 		await session.replay(scenario.actions.map((action) => ({ ...action })));
 		if (scenario.local) session.frames.forEach((frame) => { scenario.local(frame); frame.workspace.render({ animate: false }); });
 	});

@@ -11,6 +11,7 @@ import { PeekController } from "./peek.js";
 import { resolveStrings } from "./strings.js";
 import { frustumOrigin } from "./origin.js";
 import { defaultNoticeIcon } from "./icons.js";
+import { HORIZON, ORIGAMI_PRESENTATION } from "./origami.js";
 
 export const SLIDE_PRESENTATION = Object.freeze({ name: "slide", motion: null, createStrip: null });
 
@@ -24,7 +25,7 @@ function normalizePresentation(presentation) {
 }
 
 export class Workspace extends EventTarget {
-	constructor(element, { navigator, content, onIntent = null, presentation = SLIDE_PRESENTATION, strings = {}, origin = frustumOrigin, overlayRoot = element.ownerDocument.body, noticePlacement = "source", noticeIcon = defaultNoticeIcon }) {
+	constructor(element, { navigator, content, onIntent = null, presentation = ORIGAMI_PRESENTATION, strings = {}, origin = frustumOrigin, overlayRoot = element.ownerDocument.body, noticePlacement = "source", noticeIcon = defaultNoticeIcon }) {
 		super();
 		if (noticeIcon !== null && typeof noticeIcon !== "function") throw new TypeError("noticeIcon must be a function that returns an element, or null for no icon");
 		this.noticeIcon = noticeIcon;
@@ -98,7 +99,10 @@ export class Workspace extends EventTarget {
 		this.element.replaceChildren(this.navbar, this.body);
 		this.noticeOrigin = this.origin ? this.originLayer("supermax-origin is-notices") : null;
 		if (this.noticeOrigin) this.overlayRoot.append(this.noticeOrigin);
-		this.onViewportChange = () => this.scheduleOrigins();
+		this.onViewportChange = () => {
+			this.placeHorizon();
+			this.scheduleOrigins();
+		};
 		this.document.defaultView.addEventListener("resize", this.onViewportChange);
 		this.document.addEventListener("scroll", this.onViewportChange, true);
 	}
@@ -418,11 +422,23 @@ export class Workspace extends EventTarget {
 			this.rendering = false;
 		}
 		this.dispatchEvent(new CustomEvent("render", { detail: { layout } }));
+		this.placeHorizon();
 		this.scheduleOrigins();
 		Promise.all([...this.chains.values()].map((entry) => entry.strip.finished)).then(() => this.scheduleOrigins());
 		const target = this.pendingFocus;
 		this.pendingFocus = null;
 		if (target) this.focusCell(target);
+	}
+
+	placeHorizon() {
+		const view = this.document.defaultView;
+		const root = this.overlayRoot === this.document.body ? new DOMRect(0, 0, view.innerWidth, view.innerHeight) : this.overlayRoot.getBoundingClientRect();
+		const x = root.left + root.width / 2;
+		const y = root.top + root.height * HORIZON;
+		for (const entry of this.chains.values()) {
+			const box = entry.viewport.getBoundingClientRect();
+			entry.viewport.style.perspectiveOrigin = `${Math.round(x - box.left)}px ${Math.round(y - box.top)}px`;
+		}
 	}
 
 	originLayer(className) {
@@ -505,6 +521,7 @@ export class Workspace extends EventTarget {
 			if (cell.rows) this.renderRows(cell, animating);
 		}
 		const visible = chain.cells.filter((cell) => cell.visible);
+		for (const cell of chain.cells) this.cells.get(cell.occurrence)?.element.classList.toggle("is-leading", cell === visible[0]);
 		this.dividers.sync(entry.viewport, "vertical", this.widthDividers(chain, visible));
 		return entry.viewport;
 	}
@@ -585,11 +602,13 @@ export class Workspace extends EventTarget {
 			}
 			this.setRowHeight(entry, row.height, animating);
 			entry.element.classList.toggle("is-hidden", !row.visible);
+			const leading = row === cell.rows.rows.find((candidate) => candidate.visible);
+			entry.element.classList.toggle("is-leading", leading);
 			if (!row.visible) this.protectFocus([entry.chain]);
 			entry.chain.inert = !row.visible;
 			entry.chain.style.visibility = row.visible ? "" : "hidden";
 			if (row.visible) {
-				entry.chain.style.height = `${row.height}px`;
+				entry.chain.style.height = leading ? `${row.height}px` : `calc(${row.height}px - var(--supermax-gutter, 0px))`;
 				this.renderChain(row.chain, entry.chain, animating);
 			}
 		}

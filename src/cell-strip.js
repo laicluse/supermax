@@ -41,12 +41,14 @@ export class CellStrip {
 		const departing = this.entries.filter((entry) => !ids.has(entry.id));
 		this.entries = entries.map((entry) => ({ ...entry, departing: false }));
 		this.entries.push(...departing.map((entry) => ({ ...entry, visible: false, departing: true })));
+		this.pairs = this.motion ? this.pairReplacements(previous) : new Map();
 		const firstVisible = this.entries.findIndex((entry) => entry.visible);
 		const lastVisible = this.entries.findLastIndex((entry) => entry.visible);
 		let offset = 0;
 		let totalWidth = 0;
 		this.entries.forEach((entry, index) => {
 			entry.displayWidth = !entry.visible && index > firstVisible && index < lastVisible ? 0 : entry.width;
+			if (entry.departing && this.pairs.has(entry.id)) entry.displayWidth = 0;
 		});
 		for (const [index, entry] of this.entries.entries()) {
 			if (firstVisible === -1 || index < firstVisible) offset += entry.displayWidth;
@@ -81,6 +83,7 @@ export class CellStrip {
 		const targetTransform = `translateX(${-offset}px)`;
 		this.strip.style.width = `${totalWidth}px`;
 		this.strip.style.transform = targetTransform;
+		this.overlayReplaced(previous);
 		const shouldAnimate = animate && this.initialized && !this.reducedMotion.matches && this.duration > 0;
 		this.initialized = true;
 		if (shouldAnimate) {
@@ -114,9 +117,36 @@ export class CellStrip {
 		this.animations.push(this.strip.animate([{ transform: startingTransform }, { transform: targetTransform }], this.timing()));
 	}
 
+	pairReplacements(previous) {
+		const before = [...previous.values()].filter((entry) => !entry.departing);
+		const pairs = new Map();
+		this.entries.forEach((entry, index) => {
+			const old = before[index];
+			if (entry.departing || !entry.visible || previous.has(entry.id) || !old?.visible || this.entries.some((next) => next.id === old.id && !next.departing)) return;
+			pairs.set(old.id, entry);
+			pairs.set(entry.id, old);
+		});
+		return pairs;
+	}
+
+	overlayReplaced(previous) {
+		const stripLeft = this.strip.getBoundingClientRect().left;
+		for (const entry of this.entries) {
+			if (!entry.departing || !this.pairs.has(entry.id)) continue;
+			const successor = this.pairs.get(entry.id);
+			Object.assign(entry.element.style, {
+				position: "absolute",
+				top: "0",
+				left: `${successor.element.getBoundingClientRect().left - stripLeft}px`,
+				width: `${previous.get(entry.id).currentWidth}px`,
+			});
+		}
+	}
+
 	animateWidths(previous) {
 		for (const entry of this.entries) {
-			const old = previous.get(entry.id);
+			if (entry.departing && this.pairs.has(entry.id)) continue;
+			const old = previous.get(entry.id) ?? this.pairs.get(entry.id);
 			if (old && Math.abs(old.currentWidth - entry.displayWidth) > 0.01) {
 				this.animations.push(entry.element.animate([{ width: `${old.currentWidth}px` }, { width: `${entry.displayWidth}px` }], this.timing()));
 			}
@@ -125,7 +155,8 @@ export class CellStrip {
 
 	animateMovement(previous) {
 		for (const entry of this.entries) {
-			const old = previous.get(entry.id);
+			if (entry.departing && this.pairs.has(entry.id)) continue;
+			const old = previous.get(entry.id) ?? this.pairs.get(entry.id);
 			const currentLeft = entry.element.getBoundingClientRect().left;
 			const startingLeft = old ? old.currentLeft : Math.max(currentLeft, this.viewport.getBoundingClientRect().right);
 			const distance = startingLeft - currentLeft;
@@ -140,14 +171,15 @@ export class CellStrip {
 		const timing = { duration: this.duration, easing: this.easing };
 		for (const entry of this.entries) {
 			const hook = entry.departing ? this.motion.leave : !previous.has(entry.id) && entry.visible ? this.motion.enter : null;
-			const produced = hook?.(entry.element, timing);
+			const partner = this.pairs.get(entry.id)?.element ?? null;
+			const produced = hook?.(entry.element, timing, entry.departing ? { replacedBy: partner } : { replacing: partner });
 			for (const animation of [].concat(produced ?? [])) this.animations.push(animation);
 		}
 	}
 
 	settle() {
 		for (const entry of this.entries) {
-			entry.element.style.removeProperty("transform-origin");
+			for (const property of ["transform-origin", "position", "top", "left"]) entry.element.style.removeProperty(property);
 			if (entry.departing) entry.element.remove();
 			else entry.element.style.visibility = entry.visible ? "" : "hidden";
 		}

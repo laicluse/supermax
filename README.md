@@ -2,7 +2,7 @@
 
 Framework-free cell layout and navigation primitives for workspaces that open content below and to the right.
 
-The package has four parts. `CellCollection` allocates one horizontal chain of cells within a budget. `CellStrip` animates such a chain. `Navigator` models a workspace whose cells can split into independent rows, with one Show control that brings back whatever hid above the window; `validateSplit` checks a split against the declared minimum height. `Workspace` renders a navigator into the DOM with the stylesheet `@laicluse/supermax/workspace.css`, and `SLIDE_PRESENTATION` is its default motion. Hosts own their content and their routing. A GitHub Pages demo lives in `docs/` outside the package files.
+The package has four parts. `CellCollection` allocates one horizontal chain of cells within a budget. `CellStrip` animates such a chain. `Navigator` models a workspace whose cells can split into independent rows, with one Show control that brings back whatever hid above the window; `validateSplit` checks a split against the declared minimum height. `Workspace` renders a navigator into the DOM with the stylesheet `@laicluse/supermax/workspace.css`, and `ORIGAMI_PRESENTATION` is its default motion, with `SLIDE_PRESENTATION` as a flat alternative. Hosts own their content and their routing. A GitHub Pages demo lives in `docs/` outside the package files.
 
 ## A single row
 
