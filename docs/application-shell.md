@@ -66,7 +66,7 @@ Creation is navigation as well as an action: a collection-level **New** control 
 
 ## Widths express content semantics
 
-`min` is the smallest width at which a cell remains useful. `max` is the widest width at which more space still improves that content. Neither value describes a target viewport or a page-wide container. The allocator combines the bounds; the host must not add a global maximum width around the chain. The allocator itself is unit-free: V1 hosts measured in 64px columns, the V2 workspace measures in pixels.
+`min` is the smallest width at which a cell remains useful. `max` is the widest width at which more space still improves that content. Neither value describes a target viewport or a page-wide container. The allocator combines the bounds; the host must not add a global maximum width around the chain. The allocator itself is unit-free: a host may measure in columns, the workspace measures in pixels.
 
 Use these as starting ranges in pixels, then verify against real content:
 
@@ -131,6 +131,12 @@ Closing returns focus in this order: the row tab when the source sits in a colla
 `workspace.notify({ id?, scope, source?, sourceTitle?, kind, message, action?, duration? })` shows temporary feedback. `scope: "cell"` places the notice inside its source cell, under the cell title, as long as that cell is visible, full and in an open row; otherwise, and for `scope: "workspace"`, the notice appears in the workspace region at the bottom right, prefixed with the source title and a `Show <source>` control that opens the row, reveals the cell and focuses it. The `Show` control appears only while the source is open but out of view. A notice whose source is not open says so and offers no way back, because a closed cell is never reopened by a late response; `sourceTitle` lets the host name a source the workspace never had. Notices move between the two homes on every render, so collapsing a row carries its cell notices into the workspace region and opening it carries them back.
 
 `kind` sets the duration and tone: `success` expires after 4s (or `duration` ms), paused while hovered or focused; `error` has `role="alert"` and stays until dismissed or acted on; `action` carries `action: { label, run }` and stays until acted on or dismissed. The same `id` never shows twice in one workspace, so a duplicated response produces one notice. A notice never takes focus. Its dismiss control is reachable by Tab, also from inside a modal, and Escape inside a notice dismisses only that notice; focus then returns to the modal, the source cell or the next notice. The workspace region is `aria-live="polite"`. A cell whose content failed to load shows its own Retry and raises no notice; that is the host's call. The `notice` event reports `shown`, `dismissed`, `expired` and `acted`.
+
+### Presentation is one override point
+
+The workspace moves cells with one presentation: the default `SLIDE_PRESENTATION` slides a chain with `CellStrip`, new cells entering from the right, closed cells leaving the same way, with the same 200ms timeline for widths and strip movement. Peeks, modals and notices carry their own small entrance; loading cells show a mark. `new Workspace(element, { presentation })` or `workspace.setPresentation(presentation)` replaces that treatment with `{ name, createStrip(viewport, workspace) }`: `createStrip` returns an object with the `CellStrip` contract (`update(entries, { animate })`, `finished`, `destroy()`), and the workspace carries `supermax-presentation-<name>` on its element so a stylesheet can restyle surfaces, peeks and modals for that presentation. Switching rebuilds the strips without animation and changes no state, no groups and no geometry; the `presentation` event names the new presentation.
+
+Behaviour stays with the workspace, not with the presentation: an override cannot change what opens, closes or receives focus, and reduced motion still paints every update immediately. The demo's second presentation, `fold`, extends `CellStrip` with a rotation on entering and leaving cells and restyles cell surfaces and the modal through that class.
 
 ### Minimum height is validated up front
 

@@ -9,7 +9,11 @@ const widths = {
 	metadata: { min: 200, max: 320, preferred: 220, compact: { min: 40 } },
 	history: { min: 200, max: 320, compact: { min: 40 } },
 	edit: { min: 200, max: 320 },
+	depth: { min: 160, max: 240, compact: { min: 36 } },
 };
+
+export const depthCount = 20;
+export const depthId = (n) => `depth:${n}`;
 
 export const edits = [
 	{ n: 1, title: "Exposure +1", note: "Lifted the shadows after the import." },
@@ -99,6 +103,9 @@ export function hintFor(id) {
 
 export function destinations() {
 	const result = { albums: { title: "Albums", ...widths.albums, data: { kind: "albums" } } };
+	for (let n = 1; n <= depthCount; n += 1) {
+		result[depthId(n)] = { title: `Depth ${n}`, ...widths.depth, data: { kind: "depth", n } };
+	}
 	for (const album of albums) {
 		const key = ids(album);
 		result[key.album] = {

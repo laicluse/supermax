@@ -1,13 +1,25 @@
 import { CellStrip } from "./cell-strip.js";
 import { chainRootOf, isSplit } from "./layout.js";
 
+export const SLIDE_PRESENTATION = Object.freeze({
+	name: "slide",
+	createStrip: (viewport) => new CellStrip(viewport),
+});
+
+function normalizePresentation(presentation) {
+	if (!presentation || typeof presentation.name !== "string" || presentation.name.length === 0) throw new TypeError("presentation needs a name");
+	if (!/^[a-z][a-z0-9-]*$/.test(presentation.name)) throw new TypeError("presentation name must be a lowercase identifier");
+	return Object.freeze({ name: presentation.name, createStrip: presentation.createStrip ?? SLIDE_PRESENTATION.createStrip });
+}
+
 export class Workspace extends EventTarget {
-	constructor(element, { navigator, content, onIntent = null }) {
+	constructor(element, { navigator, content, onIntent = null, presentation = SLIDE_PRESENTATION }) {
 		super();
 		this.element = element;
 		this.navigator = navigator;
 		this.content = content;
 		this.onIntent = onIntent;
+		this.presentation = normalizePresentation(presentation);
 		this.document = element.ownerDocument;
 		this.cells = new Map();
 		this.chains = new Map();
@@ -25,6 +37,7 @@ export class Workspace extends EventTarget {
 		this.reducedMotion = this.document.defaultView.matchMedia("(prefers-reduced-motion: reduce)");
 		this.onFocusIn = (event) => this.followFocus(event.target);
 		this.buildChrome();
+		this.element.classList.add(`supermax-presentation-${this.presentation.name}`);
 		this.element.addEventListener("focusin", this.onFocusIn);
 		this.observer = new this.document.defaultView.ResizeObserver(() => this.measure());
 		this.observer.observe(element);
@@ -91,6 +104,26 @@ export class Workspace extends EventTarget {
 		if (this.modal) this.closeModal("navigation");
 		if (this.onIntent) return this.onIntent(action, this);
 		return this.apply(action, { focus: true });
+	}
+
+	setPresentation(presentation) {
+		const next = normalizePresentation(presentation);
+		if (next === this.presentation) return;
+		this.closePeek();
+		this.element.classList.remove(`supermax-presentation-${this.presentation.name}`);
+		this.presentation = next;
+		this.element.classList.add(`supermax-presentation-${next.name}`);
+		for (const entry of this.chains.values()) {
+			entry.strip.destroy();
+			entry.left.remove();
+			entry.right.remove();
+			entry.viewport.remove();
+		}
+		this.chains.clear();
+		for (const divider of this.dividers.values()) divider.element.remove();
+		this.dividers.clear();
+		if (this.rendered) this.render({ animate: false });
+		this.dispatchEvent(new CustomEvent("presentation", { detail: { name: next.name } }));
 	}
 
 	notify({ id = null, scope = "cell", source = null, sourceTitle = null, kind = "success", message, action = null, duration } = {}) {
@@ -717,7 +750,7 @@ export class Workspace extends EventTarget {
 		if (!entry) {
 			const viewport = this.create("div", "supermax-chain");
 			host.append(viewport);
-			const strip = new CellStrip(viewport);
+			const strip = this.presentation.createStrip(viewport, this);
 			const left = this.revealButton("left", () => this.reveal(chain.root, 1));
 			const right = this.revealButton("right", () => this.reveal(chain.root, -1));
 			entry = { viewport, strip, left, right };
@@ -1074,7 +1107,7 @@ export class Workspace extends EventTarget {
 		this.chains.clear();
 		this.rows.clear();
 		this.element.replaceChildren();
-		this.element.classList.remove("supermax-workspace");
+		this.element.classList.remove("supermax-workspace", `supermax-presentation-${this.presentation.name}`);
 		this.element.style.removeProperty("--supermax-navbar");
 		this.element.style.removeProperty("--supermax-row-tab");
 	}

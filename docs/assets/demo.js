@@ -1,9 +1,14 @@
-import { Navigator, Workspace } from "./supermax/index.js";
-import { albums, edits, hintFor, ids, localDestinations, minViewportHeight, paths, remoteKinds } from "./album.js";
+import { Navigator, SLIDE_PRESENTATION, Workspace } from "./supermax/index.js";
+import { albums, depthCount, depthId, edits, hintFor, ids, localDestinations, minViewportHeight, paths, remoteKinds } from "./album.js";
 import { decodeLog, encodeLog } from "./deeplink.js";
+import { foldPresentation } from "./presentation-fold.js";
+
+const presentations = { slide: SLIDE_PRESENTATION, fold: foldPresentation };
 
 const coast = paths(albums[0]);
 const open = (destination, from, hint = null) => (hint ? { type: "open", destination, from, hint } : { type: "open", destination, from });
+const depthPath = (n) => ["albums", ...Array.from({ length: n }, (_, index) => depthId(index + 1))].join("/");
+const twentyDeep = Array.from({ length: depthCount }, (_, index) => open(depthId(index + 1), depthPath(index)));
 
 const frames = [
 	{ key: "a", name: "Frame A", width: 960, height: 640 },
@@ -53,7 +58,28 @@ const scenarios = [
 		label: "Preferred sizes: photo wide, metadata narrow",
 		actions: [open("album:coast", "albums"), open("coast:photo:b", coast.row("map"))],
 	},
+	{
+		label: "Caption modal from the Map row",
+		actions: [open("album:coast", "albums"), open("coast:photo:b", coast.row("map"))],
+		local: (frame) => { if (frame.key === "a") frame.workspace.element.querySelector(`[data-occurrence="${coast.photo("map", "b")}"] .caption-edit`)?.click(); },
+	},
+	{
+		label: "Notices: saved, failed save, export",
+		actions: [open("album:coast", "albums")],
+		local: (frame) => {
+			if (frame.key !== "a") return;
+			const model = frame.workspace.navigator;
+			const album = albums[0];
+			const photoA = album.photos[0];
+			session.saveCaption(model.get(coast.photo("thumbnails", "a")), photoA, ids(album).photo(photoA));
+			session.controls.fail.value = "content";
+			session.saveCaption(model.get(coast.photo("people", "a")), photoA, ids(album).photo(photoA));
+			session.controls.fail.value = "";
+			session.exportAlbum(model.get(coast.metadata("thumbnails", "a")), album);
+		},
+	},
 	{ label: "Empty album", actions: [open(ids(albums[1]).album, "albums")] },
+	{ label: "Twenty cells deep", actions: twentyDeep },
 	{ label: "Lab: exact fit", actions: [open(ids(albums[2]).album, "albums")] },
 	{ label: "Lab: one pixel over", actions: [open(ids(albums[3]).album, "albums")] },
 ];
@@ -67,6 +93,7 @@ function element(tag, className, text) {
 
 const renderers = {
 	albums: renderAlbums,
+	depth: renderDepth,
 	selector: renderSelector,
 	photo: renderPhoto,
 	metadata: renderMetadata,
@@ -101,6 +128,20 @@ function prefetchOnHover(button, id) {
 	button.addEventListener("pointerleave", () => clearTimeout(timer));
 }
 
+function renderDepth(occurrence, data, workspace) {
+	const host = element("div", "depth");
+	host.append(element("p", "depth-number", String(data.n)));
+	if (data.n < depthCount) {
+		const next = element("button", "metadata-link depth-next", `Open depth ${data.n + 1}`);
+		next.type = "button";
+		next.addEventListener("click", () => workspace.navigate(depthId(data.n + 1), { from: occurrence.id }));
+		host.append(next);
+	} else {
+		host.append(element("p", "depth-end", "The end of the chain."));
+	}
+	return { element: host };
+}
+
 function renderAlbums(occurrence, data, workspace) {
 	const list = element("ul", "album-list");
 	const notes = new Map();
@@ -128,6 +169,13 @@ function renderAlbums(occurrence, data, workspace) {
 	};
 	workspace.addEventListener("rejected", onRejected);
 	workspace.addEventListener("change", onChange);
+	const lab = element("li", "album-lab");
+	const depth = element("button", "album-item depth-start", "Lab: twenty cells deep");
+	depth.type = "button";
+	depth.dataset.destination = depthId(1);
+	depth.addEventListener("click", () => workspace.navigate(depthId(1), { from: occurrence.id }));
+	lab.append(depth);
+	list.append(lab);
 	return {
 		element: list,
 		update(current) {
@@ -327,9 +375,13 @@ class Session {
 			fail: document.querySelector("[data-fail]"),
 			context: document.querySelector("[data-context]"),
 			requests: document.querySelector("[data-requests]"),
+			presentation: document.querySelector("[data-presentation]"),
 		};
 		this.controls.context.addEventListener("change", () => this.setContext(this.controls.context.value));
+		this.controls.presentation.addEventListener("change", () => this.setPresentation(this.controls.presentation.value));
 		this.frames = frames.map((frame) => this.buildFrame(frame));
+		const requested = new URLSearchParams(location.search).get("presentation");
+		if (requested && presentations[requested]) this.setPresentation(requested);
 		window.addEventListener("popstate", (event) => this.arrive(event.state));
 		this.arrive(history.state);
 	}
@@ -516,7 +568,11 @@ class Session {
 	async replay(log, { mode = "push" } = {}) {
 		const token = Symbol("replay");
 		this.replaying = token;
-		for (const frame of this.frames) frame.workspace.replay([]);
+		for (const frame of this.frames) {
+			frame.workspace.closeModal("reset");
+			for (const id of [...frame.workspace.notices.keys()]) frame.workspace.dismiss(id);
+			frame.workspace.replay([]);
+		}
 		const kept = [];
 		for (const action of log) {
 			await this.settleDefaults();
@@ -530,6 +586,11 @@ class Session {
 		this.log = kept;
 		const unchanged = encodeLog(this.log) === location.hash.replace(/^#/, "");
 		this.record(mode === "push" && unchanged ? "replace" : mode);
+	}
+
+	setPresentation(name) {
+		this.controls.presentation.value = name;
+		for (const frame of this.frames) frame.workspace.setPresentation(presentations[name] ?? SLIDE_PRESENTATION);
 	}
 
 	setNetwork({ delay, fail }) {
@@ -576,9 +637,9 @@ const scenarioHost = document.querySelector("[data-scenarios]");
 for (const scenario of scenarios) {
 	const button = element("button", "scenario", scenario.label);
 	button.type = "button";
-	button.addEventListener("click", () => {
+	button.addEventListener("click", async () => {
 		session.setNetwork(scenario.network ?? { delay: "0", fail: "" });
-		session.replay(scenario.actions.map((action) => ({ ...action })));
+		await session.replay(scenario.actions.map((action) => ({ ...action })));
 		if (scenario.local) session.frames.forEach((frame) => { scenario.local(frame); frame.workspace.render({ animate: false }); });
 	});
 	scenarioHost.append(button);

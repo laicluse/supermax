@@ -298,6 +298,13 @@ scenario("a hinted or lazy destination opens provisionally and completes when it
 	assert.deepEqual(after.completed, [], "a definition arriving after Back opens nothing");
 	assert.ok(!gone.get(`${item("tags", "a")}/remote:b`), "the closed group does not return");
 
+	const twoRows = model(1000, 500);
+	openGallery(twoRows);
+	twoRows.open("remote:e", { from: item("list", "a"), hint: { title: "Remote E", min: 100, max: 200 } });
+	twoRows.open("remote:e", { from: item("tags", "a"), hint: { title: "Remote E", min: 100, max: 200 } });
+	const both = twoRows.define("remote:e", { title: "Remote E", min: 100, max: 200 });
+	assert.deepEqual(both.completed.sort(), [`${item("list", "a")}/remote:e`, `${item("tags", "a")}/remote:e`].sort(), "one definition completes the same destination in every row");
+
 	const chosen = model(1000, 500);
 	openGallery(chosen);
 	chosen.open("remote:c", { from: item("tags", "a"), hint: { title: "Remote C", min: 100, max: 200 } });

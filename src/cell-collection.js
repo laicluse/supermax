@@ -151,5 +151,3 @@ export class CellCollection {
 		};
 	}
 }
-
-globalThis.Supermax = { ...globalThis.Supermax, CellCollection, CellProxy };

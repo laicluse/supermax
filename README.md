@@ -2,7 +2,33 @@
 
 Framework-free cell layout and navigation primitives for workspaces that open content below and to the right.
 
-The package has four parts. `CellCollection` allocates one horizontal chain of cells within a budget. `CellStrip` animates such a chain. `Navigator` models a workspace whose cells can split into independent rows, with one Back history across all rows; `validateSplit` checks a split against the declared minimum height. `Workspace` renders a navigator into the DOM with the stylesheet `@laicluse/supermax/workspace.css`. Hosts own their content and their routing. A GitHub Pages demo lives in `docs/` outside the package files.
+The package has four parts. `CellCollection` allocates one horizontal chain of cells within a budget. `CellStrip` animates such a chain. `Navigator` models a workspace whose cells can split into independent rows, with one Back history across all rows; `validateSplit` checks a split against the declared minimum height. `Workspace` renders a navigator into the DOM with the stylesheet `@laicluse/supermax/workspace.css`, and `SLIDE_PRESENTATION` is its default motion. Hosts own their content and their routing. A GitHub Pages demo lives in `docs/` outside the package files.
+
+## A single row
+
+```js
+import { Navigator, Workspace } from "@laicluse/supermax";
+import "@laicluse/supermax/workspace.css";
+
+const model = new Navigator({
+  root: "inbox",
+  minViewportHeight: 360,
+  destinations: {
+    inbox: { title: "Inbox", min: 240, max: 360, compact: { min: 48 }, data: { kind: "list" } },
+    "message:1": { title: "Weekly report", min: 320, max: 640, preferred: 420, defaultChild: "attachments:1", data: { kind: "message" } },
+    "attachments:1": { title: "Attachments", min: 200, max: 320, data: { kind: "attachments" } },
+  },
+});
+
+const workspace = new Workspace(document.querySelector("#workspace"), {
+  navigator: model,
+  content: (occurrence, definition, workspace) => ({ element: renderFor(definition.data, occurrence, workspace) }),
+});
+
+workspace.navigate("message:1", { from: "inbox" });
+```
+
+One row is a chain: the inbox stays on the left, the message opens beside it, its attachments open automatically when the row has room, and one Back closes the message with its attachments. Below 560px the inbox turns into a rail with a peek; the divider between message and attachments lets the user resize for the session.
 
 ## Allocating one chain
 
@@ -17,7 +43,7 @@ const cells = new CellCollection([
 const layout = cells.distribute(16);
 ```
 
-`distribute(budget, anchorId, { pinnedId })` resets every cell to its minimum, hides cells from the left until the chain fits, and water-fills the remaining budget by `max` weight. The unit is whatever the caller measures in: V1 hosts pass columns, the workspace passes pixels. The last cell survives a shortage; `pinnedId` protects a different cell instead, which is how the vertical row allocation keeps the focused row open. `anchorId` names a `zoomable` cell that hides everything to its left, the V1 zoom anchor. The package also assigns `globalThis.Supermax` for hosts that bundle the module into a browser artifact and still need a global compatibility surface.
+`distribute(budget, anchorId, { pinnedId })` resets every cell to its minimum, hides cells from the left until the chain fits, and shares the remaining budget by `preferred` size when cells declare one, otherwise by `max` weight. The unit is whatever the caller measures in: columns or pixels. The last cell survives a shortage; `pinnedId` protects a different cell instead, which is how the vertical row allocation keeps the focused row open. `anchorId` names a `zoomable` cell that hides everything to its left. The module has no global side effects.
 
 ## Navigating branching rows
 
@@ -63,15 +89,17 @@ The workspace element needs a height of its own; the workspace fills it, observe
 
 A destination may also declare `compact: { min, content? }` (a narrow rail with a peek, see the guide), `preferred` (its share when the chain has room beyond every minimum; dividers between cells let the user override it for the session), and an action may carry a `hint` so a destination opens before its definition has loaded; `workspace.define(id, definition)` completes it in place. The `content` callback may return `{ pending }` with a promise for a cell that loads, with built-in loading and error states and a Retry control.
 
-`openModal({ title, content }, { from })` opens one dialog that names its source cell, traps the keyboard, closes on Escape or Back before any navigation, and returns focus to a usable place. `notify({ scope, source, kind, message, action })` shows feedback inside the source cell or, when that cell is out of view, in the workspace with the source named and reachable. The navigation contract (groups, Back, auto-opening, validation, deep links, compact cells, sizes, loading, modals, notices) is written down in the [application-shell guide](docs/application-shell.md).
+`openModal({ title, content }, { from })` opens one dialog that names its source cell, traps the keyboard, closes on Escape or Back before any navigation, and returns focus to a usable place. `notify({ scope, source, kind, message, action })` shows feedback inside the source cell or, when that cell is out of view, in the workspace with the source named and reachable. The `presentation` option, or `setPresentation`, replaces the cell motion and surface with `{ name, createStrip }` while behaviour and accessibility stay. The navigation contract (groups, Back, auto-opening, validation, deep links, compact cells, sizes, loading, modals, notices, presentation) is written down in the [application-shell guide](docs/application-shell.md).
 
 ## Demo
 
-The demo in `docs/` shows two freely resizable frames side by side. Every click and Back reaches both; each frame computes its own layout, auto-opening and Back history from its own size.
+The demo in `docs/` shows two freely resizable frames side by side. Every click and Back reaches both; each frame computes its own layout, auto-opening and Back history from its own size. Its controls switch network delay, failures and viewer for the loading cells, and the presentation between slide and fold.
 
 ![Wide and narrow frames with the three-row album](docs/assets/captures/three-rows.png)
 
 ![A short frame collapses rows to tabs](docs/assets/captures/short-frame.png)
+
+![The fold presentation restyles the same layout](docs/assets/captures/fold.png)
 
 Regenerate the captures with `node scripts/capture-demo.mjs`.
 

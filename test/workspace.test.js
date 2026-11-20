@@ -31,9 +31,11 @@ beforeEach(async () => {
 	await page.emulateMedia({ reducedMotion: "no-preference" });
 });
 
+const PRESENTATION = process.env.SUPERMAX_PRESENTATION ?? "slide";
+
 async function openDemo(log = []) {
 	await page.goto("about:blank");
-	await page.goto(`${server.url}/${log.length ? `#${encodeLog(log)}` : ""}`);
+	await page.goto(`${server.url}/${PRESENTATION === "slide" ? "" : `?presentation=${PRESENTATION}`}${log.length ? `#${encodeLog(log)}` : ""}`);
 	await page.waitForFunction(() => window.supermaxDemo?.frames.length === 2);
 	await settle();
 }
@@ -388,12 +390,12 @@ test("remote cells open from hints, complete when their layout metadata arrives,
 	const editCell = inFrame("a", `[data-occurrence="${coast.edit("thumbnails", "a", 2)}"]`);
 	await page.click(inFrame("a", `[data-occurrence="${coast.history("thumbnails", "a")}"] .edit-item[data-destination="coast:edit:a:2"]`));
 	await page.waitForSelector(`${editCell}.is-loading`);
-	const loading = await page.locator(editCell).evaluate((element) => ({ title: element.querySelector(".supermax-cell-title").textContent, width: Math.round(element.getBoundingClientRect().width), status: element.querySelector(".supermax-loading").textContent }));
+	const loading = await page.locator(editCell).evaluate((element) => ({ title: element.querySelector(".supermax-cell-title").textContent, width: element.offsetWidth, status: element.querySelector(".supermax-loading").textContent }));
 	assert.equal(loading.title, "Crop 3:2 (A)", "the hint names the cell while it loads");
 	assert.equal(loading.status, "Loading Crop 3:2 (A)");
 	assert.ok(loading.width >= 200 && loading.width <= 320, "the hint sizes the placeholder inside its bounds");
 	await settle();
-	const loaded = await page.locator(editCell).evaluate((element) => ({ viewer: element.querySelector(".viewer-line").textContent, width: Math.round(element.getBoundingClientRect().width), provisional: element.classList.contains("is-provisional") }));
+	const loaded = await page.locator(editCell).evaluate((element) => ({ viewer: element.querySelector(".viewer-line").textContent, width: element.offsetWidth, provisional: element.classList.contains("is-provisional") }));
 	assert.equal(loaded.viewer, "Viewing as Ana");
 	assert.equal(loaded.width, loading.width, "the loaded cell keeps the placeholder's width, nothing jumps");
 	assert.equal(loaded.provisional, false);
@@ -408,6 +410,7 @@ test("remote cells open from hints, complete when their layout metadata arrives,
 	await page.click(`${failedCell} .supermax-retry`);
 	await settle();
 	assert.equal(await page.locator(`${failedCell} .viewer-line`).textContent(), "Viewing as Ana", "retry loads the content without a new navigation");
+	assert.deepEqual(await groups("a"), ["Coast", "Warm tint (A)"], "and adds no Back step");
 	await page.selectOption("[data-delay]", "1500");
 	await page.click(inFrame("a", `[data-occurrence="${coast.row("map")}"] [data-destination="coast:photo:b"]`));
 	await page.click(inFrame("a", ".supermax-back"));
@@ -602,6 +605,87 @@ test("notices stay with their cell, move to the workspace when the source is out
 	assert.equal(await page.locator(exportNotice).count(), 0);
 });
 
+const TWENTY_DEEP = Array.from({ length: 20 }, (_, index) => open(`depth:${index + 1}`, ["albums", ...Array.from({ length: index }, (_, step) => `depth:${step + 1}`)].join("/")));
+
+test("a second presentation replaces motion and surface while behaviour, interruption and reduced motion stay the same", async () => {
+	await openDemo(THREE_ROWS);
+	const workspaceClass = () => page.locator(frame("a") + " .supermax-workspace").evaluate((element) => [...element.classList].filter((name) => name.startsWith("supermax-presentation-")));
+	assert.deepEqual(await workspaceClass(), [`supermax-presentation-${PRESENTATION}`], "the page starts in the requested presentation, slide by default");
+	await page.selectOption("[data-presentation]", "slide");
+	await settle();
+	const before = { state: await state("a"), layout: await page.evaluate(() => JSON.stringify(window.supermaxDemo.frames[0].workspace.layout)) };
+	await page.selectOption("[data-presentation]", "fold");
+	await settle();
+	assert.deepEqual(await workspaceClass(), ["supermax-presentation-fold"], "switching marks the workspace for the override's surface");
+	assert.deepEqual(await state("a"), before.state, "switching changes no navigation state");
+	assert.equal(await page.evaluate(() => JSON.stringify(window.supermaxDemo.frames[0].workspace.layout)), before.layout, "and no geometry");
+	assert.equal(await page.locator(inFrame("a", ".supermax-cell")).first().evaluate((element) => getComputedStyle(element).boxShadow !== "none"), true, "the override's surface treatment applies");
+	let changes = 0;
+	await page.exposeFunction("countChange", () => { changes += 1; });
+	await page.evaluate(() => window.supermaxDemo.frames[0].workspace.addEventListener("change", () => window.countChange()));
+	await page.click(inFrame("a", `[data-occurrence="${coast.row("thumbnails")}"] .thumb[data-destination="coast:photo:d"]`));
+	assert.ok(await page.evaluate(() => document.getAnimations().some((animation) => animation.effect?.target?.closest?.(".supermax-cell") && String(animation.effect.getKeyframes?.()[0]?.transform ?? "").includes("rotateY"))), "the fold animates the entering cell with a rotation");
+	await page.click(inFrame("a", `[data-occurrence="${coast.row("thumbnails")}"] .thumb[data-destination="coast:photo:c"]`));
+	const divider = inFrame("a", `.supermax-row[data-row="${coast.row("thumbnails")}"] .supermax-divider-handle[aria-label="Resize Photo C"]`);
+	await page.waitForSelector(divider);
+	const box = await page.locator(divider).boundingBox();
+	await page.mouse.move(box.x + 4, box.y + 100);
+	await page.mouse.down();
+	await page.mouse.move(box.x + 44, box.y + 100, { steps: 4 });
+	await page.mouse.up();
+	await settle();
+	await page.waitForTimeout(50);
+	assert.deepEqual(await groups("a"), ["Coast", "Photo B", "Photo C", "Photo C"], "an interrupted opening lands on the last click");
+	assert.equal(await page.locator(inFrame("a", "[data-supermax-exiting]")).count(), 0, "no cell lingers after the interruption");
+	assert.equal(await page.locator(inFrame("a", `[data-occurrence="${coast.photo("thumbnails", "d")}"]`)).count(), 0, "the replaced cell is gone");
+	assert.equal(await page.locator(inFrame("a", ".supermax-divider.is-sized")).count(), 1, "a drag during the animation still stored its size");
+	assert.equal(changes, 2, "two clicks are two change events, no more");
+	assert.equal(await activeOccurrence(), coast.photo("thumbnails", "c"), "focus follows the last opened cell");
+	await page.emulateMedia({ reducedMotion: "reduce" });
+	await page.click(inFrame("a", `[data-occurrence="${coast.row("thumbnails")}"] .thumb[data-destination="coast:photo:a"]`));
+	assert.equal(await page.evaluate(() => document.getAnimations().length), 0, "reduced motion skips the fold entirely");
+	assert.deepEqual((await groups("a")).slice(-1), ["Photo A"], "and reaches the same destination");
+	await page.emulateMedia({ reducedMotion: "no-preference" });
+	await page.selectOption("[data-presentation]", "slide");
+	await settle();
+	assert.deepEqual(await workspaceClass(), ["supermax-presentation-slide"]);
+	assert.equal(await page.locator(inFrame("a", ".supermax-cell")).first().evaluate((element) => getComputedStyle(element).boxShadow), "none", "switching back removes the override surface");
+	await page.selectOption("[data-presentation]", PRESENTATION);
+});
+
+test("a twenty-cell chain stays navigable in both presentations", async () => {
+	await openDemo(TWENTY_DEEP);
+	await resize([[960, 640], [420, 640]]);
+	for (const key of ["a", "b"]) {
+		const titles = await groups(key);
+		assert.equal(titles.length, 20, `frame ${key} holds twenty groups`);
+		assert.equal(titles[19], "Depth 20");
+	}
+	const chain = await page.locator(inFrame("a", '[data-occurrence^="albums/depth:1"]')).evaluateAll((elements) => elements.map((element) => ({ visible: getComputedStyle(element).visibility === "visible" && element.getBoundingClientRect().width > 0, compact: element.classList.contains("is-compact") })));
+	assert.equal(chain.length, 20);
+	assert.ok(chain.filter((cell) => cell.visible).length >= 3 && chain.filter((cell) => cell.visible).length < 20, "some cells are visible, the rest hidden behind reveal");
+	assert.ok(chain.filter((cell) => cell.compact).length <= 2, "the compact cap holds in a long chain");
+	assert.equal(await page.locator(inFrame("a", ".supermax-reveal.is-left")).textContent(), "Depth 15", "the reveal chip names the nearest hidden cell");
+	await page.selectOption("[data-presentation]", "fold");
+	await settle();
+	await page.focus(inFrame("a", ".supermax-back"));
+	await page.keyboard.press("Enter");
+	await settle();
+	assert.equal((await groups("a")).length, 19, "keyboard Back closes the deepest group");
+	await page.click(inFrame("a", ".supermax-reveal.is-left"));
+	await settle();
+	assert.equal(await page.locator(inFrame("a", ".supermax-reveal.is-right")).count(), 1, "revealing to the left hides the deepest cell behind a right chip");
+	await page.click(inFrame("a", ".supermax-back"));
+	await settle();
+	assert.equal((await groups("a")).length, 18);
+	assert.equal(await page.locator(inFrame("a", "[data-supermax-exiting]")).count(), 0);
+	const start = Date.now();
+	await page.click("[data-reset]");
+	await page.waitForFunction(() => !location.hash);
+	assert.ok(Date.now() - start < 4000, "closing twenty cells is quick");
+	assert.equal(await page.locator(inFrame("a", ".supermax-cell")).count(), 1, "only the root remains");
+});
+
 test("reset restores both frames and clears the URL", async () => {
 	await openDemo(THREE_ROWS);
 	await page.click("[data-reset]");
@@ -629,7 +713,7 @@ test("empty and rejected albums are told apart and keep the workspace usable", a
 test("hostile deeplinks are rejected without breaking the page", async () => {
 	await openDemo([open("album:coast", "albums"), open("coast:thumbnails", coast.album), { type: "back" }, open("constructor", "albums")]);
 	assert.deepEqual(await groups("a"), [], "the row root could not be promoted, so Back closed the album");
-	assert.equal(await page.locator("[data-scenarios] .scenario").count(), 12, "the page finished loading");
+	assert.equal(await page.locator("[data-scenarios] .scenario").count(), 15, "the page finished loading");
 	assert.equal(await page.locator(readout("a", "rejection")).textContent(), "Rejected: constructor is not a destination here.");
 	assert.equal(page.url().split("#")[1], "o:album:coast@albums;b", "only applied actions survive in the URL");
 });

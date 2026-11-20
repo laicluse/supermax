@@ -144,5 +144,3 @@ export class CellStrip {
 		this.entries = [];
 	}
 }
-
-globalThis.Supermax = { ...globalThis.Supermax, CellStrip };

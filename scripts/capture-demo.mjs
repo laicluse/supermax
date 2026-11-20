@@ -10,6 +10,7 @@ const captures = [
 	{ name: "three-rows", hash: "o:album:coast@albums;o:coast:photo:a@albums/album:coast/coast:thumbnails;o:coast:photo:b@albums/album:coast/coast:map;o:coast:photo:c@albums/album:coast/coast:people" },
 	{ name: "short-frame", hash: "o:album:coast@albums;o:coast:photo:c@albums/album:coast/coast:people", sizes: [[960, 640], [420, 400]] },
 	{ name: "lab-rejected", hash: "o:album:coast@albums;o:album:lab-over@albums" },
+	{ name: "fold", hash: "o:album:coast@albums;o:coast:photo:a@albums/album:coast/coast:thumbnails;o:coast:photo:b@albums/album:coast/coast:map;o:coast:photo:c@albums/album:coast/coast:people", presentation: "fold" },
 ];
 
 const server = await serveDocs();
@@ -25,6 +26,7 @@ try {
 		await page.goto(`${server.url}/#${capture.hash}`);
 		await page.waitForSelector(".supermax-workspace");
 		if (capture.sizes) await page.evaluate((sizes) => window.supermaxDemo.resize(sizes), capture.sizes);
+		if (capture.presentation) await page.evaluate((name) => window.supermaxDemo.setPresentation(name), capture.presentation);
 		await page.waitForFunction(() => window.supermaxDemo.pending === 0 && !document.querySelector(".supermax-cell.is-loading"));
 		await page.waitForTimeout(400);
 		const path = resolve(outputDir, `${capture.name}.png`);

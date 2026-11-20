@@ -1,7 +1,7 @@
 {
   "name": "@laicluse/supermax",
-  "version": "1.0.0",
-  "description": "Framework-free cell layout and navigation primitives for workspaces that open content below and to the right.",
+  "version": "2.0.0",
+  "description": "Framework-free workspace shell with branching rows, one Back history, compact cells, dividers, loading cells, modals and notices, on top of a cell allocator and an animated cell strip.",
   "type": "module",
   "license": "MIT",
   "repository": {
@@ -35,6 +35,7 @@
     "test:node": "node test/smoke.test.js && node test/navigation.test.js",
     "test:bun": "bun test/smoke.test.js && bun test/navigation.test.js",
     "test:browser": "node test/cell-strip.test.js && node --test --test-concurrency=1 test/workspace.test.js test/workspace-package.test.js",
+    "test:browser:fold": "SUPERMAX_PRESENTATION=fold node --test --test-concurrency=1 test/workspace.test.js",
     "test": "npm run check:docs && npm run test:node && npm run test:browser",
     "check": "npm run test && npm run test:bun"
   },
