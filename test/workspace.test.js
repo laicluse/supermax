@@ -1489,6 +1489,18 @@ test("dividers resize cells and rows within their bounds by pointer, and reset t
 	await page.mouse.up();
 	assert.equal(await widthOf(photo), before + 60, "dragging the divider widens the photo by the drag distance");
 	assert.equal(await page.locator(inFrame("a", ".supermax-divider.is-sized .supermax-divider-reset")).count(), 1, "a divider with a session size shows its reset control");
+	const hairline = () => page.locator(divider).evaluate((element) => getComputedStyle(element, "::before").backgroundColor);
+	await page.mouse.move(box.x + box.width / 2 + 60, box.y + 400);
+	await page.waitForTimeout(400);
+	assert.equal(await hairline(), "rgba(0, 0, 0, 0)", "a sized divider goes back to a quiet hairline once the pointer leaves it");
+	const held = await page.locator(divider).boundingBox();
+	await page.mouse.move(held.x + held.width / 2, held.y + held.height / 2);
+	await page.mouse.down();
+	await page.mouse.move(held.x + held.width / 2 + 200, held.y + held.height / 2, { steps: 4 });
+	await page.waitForTimeout(400);
+	assert.notEqual(await hairline(), "rgba(0, 0, 0, 0)", "the divider stays lit while it is dragged, also beyond its hit area");
+	await page.mouse.move(held.x + held.width / 2, held.y + held.height / 2, { steps: 4 });
+	await page.mouse.up();
 	const far = await page.locator(divider).boundingBox();
 	await page.mouse.move(far.x + far.width / 2, far.y + far.height / 2);
 	await page.mouse.down();

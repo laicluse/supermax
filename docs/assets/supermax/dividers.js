@@ -85,6 +85,7 @@ export class DividerLayer {
 		if (event.button !== 0) return;
 		event.preventDefault();
 		divider.handle.setPointerCapture(event.pointerId);
+		divider.element.classList.add("is-dragging");
 		const vertical = divider.orientation === "vertical";
 		const drag = { pointerId: event.pointerId, origin: vertical ? event.clientX : event.clientY, start: divider.size };
 		const controller = new AbortController();
@@ -94,6 +95,7 @@ export class DividerLayer {
 		};
 		const stop = (upEvent) => {
 			if (upEvent.pointerId !== drag.pointerId) return;
+			divider.element.classList.remove("is-dragging");
 			controller.abort();
 		};
 		divider.handle.addEventListener("pointermove", move, { signal: controller.signal });

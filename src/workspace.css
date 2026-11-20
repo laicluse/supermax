@@ -238,7 +238,7 @@
 @media (prefers-reduced-motion: no-preference) { .supermax-divider-handle::before { transition: background var(--supermax-time-handle); } }
 .supermax-divider.is-vertical .supermax-divider-handle::before { left: 3px; top: 0; bottom: 0; width: 2px; }
 .supermax-divider.is-horizontal .supermax-divider-handle::before { top: 3px; left: 0; right: 0; height: 2px; }
-.supermax-divider:hover .supermax-divider-handle::before, .supermax-divider.is-sized .supermax-divider-handle::before { background: var(--supermax-accent); }
+.supermax-divider:hover .supermax-divider-handle::before, .supermax-divider.is-dragging .supermax-divider-handle::before { background: var(--supermax-accent); }
 .supermax-divider-reset {
 	position: absolute;
 	border-radius: var(--supermax-radius);
