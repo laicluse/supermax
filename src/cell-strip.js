@@ -277,7 +277,10 @@ export class CellStrip {
 			const room = (record) => record.currentWidth + record.currentMargin;
 			const from = partners.has(entry.id) ? room(previous.get(partners.get(entry.id).id)) : old && !old.overlay ? room(old) : 0;
 			const to = entry.displayWidth;
-			if (Math.abs(from - to) < STILL) continue;
+			if (Math.abs(from - to) < STILL) {
+				if (entry.card && entry.visible && !entry.departing && to > 0) this.rest(entry);
+				continue;
+			}
 			moves.push({ distance: Math.abs(from - to), run: () => {
 				const delay = timing(entry.departing ? gone(entry) : start);
 				const box = this.boxOf(entry);
@@ -288,7 +291,8 @@ export class CellStrip {
 					const neighbourOpens = arriving.includes(next[next.indexOf(entry) + 1]);
 					const surviving = entry.visible && !entry.folded && !entry.departing && !neighbourOpens;
 					// allow-comment: a split's rows lay out from its left edge and move on their own timeline, so its room grows and shrinks at the right; sliding the split under a fixed right edge would bare the canvas beside the rows.
-					const anchoredLeft = revealed || entry.still || ((to > from || surviving) && old && !old.overlay && Math.abs(left - old.currentRect) + STILL < Math.abs(left + to - old.currentRect - from));
+					const shift = old ? Math.abs(left - old.currentRect) : 0;
+					const anchoredLeft = revealed || entry.still || ((to > from || surviving) && old && !old.overlay && (shift < STILL || shift + STILL < Math.abs(left + to - old.currentRect - from)));
 					if (anchoredLeft || entry.follows) this.geometry.push(animateGeometry(box, [{ width: `${from}px`, marginRight: "0px" }, { width: `${to}px`, marginRight: "0px" }], delay));
 					else this.geometry.push(animateGeometry(box, [{ marginRight: `${from - card}px` }, { marginRight: `${to - card}px` }], delay));
 					if (entry.follows) this.geometry.push(animateGeometry(entry.element, [{ width: `${from}px` }, { width: `${to}px` }], delay));
@@ -677,6 +681,15 @@ export class CellStrip {
 		return this.finished;
 	}
 
+	// allow-comment: a card wider than its room lies under the next room, so a room that moves no further takes its final size at once.
+	rest(entry) {
+		const box = this.boxOf(entry);
+		box.style.width = `${entry.displayWidth}px`;
+		entry.element.style.width = `${entry.displayWidth}px`;
+		entry.element.style.removeProperty("margin-left");
+		box.style.removeProperty("margin-right");
+	}
+
 	settle() {
 		this.cancelGeometry();
 		for (const entry of [...this.entries]) {
@@ -688,13 +701,8 @@ export class CellStrip {
 			else if (!entry.departing) {
 				this.clearFoldPaper(entry);
 				entry.element.style.visibility = entry.visible ? "" : "hidden";
-				const box = this.boxOf(entry);
-				if (entry.card) {
-					box.style.width = `${entry.displayWidth}px`;
-					entry.element.style.width = `${entry.displayWidth}px`;
-					entry.element.style.removeProperty("margin-left");
-				}
-				box.style.removeProperty("margin-right");
+				if (entry.card) this.rest(entry);
+				else this.boxOf(entry).style.removeProperty("margin-right");
 			}
 		}
 		this.placeGutters();

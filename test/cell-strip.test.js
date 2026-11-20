@@ -257,6 +257,40 @@ try {
 	assert.equal(veiled.replacing.leaving.duration, TIMING.veilFall, "the replaced content falls in the short exit");
 	assert.ok(veiled.replacing.arriving.delay >= TIMING.veilFall && veiled.replacing.arriving.delay < TIMING.veilFall + TIMING.veilLag, `the new content lifts once the old has gone, without the opening lag: ${veiled.replacing.arriving.delay}`);
 	assert.deepEqual([veiled.closing.connected, veiled.closing.room > 0, veiled.closing.afterVeil, veiled.closing.afterRoom], [true, true, true, false], "a closing cell stays until its room has closed, after its veil has fallen");
+	const nudged = await page.evaluate(async () => {
+		const { VEIL_PRESENTATION } = await import("/veil.js");
+		const { CellStrip } = await import("/cell-strip.js");
+		const viewport = document.createElement("div");
+		viewport.style.cssText = "width:1200px;height:300px";
+		document.body.append(viewport);
+		const strip = new CellStrip(viewport, { motion: VEIL_PRESENTATION.motion });
+		const cells = Object.fromEntries(["list", "detail"].map((id) => [id, document.createElement("section")]));
+		const entry = (id, width) => ({ id: id === "list" ? "a/list" : "a/list/detail", element: cells[id], width, visible: true });
+		const seam = () => cells.detail.parentElement.getBoundingClientRect().left - cells.list.parentElement.getBoundingClientRect().right;
+		const seams = [];
+		await strip.update([entry("list", 256), entry("detail", 384)]);
+		for (const [list, detail] of [[255, 500], [256, 384]]) {
+			strip.update([entry("list", list), entry("detail", detail)], { animate: true });
+			document.getAnimations().forEach((animation) => { animation.pause(); animation.currentTime = animation.effect.getTiming().delay + animation.effect.getTiming().duration / 2; });
+			strip.step();
+			seams.push(seam());
+			document.getAnimations().forEach((animation) => animation.finish());
+			await strip.finished;
+			seams.push(seam());
+		}
+		await strip.update([entry("list", 254), entry("detail", 384)], { animate: false });
+		strip.update([entry("list", 256), entry("detail", 500)], { animate: true });
+		document.getAnimations().forEach((animation) => { animation.pause(); animation.currentTime = animation.effect.getTiming().delay; });
+		strip.step();
+		const grown = [seam(), cells.list.getBoundingClientRect().left - viewport.getBoundingClientRect().left];
+		document.getAnimations().forEach((animation) => animation.finish());
+		await strip.finished;
+		strip.destroy();
+		viewport.remove();
+		return { seams, grown };
+	});
+	assert.deepEqual(nudged.seams, [0, 0, 0, 0], "a room that takes a pixel without motion stays joined to its neighbour while that neighbour moves");
+	assert.deepEqual(nudged.grown, [0, 0], "a room whose left edge stays put grows at its right edge, however little it grows");
 	console.log("Cell strip browser scenarios passed");
 } finally {
 	await browser.close();
