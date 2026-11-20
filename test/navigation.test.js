@@ -489,6 +489,8 @@ scenario("sync opens the longest beginning of ifRoom that shows without hiding w
 	assert.equal(chain.sync([...required, "messages:1"]).ok, true);
 	assert.equal(chain.isAuto(chain.get(messages.id)), false, "naming an automatic cell in the required list promotes it, as a click does");
 	assert.deepEqual(chain.groups.map((group) => group.title).slice(-1), ["Messages 1"], "into a Back step of its own");
+	assert.deepEqual(open(), [...required, "messages:1"], "and the optional Attachments it no longer offers closes");
+	assert.equal(chain.sync([...required, "messages:1"], { ifRoom: ["attachments:1"] }).ok, true);
 	assert.equal(chain.sync([...required, "messages:1"], { ifRoom: ["attachments:1"] }).noop, true, "and a sync that finds everything in place changes nothing");
 });
 
@@ -517,6 +519,36 @@ scenario("a nested list in ifRoom opens whole or not at all, so a conversation n
 	assert.equal(chain.sync(["inbox", "list"], { ifRoom: [["metadata:1", "messages:1"]] }).ok, true);
 	assert.deepEqual(open(), ["inbox", "list", "metadata:1", "messages:1"], "with room for both, the pair opens together");
 	assert.deepEqual(chain.sync(["inbox", "list"], { ifRoom: [["metadata:1", "nowhere"]] }), { ok: false, reason: "unknown-destination", destination: "nowhere" }, "an unknown destination inside a group refuses the whole sync");
+});
+
+scenario("a sync closes the optional cells it no longer offers, and keeps the ones it still offers", () => {
+	const chain = new Navigator({
+		destinations: {
+			elsewhere,
+			inbox: { title: "Inbox", min: 200, max: 300 },
+			list: { title: "List", min: 200, max: "*", preferred: 300 },
+			"metadata:1": { title: "Metadata 1", min: 200, max: 300 },
+			"messages:1": { title: "Messages 1", min: 200, max: 300 },
+			"metadata:2": { title: "Metadata 2", min: 200, max: 300 },
+		},
+		root: "inbox",
+		minViewportHeight,
+		chrome,
+	});
+	const open = () => {
+		const ids = [];
+		for (let current = chain.root; current; current = chain.child(current)) ids.push(current.destination);
+		return ids;
+	};
+	chain.resize({ width: 1200, height: 500 });
+	chain.sync(["inbox", "list"], { ifRoom: [["metadata:1", "messages:1"]] });
+	assert.deepEqual(open(), ["inbox", "list", "metadata:1", "messages:1"]);
+	assert.equal(chain.sync(["inbox", "list"], { ifRoom: [["metadata:1", "messages:1"]] }).noop, true, "offering the same cells again changes nothing");
+	assert.equal(chain.sync(["inbox", "list"], { ifRoom: [] }).ok, true);
+	assert.deepEqual(open(), ["inbox", "list"], "a sync that no longer offers them closes them");
+	chain.sync(["inbox", "list"], { ifRoom: [["metadata:1", "messages:1"]] });
+	chain.sync(["inbox", "list"], { ifRoom: ["metadata:2"] });
+	assert.deepEqual(open(), ["inbox", "list", "metadata:2"], "and one that offers other cells replaces them");
 });
 
 scenario("a title can change after a cell opened, in its occurrence, its group and where the application is, without a new declaration", () => {

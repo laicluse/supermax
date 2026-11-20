@@ -291,6 +291,18 @@ export class Navigator {
 			last = result.occurrence;
 			changed = true;
 		}
+		const offered = ifRoom.flat();
+		let kept = last;
+		for (const id of offered) {
+			const next = this.child(kept);
+			if (!next || next.destination !== id) break;
+			kept = next;
+		}
+		const stale = this.child(kept);
+		if (stale && stale.optional && this.isAuto(stale)) {
+			this.closeSubtree(stale);
+			changed = true;
+		}
 		if (changed) this.bringIntoView(last.id);
 		const optional = this.openIfRoom(last, ifRoom);
 		if (!changed && optional.length === 0) return { ok: true, noop: true, occurrence: last };
@@ -319,6 +331,7 @@ export class Navigator {
 				if (isSplit(this.definitionOf(id)) && !validateSplit(this, id, start).ok) { refused = true; break; }
 				const group = this.groups.find((candidate) => candidate.id === start.group) ?? null;
 				const child = this.createOccurrence(id, start, 0, group);
+				child.optional = true;
 				if (!group) this.createGroup(child);
 				added.push(child.id);
 				start = child;
