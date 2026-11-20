@@ -111,7 +111,7 @@ export function destinations() {
 		result[key.album] = {
 			title: album.title,
 			...widths.album,
-			rows: album.rows.map((row) => ({ destination: key.row(row.key), minHeight: row.minHeight, maxHeight: row.maxHeight })),
+			rows: album.rows.map(({ key: rowKey, title, ...bounds }) => ({ destination: key.row(rowKey), ...bounds })),
 			data: { kind: "album", album },
 		};
 		for (const row of album.rows) {

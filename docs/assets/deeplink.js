@@ -16,7 +16,12 @@ export function decodeLog(hash) {
 		const action = { type: "open", destination: match[1], from: match[2] };
 		if (match[3]) {
 			const hint = Object.fromEntries(new URLSearchParams(match[3]));
-			for (const key of ["min", "max", "preferred"]) if (key in hint) hint[key] = Number(hint[key]);
+			for (const key of ["min", "max", "preferred"]) {
+				if (!(key in hint)) continue;
+				const value = Number(hint[key]);
+				if (Number.isFinite(value) && value > 0) hint[key] = value;
+				else delete hint[key];
+			}
 			action.hint = hint;
 		}
 		return action;

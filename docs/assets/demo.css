@@ -49,7 +49,7 @@ body {
 	align-items: start;
 }
 
-.controls { display: flex; flex-direction: column; gap: 20px; position: sticky; top: 24px; }
+.controls { display: flex; flex-direction: column; gap: 20px; position: sticky; top: 24px; max-height: calc(100vh - 48px); overflow: auto; }
 .control-group { display: flex; flex-direction: column; gap: 8px; }
 .label { font-size: 12px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); font-weight: 600; }
 .scenario-list, .size-presets { display: flex; flex-direction: column; gap: 6px; }
@@ -219,7 +219,8 @@ body {
 .photo-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: flex-start; }
 .picture {
 	aspect-ratio: 3 / 1;
-	max-height: 84px;
+	max-height: 64px;
+	flex: 0 1 auto;
 	border-radius: 8px;
 	display: flex;
 	align-items: flex-end;

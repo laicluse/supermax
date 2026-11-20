@@ -39,6 +39,13 @@ export class Workspace extends EventTarget {
 		this.buildChrome();
 		this.element.classList.add(`supermax-presentation-${this.presentation.name}`);
 		this.element.addEventListener("focusin", this.onFocusIn);
+		this.onKeydown = (event) => {
+			if (event.key === "ArrowLeft" && event.altKey && !event.ctrlKey && !event.metaKey) {
+				event.preventDefault();
+				this.requestBack();
+			}
+		};
+		this.element.addEventListener("keydown", this.onKeydown);
 		this.observer = new this.document.defaultView.ResizeObserver(() => this.measure());
 		this.observer.observe(element);
 		this.measure();
@@ -108,8 +115,9 @@ export class Workspace extends EventTarget {
 
 	setPresentation(presentation) {
 		const next = normalizePresentation(presentation);
-		if (next === this.presentation) return;
-		const focused = this.document.activeElement?.closest?.(".supermax-cell")?.dataset.occurrence ?? null;
+		if (next.name === this.presentation.name && next.createStrip === this.presentation.createStrip) return;
+		const activeElement = this.document.activeElement;
+		const focused = activeElement?.closest?.(".supermax-cell")?.dataset.occurrence ?? null;
 		this.closePeek();
 		this.element.classList.remove(`supermax-presentation-${this.presentation.name}`);
 		this.presentation = next;
@@ -124,7 +132,8 @@ export class Workspace extends EventTarget {
 		for (const divider of this.dividers.values()) divider.element.remove();
 		this.dividers.clear();
 		if (this.rendered) this.render({ animate: false });
-		if (focused) this.focusCell(focused);
+		if (activeElement?.isConnected && this.element.contains(activeElement)) activeElement.focus({ preventScroll: true });
+		else if (focused) this.focusCell(focused);
 		this.dispatchEvent(new CustomEvent("presentation", { detail: { name: next.name } }));
 	}
 
@@ -168,7 +177,7 @@ export class Workspace extends EventTarget {
 		if (notice.scope !== "cell" || !notice.source || this.modal) return this.noticeRegion;
 		const entry = this.cells.get(notice.source);
 		const cell = this.findCell(notice.source);
-		if (!entry || !cell?.visible || cell.compact || this.inCollapsedRow(notice.source)) return this.noticeRegion;
+		if (!entry || !cell?.full) return this.noticeRegion;
 		let container = entry.element.querySelector(":scope > .supermax-cell-notices");
 		if (!container) {
 			container = this.create("div", "supermax-cell-notices");
@@ -182,7 +191,7 @@ export class Workspace extends EventTarget {
 		const sourceOccurrence = notice.source ? this.navigator.get(notice.source) : null;
 		const named = host === this.noticeRegion && notice.source;
 		const sourceCell = sourceOccurrence ? this.findCell(notice.source) : null;
-		const reachable = !!sourceOccurrence && !(sourceCell?.visible && !sourceCell.compact && !this.inCollapsedRow(notice.source));
+		const reachable = !!sourceOccurrence && !sourceCell?.full;
 		if (notice.element && notice.host === host && notice.named === named && notice.sourceOpen === !!sourceOccurrence && notice.reachable === reachable) return;
 		const previous = notice.element;
 		const element = this.create("div", `supermax-notice is-${notice.kind}`);
@@ -200,7 +209,7 @@ export class Workspace extends EventTarget {
 		if (named && reachable) {
 			const go = this.create("button", "supermax-notice-go", `Show ${sourceOccurrence.title}`);
 			go.type = "button";
-			go.addEventListener("click", () => { this.goTo(notice.source); this.dismiss(notice.id, "acted"); });
+			go.addEventListener("click", () => { if (this.goTo(notice.source)) this.dismiss(notice.id, "acted"); });
 			controls.append(go);
 		}
 		if (notice.action) {
@@ -235,7 +244,36 @@ export class Workspace extends EventTarget {
 			previous.remove();
 			if (container && container !== this.noticeRegion && container.childElementCount === 0) container.remove();
 			if (hadFocus) close.focus({ preventScroll: true });
+			else this.resumeNotice(notice);
 		}
+	}
+
+	dismissAll(state = "dismissed") {
+		for (const id of [...this.notices.keys()]) this.dismiss(id, state);
+	}
+
+	reload(predicate = () => true) {
+		for (const [occurrenceId, entry] of this.cells) {
+			const occurrence = this.navigator.get(occurrenceId);
+			if (!occurrence || entry.provisional) continue;
+			const definition = this.navigator.definitionOf(occurrence.destination);
+			if (isSplit(definition) || !predicate(occurrence, definition)) continue;
+			this.mountContent(entry, occurrence);
+		}
+		this.modal?.retry();
+	}
+
+	failDefinition(id, error, retry = null) {
+		let shown = 0;
+		for (const [occurrenceId, entry] of this.cells) {
+			const occurrence = this.navigator.get(occurrenceId);
+			if (occurrence?.destination !== id || !entry.provisional) continue;
+			entry.retry = () => { this.showLoading(entry, occurrence.title); retry?.(); };
+			this.showError(entry, occurrence.title, error);
+			shown += 1;
+		}
+		this.navigator.abandon(id);
+		return shown;
 	}
 
 	goTo(occurrenceId) {
@@ -250,10 +288,11 @@ export class Workspace extends EventTarget {
 		const cell = chain?.cells.find((candidate) => candidate.occurrence === occurrenceId);
 		if (cell && !cell.visible) {
 			const index = chain.cells.indexOf(cell);
-			const firstVisible = chain.cells.findIndex((candidate) => candidate.visible);
-			this.reveal(chainRoot.id, index - firstVisible);
+			const wanted = chain.cells.length - 1 - index;
+			this.reveal(chainRoot.id, wanted - chain.revealOffset);
 		}
 		this.focusCell(occurrenceId);
+		return this.findCell(occurrenceId)?.inView ?? false;
 	}
 
 	holdNotice(notice, key, held) {
@@ -286,12 +325,11 @@ export class Workspace extends EventTarget {
 		const element = this.create("div", "supermax-modal-layer");
 		const dialog = this.create("section", "supermax-modal");
 		dialog.setAttribute("role", "dialog");
-		dialog.setAttribute("aria-modal", "true");
 		dialog.tabIndex = -1;
 		const header = this.create("header", "supermax-modal-header");
 		const titles = this.create("div", "supermax-modal-titles");
 		const title = this.create("strong", "supermax-modal-title", definition.title);
-		title.id = `supermax-modal-title-${Date.now().toString(36)}`;
+		title.id = `supermax-modal-title-${(this.modalSerial = (this.modalSerial ?? 0) + 1)}`;
 		dialog.setAttribute("aria-labelledby", title.id);
 		const context = this.create("span", "supermax-modal-context", source ? `From ${source.title}` : "");
 		titles.append(title, context);
@@ -308,8 +346,8 @@ export class Workspace extends EventTarget {
 		this.element.addEventListener("keydown", this.onModalKeydown, true);
 		const returnFocus = this.document.activeElement;
 		this.modal = { element, dialog, body, title: definition.title, source: source?.id ?? null, returnFocus, handle: {}, generation: 0, id: null, retry: null };
-		this.modal.retry = () => this.mountInto(this.modal, definition.title, () => definition.content(this.modal, this), () => this.modal === modalEntry);
 		const modalEntry = this.modal;
+		modalEntry.retry = () => this.mountInto(modalEntry, definition.title, () => definition.content(modalEntry, this), () => this.modal === modalEntry);
 		this.body.inert = true;
 		this.renderNotices();
 		this.element.append(element);
@@ -343,7 +381,7 @@ export class Workspace extends EventTarget {
 		dialog.style.removeProperty("top");
 		dialog.classList.remove("is-anchored");
 		const sourceEntry = this.modal.source ? this.cells.get(this.modal.source) : null;
-		const visible = sourceEntry && this.findCell(this.modal.source)?.visible && !this.inCollapsedRow(this.modal.source) && !sourceEntry.element.classList.contains("is-compact");
+		const visible = sourceEntry && this.findCell(this.modal.source)?.full;
 		if (!visible) return;
 		const host = this.modal.element.getBoundingClientRect();
 		const cell = sourceEntry.element.getBoundingClientRect();
@@ -378,11 +416,11 @@ export class Workspace extends EventTarget {
 		}
 		if (event.key !== "Tab" || !(inDialog || inNotices)) return;
 		const items = [...this.focusables(this.modal.dialog), ...this.focusables(this.noticeRegion)];
-		if (items.length === 0) { event.preventDefault(); this.modal.dialog.focus(); return; }
+		if (items.length === 0) { event.preventDefault(); this.modal.dialog.focus({ preventScroll: true }); return; }
 		const index = items.indexOf(this.document.activeElement);
 		const next = event.shiftKey ? (index <= 0 ? items.length - 1 : index - 1) : (index === items.length - 1 || index === -1 ? 0 : index + 1);
 		event.preventDefault();
-		items[next].focus();
+		items[next].focus({ preventScroll: true });
 	}
 
 	closeModal(reason = "close") {
@@ -420,8 +458,7 @@ export class Workspace extends EventTarget {
 	collapsedRowFor(occurrenceId) {
 		let current = this.navigator.get(occurrenceId);
 		while (current) {
-			const row = this.rows.get(current.id);
-			if (row?.element.classList.contains("is-collapsed")) return row.tab ?? row.element.querySelector("button");
+			if (this.findRow(current.id)?.collapsed) return this.rows.get(current.id)?.tab ?? null;
 			current = current.parent ? this.navigator.get(current.parent) : null;
 		}
 		return null;
@@ -447,17 +484,25 @@ export class Workspace extends EventTarget {
 		const entry = this.cells.get(occurrenceId);
 		const cell = this.findCell(occurrenceId);
 		if (!entry || !cell?.compact) return;
-		const definition = this.navigator.destination(this.navigator.get(occurrenceId).destination);
+		const definition = this.navigator.definitionOf(this.navigator.get(occurrenceId).destination);
 		const overlay = this.create("div", "supermax-peek");
 		overlay.setAttribute("role", "dialog");
-		overlay.setAttribute("aria-label", `${entry.header.firstChild.textContent}, peek`);
+		const occurrence = this.navigator.get(occurrenceId);
+		overlay.setAttribute("aria-label", `${occurrence.title}, peek`);
 		const header = this.create("header", "supermax-peek-title");
-		header.append(this.document.createTextNode(entry.header.firstChild.textContent));
+		header.append(this.document.createTextNode(occurrence.title));
 		const close = this.create("button", "supermax-peek-close");
 		close.type = "button";
 		close.setAttribute("aria-label", "Close peek");
 		close.textContent = "×";
 		close.addEventListener("click", () => { this.closePeek(); this.focusRail(entry); });
+		if (this.navigator.collapsed.has(occurrenceId)) {
+			const expand = this.create("button", "supermax-peek-expand", "Expand");
+			expand.type = "button";
+			expand.setAttribute("aria-label", `Expand ${occurrence.title}`);
+			expand.addEventListener("click", () => { this.closePeek(); this.collapse(occurrenceId, false); this.focusCell(occurrenceId); });
+			header.append(expand);
+		}
 		header.append(close);
 		overlay.append(header, entry.body);
 		const host = this.element.getBoundingClientRect();
@@ -481,7 +526,7 @@ export class Workspace extends EventTarget {
 			this.closePeek();
 		});
 		this.element.append(overlay);
-		this.peek = { occurrence: occurrenceId, overlay, entry, openedAt: Date.now() };
+		this.peek = { occurrence: occurrenceId, overlay, entry };
 		entry.element.classList.add("is-peeked");
 		entry.rail.setAttribute("aria-expanded", "true");
 		this.dispatchEvent(new CustomEvent("peek", { detail: { occurrence: occurrenceId, open: true } }));
@@ -501,7 +546,16 @@ export class Workspace extends EventTarget {
 
 	schedulePeekClose() {
 		this.cancelPeekTimer();
-		this.peekTimer = this.document.defaultView.setTimeout(() => this.closePeek(), 200);
+		this.peekTimer = this.document.defaultView.setTimeout(() => {
+			if (this.peek && this.peek.overlay.contains(this.document.activeElement)) return;
+			this.closePeek();
+		}, 200);
+	}
+
+	focusPeek() {
+		if (!this.peek) return;
+		const target = this.focusables(this.peek.overlay).find((candidate) => !candidate.classList.contains("supermax-peek-close")) ?? this.peek.overlay.querySelector(".supermax-peek-close");
+		target?.focus({ preventScroll: true });
 	}
 
 	cancelPeekTimer() {
@@ -517,12 +571,11 @@ export class Workspace extends EventTarget {
 
 	define(id, definition) {
 		const result = this.navigator.define(id, definition);
-		const completed = this.navigator.destination(id);
+		const completed = this.navigator.definitionOf(id);
 		for (const [occurrenceId, entry] of this.cells) {
 			const occurrence = this.navigator.get(occurrenceId);
 			if (occurrence?.destination !== id) continue;
-			if (entry.header) entry.header.firstChild.textContent = occurrence.title;
-			entry.element.setAttribute("aria-label", occurrence.title);
+			this.setTitle(entry, occurrence.title);
 			if (!entry.provisional) continue;
 			if (isSplit(completed)) {
 				this.becomeSplit(entry);
@@ -536,6 +589,16 @@ export class Workspace extends EventTarget {
 		}
 		this.render({ animate: true });
 		return result;
+	}
+
+	setTitle(entry, title) {
+		if (entry.titleNode) entry.titleNode.textContent = title;
+		entry.element.setAttribute("aria-label", title);
+		entry.collapseButton?.setAttribute("aria-label", `Collapse ${title}`);
+		if (entry.rail) {
+			entry.rail.setAttribute("aria-label", `Peek ${title}`);
+			entry.rail.firstChild.textContent = title;
+		}
 	}
 
 	becomeSplit(entry) {
@@ -554,7 +617,7 @@ export class Workspace extends EventTarget {
 	}
 
 	mountContent(entry, occurrence) {
-		const definition = this.navigator.destination(occurrence.destination);
+		const definition = this.navigator.definitionOf(occurrence.destination);
 		entry.id = occurrence.id;
 		entry.provisional = !!definition.provisional;
 		entry.element.classList.toggle("is-provisional", entry.provisional);
@@ -581,7 +644,7 @@ export class Workspace extends EventTarget {
 			this.showError(entry, title, error);
 			return;
 		}
-		const pending = typeof outcome?.then === "function" ? outcome : outcome.pending;
+		const pending = typeof outcome?.then === "function" ? outcome : null;
 		if (!pending) {
 			this.settleContent(entry, outcome);
 			return;
@@ -601,7 +664,11 @@ export class Workspace extends EventTarget {
 		entry.element.classList.remove("is-loading", "is-error");
 		entry.body.replaceChildren(...(handle.element ? [handle.element] : []));
 		handle.update?.(entry.id ? this.navigator.get(entry.id) : null, this);
-		if (entry === this.modal) { this.placeModal(); this.focusModal(); }
+		if (entry === this.modal) {
+			this.placeModal();
+			const active = this.document.activeElement;
+			if (!active || active === this.document.body || this.modal.dialog.contains(active)) this.focusModal();
+		}
 		this.dispatchEvent(new CustomEvent("content", { detail: { occurrence: entry.id, state: "loaded" } }));
 	}
 
@@ -675,7 +742,7 @@ export class Workspace extends EventTarget {
 	reveal(chainRootId, delta) {
 		this.navigator.reveal(chainRootId, delta);
 		const before = this.navigator.layout();
-		const chain = this.findChainIn(before.chain, chainRootId);
+		const chain = before.chains.get(chainRootId) ?? null;
 		const visible = chain ? chain.cells.filter((cell) => cell.visible) : [];
 		const target = delta > 0 ? visible[0] : visible[visible.length - 1];
 		if (target) this.navigator.focus(target.occurrence, { resetReveal: false });
@@ -696,13 +763,11 @@ export class Workspace extends EventTarget {
 	visibleCellFor(occurrenceId) {
 		let current = this.navigator.get(occurrenceId);
 		while (current) {
-			if (!this.inCollapsedRow(current.id)) {
-				const cell = this.findCell(current.id);
-				if (cell?.visible) return current.id;
-				const chain = this.findChain(chainRootOf(this.navigator, current).id);
-				const visible = chain ? chain.cells.filter((candidate) => candidate.visible) : [];
-				if (visible.length > 0) return visible[0].occurrence;
-			}
+			const cell = this.findCell(current.id);
+			if (cell?.inView) return current.id;
+			const chain = this.findChain(chainRootOf(this.navigator, current).id);
+			const inView = chain ? chain.cells.filter((candidate) => candidate.inView) : [];
+			if (inView.length > 0) return inView[0].occurrence;
 			current = current.parent ? this.navigator.get(current.parent) : null;
 		}
 		return null;
@@ -710,42 +775,23 @@ export class Workspace extends EventTarget {
 
 	inCollapsedRow(occurrenceId) {
 		let current = this.navigator.get(occurrenceId);
-		while (current && current.parent) {
-			const parent = this.navigator.get(current.parent);
-			if (isSplit(this.navigator.destination(parent.destination)) && this.findRow(current.id)?.collapsed) return true;
-			current = parent;
+		while (current) {
+			if (this.findRow(current.id)?.collapsed) return true;
+			current = current.parent ? this.navigator.get(current.parent) : null;
 		}
 		return false;
 	}
 
-	*walk(chain = this.layout.chain) {
-		yield { kind: "chain", chain };
-		for (const cell of chain.cells) {
-			yield { kind: "cell", cell };
-			for (const row of cell.rows?.rows ?? []) {
-				yield { kind: "row", row };
-				if (row.chain) yield* this.walk(row.chain);
-			}
-		}
-	}
-
 	findChain(chainRootId) {
-		return this.findChainIn(this.layout.chain, chainRootId);
-	}
-
-	findChainIn(root, chainRootId) {
-		for (const node of this.walk(root)) if (node.kind === "chain" && node.chain.root === chainRootId) return node.chain;
-		return null;
+		return this.layout?.chains.get(chainRootId) ?? null;
 	}
 
 	findCell(occurrenceId) {
-		for (const node of this.walk()) if (node.kind === "cell" && node.cell.occurrence === occurrenceId) return node.cell;
-		return null;
+		return this.layout?.cells.get(occurrenceId) ?? null;
 	}
 
 	findRow(rowRootId) {
-		for (const node of this.walk()) if (node.kind === "row" && node.row.occurrence === rowRootId) return node.row;
-		return null;
+		return this.layout?.rows.get(rowRootId) ?? null;
 	}
 
 	followFocus(target) {
@@ -793,8 +839,14 @@ export class Workspace extends EventTarget {
 		this.backButton.setAttribute("aria-label", next ? `Back closes ${next.title}` : "Back: nothing to close");
 		const info = this.navigator.focusInfo();
 		this.titleText.textContent = info.title;
-		this.titleContext.textContent = info.context.join(" › ");
-		this.titleContext.hidden = info.context.length === 0;
+		this.titleContext.replaceChildren(...info.trail.flatMap((step, index) => {
+			const crumb = this.create("button", "supermax-crumb", step.title);
+			crumb.type = "button";
+			crumb.setAttribute("aria-label", `Go to ${step.title}`);
+			crumb.addEventListener("click", () => this.goTo(step.occurrence));
+			return index === 0 ? [crumb] : [this.create("span", "supermax-crumb-separator", "›"), crumb];
+		}));
+		this.titleContext.hidden = info.trail.length === 0;
 	}
 
 	renderChain(chain, host, animating) {
@@ -821,8 +873,8 @@ export class Workspace extends EventTarget {
 			if (cell.rows) this.renderRows(cell, animating);
 		}
 		const visible = chain.cells.filter((cell) => cell.visible);
-		this.placeReveal(entry.left, chain.hiddenLeft, visible[0], "prepend");
-		this.placeReveal(entry.right, chain.hiddenRight, visible[visible.length - 1], "append");
+		this.placeReveal(entry.left, chain.hiddenLeft, visible[0], "prepend", entry.viewport);
+		this.placeReveal(entry.right, chain.hiddenRight, visible[visible.length - 1], "append", entry.viewport);
 		this.renderDividers(entry.viewport, chain, visible);
 		return entry.viewport;
 	}
@@ -898,7 +950,7 @@ export class Workspace extends EventTarget {
 		reset.textContent = "⟲";
 		reset.hidden = true;
 		const axis = orientation === "vertical" ? "width" : "height";
-		reset.addEventListener("click", () => { this.setSize(occurrenceId, null, axis); handle.focus(); });
+		reset.addEventListener("click", () => { this.setSize(occurrenceId, null, axis); handle.focus({ preventScroll: true }); });
 		element.append(handle, reset);
 		host.append(element);
 		divider = { element, handle, reset, host, occurrenceId, orientation, axis, size: 0, min: 0, max: 0 };
@@ -922,21 +974,21 @@ export class Workspace extends EventTarget {
 		event.preventDefault();
 		divider.handle.setPointerCapture(event.pointerId);
 		this.drag = { divider, pointerId: event.pointerId, origin: divider.orientation === "vertical" ? event.clientX : event.clientY, start: divider.size };
+		const controller = new AbortController();
+		const drag = this.drag;
 		const move = (moveEvent) => {
-			if (!this.drag || moveEvent.pointerId !== this.drag.pointerId) return;
-			const delta = (divider.orientation === "vertical" ? moveEvent.clientX : moveEvent.clientY) - this.drag.origin;
-			this.setSize(divider.occurrenceId, Math.min(divider.max, Math.max(divider.min, Math.round(this.drag.start + delta))), divider.axis);
+			if (moveEvent.pointerId !== drag.pointerId) return;
+			const delta = (divider.orientation === "vertical" ? moveEvent.clientX : moveEvent.clientY) - drag.origin;
+			this.setSize(divider.occurrenceId, Math.min(divider.max, Math.max(divider.min, Math.round(drag.start + delta))), divider.axis);
 		};
 		const stop = (upEvent) => {
-			if (upEvent.pointerId !== this.drag?.pointerId) return;
-			divider.handle.removeEventListener("pointermove", move);
-			divider.handle.removeEventListener("pointerup", stop);
-			divider.handle.removeEventListener("pointercancel", stop);
-			this.drag = null;
+			if (upEvent.pointerId !== drag.pointerId) return;
+			controller.abort();
+			if (this.drag === drag) this.drag = null;
 		};
-		divider.handle.addEventListener("pointermove", move);
-		divider.handle.addEventListener("pointerup", stop);
-		divider.handle.addEventListener("pointercancel", stop);
+		divider.handle.addEventListener("pointermove", move, { signal: controller.signal });
+		divider.handle.addEventListener("pointerup", stop, { signal: controller.signal });
+		divider.handle.addEventListener("pointercancel", stop, { signal: controller.signal });
 	}
 
 	keyResize(divider, event) {
@@ -955,7 +1007,7 @@ export class Workspace extends EventTarget {
 	applyCompact(cell) {
 		const entry = this.cells.get(cell.occurrence);
 		if (!entry.rail) return;
-		const definition = this.navigator.destination(this.navigator.get(cell.occurrence).destination);
+		const definition = this.navigator.definitionOf(this.navigator.get(cell.occurrence).destination);
 		if (this.peek?.occurrence === cell.occurrence && !cell.compact) this.closePeek();
 		if (cell.compact && !entry.element.classList.contains("is-compact")) this.protectFocus([entry.body], cell.occurrence);
 		entry.element.classList.toggle("is-compact", cell.compact);
@@ -979,13 +1031,15 @@ export class Workspace extends EventTarget {
 		return button;
 	}
 
-	placeReveal(button, title, cell, position) {
+	placeReveal(button, title, cell, position, viewport) {
 		button.hidden = !title;
 		if (!title) return;
 		button.textContent = title;
 		button.setAttribute("aria-label", `Show ${title}`);
-		const header = cell ? this.cells.get(cell.occurrence)?.header : null;
-		const host = header ?? this.navbarLeft;
+		const header = cell && !cell.compact ? this.cells.get(cell.occurrence)?.header : null;
+		const floating = !!cell && cell.compact;
+		const host = header ?? (floating ? viewport : this.navbarLeft);
+		button.classList.toggle("is-floating", floating);
 		if (button.parentElement !== host) host[header ? position : "append"](button);
 	}
 
@@ -993,23 +1047,25 @@ export class Workspace extends EventTarget {
 		let entry = this.cells.get(occurrenceId);
 		if (entry) return entry.element;
 		const occurrence = this.navigator.get(occurrenceId);
-		const definition = this.navigator.destination(occurrence.destination);
+		const definition = this.navigator.definitionOf(occurrence.destination);
 		const element = this.create("section", "supermax-cell");
 		element.dataset.occurrence = occurrenceId;
 		element.tabIndex = -1;
 		element.setAttribute("aria-label", occurrence.title);
 		const body = this.create("div", "supermax-cell-body");
 		let header = null;
+		let titleNode = null;
 		if (isSplit(definition)) {
 			element.classList.add("is-split");
 			body.append(this.create("div", "supermax-rows"));
 		} else {
 			header = this.create("header", "supermax-cell-title");
-			header.textContent = occurrence.title;
+			titleNode = this.create("span", "supermax-cell-title-text", occurrence.title);
+			header.append(titleNode);
 			element.append(header);
 		}
 		element.append(body);
-		entry = { element, body, header, handle: {}, parent: occurrence.parent, rail: null, collapseButton: null, generation: 0, provisional: false, id: occurrenceId, retry: null };
+		entry = { element, body, header, titleNode, handle: {}, parent: occurrence.parent, rail: null, collapseButton: null, generation: 0, provisional: false, id: occurrenceId, retry: null };
 		if (!isSplit(definition) && definition.compact) this.mountCompact(entry, occurrence, definition);
 		this.cells.set(occurrenceId, entry);
 		if (!isSplit(definition)) this.mountContent(entry, occurrence);
@@ -1032,10 +1088,16 @@ export class Workspace extends EventTarget {
 		rail.setAttribute("aria-haspopup", "dialog");
 		rail.setAttribute("aria-expanded", "false");
 		rail.append(this.document.createTextNode(occurrence.title));
-		rail.addEventListener("click", () => {
-			const settled = this.peek?.occurrence === occurrence.id && Date.now() - this.peek.openedAt > 250;
-			if (settled) this.closePeek();
-			else this.openPeek(occurrence.id);
+		rail.addEventListener("click", (event) => {
+			const open = this.peek?.occurrence === occurrence.id;
+			const keyboard = event.detail === 0;
+			if (keyboard) {
+				if (!open) this.openPeek(occurrence.id);
+				this.focusPeek();
+				return;
+			}
+			if (event.pointerType === "touch" && open) this.closePeek();
+			else if (!open) this.openPeek(occurrence.id);
 		});
 		rail.addEventListener("pointerenter", (event) => {
 			if (event.pointerType === "touch") return;
@@ -1046,6 +1108,12 @@ export class Workspace extends EventTarget {
 		rail.addEventListener("focus", () => { if (!this.programmaticFocus) this.openPeek(occurrence.id); });
 		rail.addEventListener("keydown", (event) => {
 			if (event.key === "Escape") this.closePeek();
+			if (event.key === "ArrowRight" && this.peek?.occurrence === occurrence.id) { event.preventDefault(); this.focusPeek(); }
+		});
+		rail.addEventListener("blur", (event) => {
+			if (this.peek?.occurrence !== occurrence.id) return;
+			if (event.relatedTarget && this.peek.overlay.contains(event.relatedTarget)) return;
+			this.closePeek();
 		});
 		compact.append(rail);
 		const extra = definition.compact.content?.(occurrence, this);
@@ -1153,9 +1221,16 @@ export class Workspace extends EventTarget {
 
 	destroy() {
 		this.closePeek();
-		if (this.modal) { this.modal.handle.dispose?.(); this.modal.element.remove(); this.modal = null; this.element.removeEventListener("keydown", this.onModalKeydown, true); }
+		if (this.modal) this.closeModal("destroyed");
 		for (const notice of this.notices.values()) this.pauseNotice(notice);
 		this.notices.clear();
+		this.noticeIds.clear();
+		this.dividers.clear();
+		this.drag = null;
+		this.layout = null;
+		this.pendingFocus = null;
+		this.element.removeEventListener("keydown", this.onKeydown);
+		this.element.classList.remove("has-modal", "is-below-minimum");
 		this.observer.disconnect();
 		this.element.removeEventListener("focusin", this.onFocusIn);
 		for (const entry of this.cells.values()) entry.handle.dispose?.();

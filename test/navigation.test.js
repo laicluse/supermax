@@ -275,7 +275,19 @@ scenario("a dragged size is a session preference inside min and max, and rows fo
 	instance.open("item:b", { from: row("list") });
 	instance.setSize(item("list", "b"), 190);
 	instance.back();
-	assert.equal(instance.sizes.has(item("list", "b")), false, "closing drops the size of a closed cell");
+	assert.equal(instance.sizeOf(item("list", "b"), "width"), null, "closing drops the size of a closed cell");
+	assert.throws(() => instance.setSize(item("list", "a"), "abc"), TypeError, "a size that is not a positive number is refused");
+	instance.open("item:a", { from: row("list") });
+	instance.setSize(item("list", "a"), 190, "width");
+	instance.resize({ width: 1000, height: 500 });
+	assert.equal(Math.round(chain().cells[1].width), 190, "while the chain has room for it a session size is exact");
+	instance.resize({ width: 600, height: 500 });
+	const squeezed = chain().cells.find((cell) => cell.occurrence === item("list", "a"));
+	assert.equal(squeezed.visible && !squeezed.compact, true, "when the frame shrinks the sized cell stays in view");
+	assert.ok(squeezed.width < 190 && squeezed.width >= 100, "and gives up width like a preference instead of pushing others out");
+	assert.equal(chain().cells.every((cell) => cell.visible), true, "nothing hides to honour a session size");
+	instance.resize({ width: 1000, height: 500 });
+	instance.setSize(item("list", "a"), null, "width");
 	assert.deepEqual(instance.layout(), instance.layout(), "the layout stays a pure function with sizes applied");
 });
 
@@ -285,7 +297,7 @@ scenario("a hinted or lazy destination opens provisionally and completes when it
 	assert.equal(instance.open("remote:a", { from: item("list", "a") }).reason, "unknown-destination", "without a hint and without lazy mode an unknown id is refused");
 	const hinted = instance.open("remote:a", { from: item("list", "a"), hint: { title: "Remote A", min: 120, max: 240 } });
 	assert.equal(hinted.ok, true);
-	assert.equal(instance.destination("remote:a").provisional, true);
+	assert.equal(instance.definitionOf("remote:a").provisional, true);
 	assert.equal(instance.get(`${item("list", "a")}/remote:a`).title, "Remote A");
 	assert.deepEqual(titles(instance), ["Gallery", "Remote A"]);
 	assert.deepEqual([instance.layout().chain.cells[1].rows.rows[0].chain.cells[2].min, instance.layout().chain.cells[1].rows.rows[0].chain.cells[2].max], [120, 240], "the hint sizes the placeholder cell");
@@ -294,7 +306,7 @@ scenario("a hinted or lazy destination opens provisionally and completes when it
 	const result = instance.define("remote:a", { title: "Remote A!", min: 150, max: 260, defaultChild: "detail:b" });
 	assert.deepEqual(result.completed, [`${item("list", "a")}/remote:a`]);
 	assert.equal(instance.get(`${item("list", "a")}/remote:a`).title, "Remote A!", "the definition updates the open occurrence in place");
-	assert.equal(instance.occurrences.size, [...instance.occurrences.keys()].length, "no second occurrence for the same opening");
+	assert.equal([...instance.occurrences.values()].filter((occurrence) => occurrence.destination === "remote:a").length, 1, "no second occurrence for the same opening");
 	const late = instance.get(`${item("list", "a")}/remote:a/detail:b`);
 	assert.ok(late, "the late default opened");
 	assert.equal(late.group, group, "and joined the group that started the navigation, not the newer one");
@@ -316,12 +328,12 @@ scenario("a hinted or lazy destination opens provisionally and completes when it
 	openGallery(lateSplit);
 	lateSplit.open("remote:s", { from: item("list", "a"), hint: { title: "Remote S", min: 100, max: 200 } });
 	const invalid = lateSplit.define("remote:s", { title: "Remote S", min: 100, max: 200, rows: [{ destination: "detail:b", minHeight: 400, maxHeight: 500 }] });
-	assert.equal(invalid.rejected[0]?.result.reason, "nested-split", "a definition with rows is validated when it completes a cell, here inside a row");
+	assert.deepEqual([invalid.rejected[0]?.result.reason, invalid.rejected[0]?.result.validation.reason], ["invalid-rows", "nested-split"], "a definition with rows is validated when it completes a cell, here inside a row, with the same verdict shape as a refused open");
 	assert.ok(!lateSplit.get(`${item("list", "a")}/remote:s`), "and a refused split closes the cell it was meant to complete");
 	assert.deepEqual(titles(lateSplit), ["Gallery"], "leaving the earlier history intact");
 	lateSplit.open("remote:t", { from: "root", hint: { title: "Remote T", min: 300, max: 600 } });
 	const tooTall = lateSplit.define("remote:t", { title: "Remote T", min: 300, max: 600, rows: [{ destination: "list", minHeight: 400, maxHeight: 500 }] });
-	assert.equal(tooTall.rejected[0]?.result.reason, "invalid-rows", "a split at the root chain is validated against the minimum height");
+	assert.equal(tooTall.rejected[0]?.result.validation.reason, "invalid-rows", "a split at the root chain is validated against the minimum height");
 	assert.ok(!lateSplit.get("root/remote:t"));
 	lateSplit.open("remote:u", { from: "root", hint: { title: "Remote U", min: 300, max: 600 } });
 	const valid = lateSplit.define("remote:u", { title: "Remote U", min: 300, max: 600, rows: [{ destination: "list", minHeight: 100, maxHeight: 300 }, { destination: "tags", minHeight: 100, maxHeight: 300 }] });
@@ -350,12 +362,21 @@ scenario("a hinted or lazy destination opens provisionally and completes when it
 	chosen.define("remote:c", { title: "Remote C", min: 100, max: 200, defaultChild: "detail:c" });
 	assert.equal(chosen.child(chosen.get(`${item("tags", "a")}/remote:c`)).destination, "detail:b", "an explicit selection beats a late default");
 
+	const garbage = model(1000, 500);
+	openGallery(garbage);
+	assert.equal(garbage.open("remote:g", { from: item("list", "a"), hint: { title: "", min: Number.NaN, max: 0, preferred: -5 } }).ok, true, "a hint with unusable numbers still opens");
+	assert.deepEqual([garbage.definitionOf("remote:g").title, garbage.definitionOf("remote:g").min, garbage.definitionOf("remote:g").max, garbage.definitionOf("remote:g").preferred], ["remote:g", 200, 320, undefined], "with the generic cell in place of the garbage");
+	assert.equal(garbage.open("__proto__", { from: item("list", "a"), hint: { title: "Proto" } }).ok, true);
+	assert.equal(garbage.definitionOf("constructor"), null, "a registry entry never comes from the prototype");
+	assert.equal(garbage.open("remote:h", { from: "root/gallery", hint: { title: "Nope" } }).reason, "split-source", "a refused opening registers nothing");
+	assert.equal(garbage.definitionOf("remote:h"), null);
+
 	const lazy = new Navigator({ destinations: { ...destinations }, root: "root", minViewportHeight, chrome, lazy: true });
 	lazy.resize({ width: 1000, height: 500 });
 	lazy.open("gallery", { from: "root" });
 	const generic = lazy.open("remote:d", { from: item("list", "a") });
 	assert.equal(generic.ok, true, "in lazy mode an unknown id opens a generic loading cell");
-	assert.equal(lazy.destination("remote:d").min, 200);
+	assert.equal(lazy.definitionOf("remote:d").min, 200);
 });
 
 scenario("default chains are finite and do not repeat a destination already in the chain", () => {
@@ -370,7 +391,7 @@ scenario("default chains are finite and do not repeat a destination already in t
 scenario("the focus title carries its ancestors as context", () => {
 	const wide = model(1000);
 	openGallery(wide);
-	assert.deepEqual(wide.focusInfo(), { occurrence: GALLERY, title: "Gallery", context: ["Root"] });
+	assert.deepEqual(wide.focusInfo(), { occurrence: GALLERY, title: "Gallery", context: ["Root"], trail: [{ occurrence: "root", title: "Root" }] });
 	wide.open("item:c", { from: row("tags") });
 	assert.deepEqual(wide.focusInfo().context, ["Root", "Gallery", "Tags"]);
 	assert.deepEqual(wide.child(wide.get(row("tags")))?.destination, "item:c");

@@ -2,6 +2,7 @@ import { Navigator, SLIDE_PRESENTATION, Workspace } from "./supermax/index.js";
 import { albums, depthCount, depthId, edits, hintFor, ids, localDestinations, minViewportHeight, paths, remoteKinds } from "./album.js";
 import { decodeLog, encodeLog } from "./deeplink.js";
 import { foldPresentation } from "./presentation-fold.js";
+import { fetchFromCatalog } from "./api.js";
 
 const presentations = { slide: SLIDE_PRESENTATION, fold: foldPresentation };
 
@@ -9,6 +10,13 @@ const coast = paths(albums[0]);
 const open = (destination, from, hint = null) => (hint ? { type: "open", destination, from, hint } : { type: "open", destination, from });
 const depthPath = (n) => ["albums", ...Array.from({ length: n }, (_, index) => depthId(index + 1))].join("/");
 const twentyDeep = Array.from({ length: depthCount }, (_, index) => open(depthId(index + 1), depthPath(index)));
+const longChain = [
+	open("album:coast", "albums"),
+	open("coast:photo:a", coast.row("thumbnails")),
+	open("coast:metadata:a", coast.photo("thumbnails", "a"), hintFor("coast:metadata:a")),
+	open("coast:history:a", coast.metadata("thumbnails", "a"), { title: "History A" }),
+	open("coast:edit:a:2", coast.history("thumbnails", "a"), hintFor("coast:edit:a:2")),
+];
 
 const frames = [
 	{ key: "a", name: "Frame A", width: 960, height: 640 },
@@ -37,8 +45,8 @@ const scenarios = [
 		actions: [open("album:coast", "albums"), open("coast:metadata:a", coast.photo("thumbnails", "a"), hintFor("coast:metadata:a"))],
 	},
 	{
-		label: "Slow metadata, then a failing history",
-		network: { delay: "1500", fail: "" },
+		label: "Slow layout metadata, failing content",
+		network: { delay: "1500", fail: "content" },
 		actions: [open("album:coast", "albums"), open("coast:photo:c", coast.row("people"))],
 	},
 	{
@@ -47,12 +55,12 @@ const scenarios = [
 	},
 	{
 		label: "Long chain: history and one edit",
-		actions: [open("album:coast", "albums"), open("coast:history:a", coast.metadata("thumbnails", "a"), { title: "History A" }), open("coast:edit:a:2", coast.history("thumbnails", "a"), hintFor("coast:edit:a:2"))],
+		actions: longChain,
 	},
 	{
 		label: "Collapse photo and history in that chain",
-		actions: [open("album:coast", "albums"), open("coast:history:a", coast.metadata("thumbnails", "a"), { title: "History A" }), open("coast:edit:a:2", coast.history("thumbnails", "a"), hintFor("coast:edit:a:2"))],
-		local: (frame) => [coast.photo("thumbnails", "a"), coast.history("thumbnails", "a")].forEach((id) => frame.workspace.navigator.collapse(id, true)),
+		actions: longChain,
+		local: (frame) => [coast.photo("thumbnails", "a"), coast.history("thumbnails", "a")].forEach((id) => frame.workspace.collapse(id, true)),
 	},
 	{
 		label: "Preferred sizes: photo wide, metadata narrow",
@@ -111,13 +119,19 @@ function renderAlbumIcons(occurrence, workspace) {
 		button.addEventListener("click", () => workspace.navigate(ids(album).album, { from: occurrence.id }));
 		rail.append(button);
 	}
+	const lab = element("button", "album-icon album-icon-lab", "20");
+	lab.type = "button";
+	lab.setAttribute("aria-label", "Open the twenty cells lab");
+	lab.dataset.destination = depthId(1);
+	lab.addEventListener("click", () => workspace.navigate(depthId(1), { from: occurrence.id }));
+	rail.append(lab);
 	return rail;
 }
 
 function renderContent(occurrence, definition, workspace) {
 	const kind = definition.data?.kind;
 	if (remoteKinds.has(kind)) {
-		return { pending: session.fetchContent(occurrence.destination).then((content) => renderers[kind](occurrence, definition.data, workspace, content)) };
+		return session.fetchContent(occurrence.destination).then((content) => renderers[kind](occurrence, definition.data, workspace, content));
 	}
 	return renderers[kind](occurrence, definition.data, workspace);
 }
@@ -247,7 +261,7 @@ function renderPhoto(occurrence, data, workspace) {
 	const caption = element("textarea", "caption");
 	caption.placeholder = "Caption draft";
 	caption.setAttribute("aria-label", `Caption draft for ${photo.title}`);
-	caption.rows = 2;
+	caption.rows = 1;
 	const link = element("button", "metadata-link", "Metadata");
 	link.type = "button";
 	link.addEventListener("click", () => workspace.navigate(key.metadata(photo), { from: occurrence.id, hint: hintFor(key.metadata(photo)) }));
@@ -256,7 +270,7 @@ function renderPhoto(occurrence, data, workspace) {
 	editCaption.type = "button";
 	editCaption.addEventListener("click", () => workspace.openModal({
 		title: `Caption for ${photo.title}`,
-		content: (modal, host) => ({ pending: session.fetchContent(key.photo(photo)).then((content) => renderCaptionEditor(modal, host, { photo, caption, content })) }),
+		content: (modal, host) => session.fetchContent(key.photo(photo)).then((content) => renderCaptionEditor(modal, host, { photo, caption, content })),
 	}, { from: occurrence.id }));
 	const save = element("button", "metadata-link caption-save", "Save");
 	save.type = "button";
@@ -368,8 +382,10 @@ class Session {
 		this.log = [];
 		this.requests = [];
 		this.inflight = new Map();
+		this.failed = new Set();
 		this.replaying = null;
 		this.serial = 0;
+		this.saveNotices = new Map();
 		this.controls = {
 			delay: document.querySelector("[data-delay]"),
 			fail: document.querySelector("[data-fail]"),
@@ -395,26 +411,23 @@ class Session {
 		return this.inflight.size + (this.replaying ? 1 : 0);
 	}
 
-	apiUrl(kind, id) {
-		const params = new URLSearchParams({ context: this.context });
-		if (Number(this.controls.delay.value) > 0) params.set("delay", this.controls.delay.value);
-		if (this.controls.fail.value) params.set("fail", this.controls.fail.value);
-		return `/api/${kind}/${encodeURIComponent(id)}?${params}`;
+	network() {
+		return { context: this.context, delay: Number(this.controls.delay.value) || 0, fail: this.controls.fail.value };
 	}
 
 	request(kind, id) {
 		const context = this.context;
 		const key = `${kind}|${context}|${id}`;
 		if (this.inflight.has(key)) return this.inflight.get(key);
-		const url = this.apiUrl(kind, id);
-		this.requests.push({ kind, id, context, url });
+		this.requests.push({ kind, id, context });
 		this.controls.requests.textContent = `${this.requests.length} request${this.requests.length === 1 ? "" : "s"}, last: ${kind} ${id}`;
-		const promise = fetch(url)
-			.then(async (response) => {
-				if (!response.ok) throw new Error(`${kind} for ${id} answered ${response.status}`);
-				const payload = await response.json();
-				if (this.context !== context) throw new Error(`${kind} for ${id} arrived for viewer ${context}, now viewing as ${this.context}`);
+		const promise = fetchFromCatalog(kind, id, this.network())
+			.then((payload) => {
+				if (this.context !== context) throw Object.assign(new Error(`This answer was for ${context}; the viewer is now ${this.context}.`), { superseded: true });
 				return payload;
+			}, (error) => {
+				if (this.context !== context) throw Object.assign(error, { superseded: true });
+				throw error;
 			})
 			.finally(() => { if (this.inflight.get(key) === promise) this.inflight.delete(key); });
 		this.inflight.set(key, promise);
@@ -422,13 +435,19 @@ class Session {
 	}
 
 	fetchManifest(id) {
-		if (this.frames.every((frame) => frame.workspace.navigator.destination(id) && !frame.workspace.navigator.destination(id).provisional)) return Promise.resolve(null);
+		if (this.frames.every((frame) => frame.workspace.navigator.definitionOf(id) && !frame.workspace.navigator.definitionOf(id).provisional)) return Promise.resolve(null);
+		this.failed.delete(id);
 		return this.request("manifest", id).then((manifest) => {
 			for (const frame of this.frames) frame.workspace.define(id, manifest);
 			this.completeDefaults();
 			this.record("replace");
 			return manifest;
-		}, () => null);
+		}, (error) => {
+			if (error?.superseded) return null;
+			this.failed.add(id);
+			for (const frame of this.frames) frame.workspace.failDefinition(id, error, () => this.fetchManifest(id));
+			return null;
+		});
 	}
 
 	fetchContent(id) {
@@ -441,12 +460,14 @@ class Session {
 
 	async saveCaption(occurrence, photo, photoId, serial = (this.serial += 1)) {
 		const base = { id: `save:${occurrence.id}:${serial}`, scope: "cell", source: occurrence.id, sourceTitle: photo.title };
+		const previous = this.saveNotices.get(occurrence.id);
+		if (previous) for (const frame of this.frames) frame.workspace.dismiss(previous);
+		this.saveNotices.set(occurrence.id, base.id);
 		try {
-			const response = await fetch(`${this.apiUrl("content", photoId)}&save=${serial}`);
-			if (!response.ok) throw new Error(`answered ${response.status}`);
+			await fetchFromCatalog("content", photoId, this.network());
 			this.notifyAll({ ...base, kind: "success", message: "Caption saved" });
 		} catch (error) {
-			this.notifyAll({ ...base, kind: "error", message: `Saving the caption failed (${error.message})`, action: { label: "Retry", run: () => this.saveCaption(occurrence, photo, photoId) } });
+			this.notifyAll({ ...base, kind: "error", message: `Saving the caption failed. ${error.message}`, action: { label: "Retry", run: () => this.saveCaption(occurrence, photo, photoId) } });
 		}
 	}
 
@@ -463,46 +484,41 @@ class Session {
 		});
 	}
 
-	completeDefaults() {
-		const waits = [];
+	missingDefinitions() {
+		const missing = new Set();
 		for (const frame of this.frames) {
-			const model = frame.workspace.navigator;
-			for (const occurrence of model.occurrences.values()) {
-				const definition = model.destination(occurrence.destination);
-				if (definition?.provisional) waits.push(this.fetchManifest(occurrence.destination));
-				else if (definition?.defaultChild && !model.destination(definition.defaultChild) && !occurrence.children[0]) waits.push(this.fetchManifest(definition.defaultChild));
-			}
+			for (const id of frame.workspace.navigator.missingDefinitions()) if (!this.failed.has(id)) missing.add(id);
 		}
-		return waits;
+		return [...missing];
+	}
+
+	completeDefaults() {
+		return this.missingDefinitions().map((id) => this.fetchManifest(id));
 	}
 
 	async settleDefaults() {
-		for (let round = 0; round < 12; round += 1) {
-			const waits = this.completeDefaults();
-			if (waits.length === 0) return;
-			await Promise.all(waits);
+		let previous = "";
+		for (;;) {
+			const missing = this.missingDefinitions();
+			const signature = missing.join("|");
+			if (missing.length === 0 || signature === previous) return;
+			previous = signature;
+			await Promise.all(missing.map((id) => this.fetchManifest(id)));
 		}
 	}
 
 	setContext(context) {
 		this.controls.context.value = context;
 		this.inflight.clear();
+		this.failed.clear();
+		const isRemote = (definition) => remoteKinds.has(definition?.data?.kind);
 		const remote = new Set();
 		for (const frame of this.frames) {
-			const workspace = frame.workspace;
-			const model = workspace.navigator;
-			const open = new Set([...model.occurrences.values()].map((occurrence) => occurrence.destination));
-			for (const [id, definition] of Object.entries(model.destinations)) {
-				if (remoteKinds.has(definition.data?.kind) && !open.has(id)) delete model.destinations[id];
+			const model = frame.workspace.navigator;
+			for (const id of Object.keys(model.destinations)) {
+				if (isRemote(model.definitionOf(id)) && !model.forget(id)) remote.add(id);
 			}
-			for (const [occurrenceId, entry] of workspace.cells) {
-				const occurrence = model.get(occurrenceId);
-				const definition = occurrence && model.destination(occurrence.destination);
-				if (!definition || !remoteKinds.has(definition.data?.kind)) continue;
-				remote.add(occurrence.destination);
-				workspace.mountContent(entry, occurrence);
-			}
-			workspace.modal?.retry();
+			frame.workspace.reload((occurrence, definition) => isRemote(definition));
 		}
 		for (const id of remote) {
 			this.request("manifest", id).then((manifest) => { for (const frame of this.frames) frame.workspace.define(id, manifest); }, () => null);
@@ -580,7 +596,7 @@ class Session {
 		this.replaying = token;
 		for (const frame of this.frames) {
 			frame.workspace.closeModal("reset");
-			for (const id of [...frame.workspace.notices.keys()]) frame.workspace.dismiss(id);
+			frame.workspace.dismissAll();
 			frame.workspace.replay([]);
 		}
 		const kept = [];
@@ -623,7 +639,7 @@ class Session {
 function describeRejection({ action, result }, model) {
 	const titleOf = (path) => {
 		const id = (path ?? "").split("/").pop();
-		return model.destination(id)?.title ?? id;
+		return model.definitionOf(id)?.title ?? id;
 	};
 	switch (result.reason) {
 		case "source-closed": return `Rejected here: ${titleOf(action.from)} is closed in this frame.`;
