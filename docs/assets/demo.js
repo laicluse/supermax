@@ -34,8 +34,16 @@ const sizePresets = [
 	{ label: "Below minimum B", sizes: [[960, 640], [420, 300]] },
 ];
 
+const foldReservation = (size) => (frame) => {
+	for (const [id, definition] of Object.entries(frame.workspace.navigator.destinations)) {
+		if (id === "album:folding") definition.rows.forEach((row) => { row.fold = { size }; });
+		else if (id.startsWith("folding:")) definition.fold = { size };
+	}
+};
+
 const scenarios = [
-	{ label: "Folding: cells and rows", folding: true, actions: [open("album:folding", "albums"), open("folding:photo:x", folding.row("thumbnails"))], sizes: [[960, 640], [420, 360]], network: { delay: "0", fail: "" }, presentation: "veil" },
+	{ label: "Folding: cells and rows", folding: true, actions: [open("album:folding", "albums"), open("folding:photo:x", folding.row("thumbnails"))], sizes: [[960, 640], [420, 360]], network: { delay: "0", fail: "" }, presentation: "veil", local: foldReservation(0) },
+	{ label: "Folding: 8px reserved on both axes", folding: true, actions: [open("album:folding", "albums"), open("folding:photo:x", folding.row("thumbnails"))], sizes: [[960, 640], [420, 360]], network: { delay: "0", fail: "" }, presentation: "veil", local: foldReservation(8) },
 	{ label: "Open the Coast album", actions: [open("album:coast", "albums")] },
 	{
 		label: "Three rows: A, B, C",

@@ -4,7 +4,7 @@
 import { CellCollection } from "./cell-collection.js";
 
 export const ELASTIC = "*";
-const TRANSIENT_FOLD = { horizontal: 12, vertical: 12 };
+const TRANSIENT_FOLD = { horizontal: 0, vertical: 0 };
 
 export function isSplit(definition) {
 	return Array.isArray(definition?.rows);
@@ -106,7 +106,7 @@ export function validateSplit(model, definitionId, parentOccurrence) {
 		seen.add(row.destination);
 		if (row.minHeight > heightBounds(row).reach) problems.push("row-min-exceeds-max");
 		if (row.maxHeight === ELASTIC && !(row.preferredHeight >= row.minHeight)) problems.push("elastic-without-preferred");
-		if (row.fold != null && row.fold !== false && (!Number.isFinite(row.fold.size) || row.fold.size <= 0 || row.fold.size >= row.minHeight)) problems.push("invalid-fold");
+		if (row.fold != null && row.fold !== false && (!Number.isFinite(row.fold.size) || row.fold.size < 0 || row.fold.size >= row.minHeight)) problems.push("invalid-fold");
 		if (rowDefinition && rowDefinition.min > widthBounds(rowDefinition).reach) problems.push("cell-min-exceeds-max");
 		const required = chrome + row.minHeight;
 		if (required > model.minViewportHeight) problems.push("exceeds-supported-height");
@@ -325,7 +325,7 @@ function layoutChain(model, chainRoot, width, height, containerInView) {
 		const definition = model.definitionOf(occurrence.destination);
 		const allocated = byId.get(occurrence.id);
 		const bounds = boundsOf(model, occurrence);
-		const visible = allocated ? allocated.visible : false;
+		const visible = !!allocated && (allocated.visible || fold.has(occurrence.id));
 		const cellWidth = visible ? allocated.actual : bounds.min;
 		const isCompact = visible && compact.has(occurrence.id);
 		const isFolded = visible && fold.has(occurrence.id);
@@ -382,7 +382,7 @@ function layoutRows(model, split, width, height, containerInView) {
 	let overflow = false;
 	const rows = roots.map((root, index) => {
 		const allocated = allocation.byId.get(root.id);
-		const visible = !!allocated?.visible;
+		const visible = !!allocated && (allocated.visible || allocation.folded.has(index));
 		const folded = visible && allocation.folded.has(index);
 		let rowHeight = visible ? allocated.actual : 0;
 		if (visible && !folded && rowHeight < definition[index].minHeight) {

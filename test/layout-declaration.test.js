@@ -46,8 +46,10 @@ assert.deepEqual(layoutOf({ title: "Albums", min: 200, max: 320, keep: true, com
 	assert.equal(layoutOf(foldable.destinations.top).fold, false);
 	assert.equal(layoutOf(foldable.destinations.split).rows[0].fold, false);
 	foldable.destinations.top.fold = { size: 16 };
-	foldable.destinations.top.fold.size = 200;
-	assert.deepEqual(validateDeclarationSet(foldable).map((problem) => problem.reason), ["invalid-fold"], "a fold must save space compared with the cell minimum");
+	foldable.destinations.top.fold.size = 0;
+	assert.deepEqual(validateDeclarationSet(foldable), [], "a fold can explicitly reserve no space");
+	foldable.destinations.top.fold.size = -1;
+	assert.deepEqual(validateDeclarationSet(foldable).map((problem) => problem.reason), ["invalid-fold"], "a fold cannot reserve negative space");
 }
 
 for (const context of ["ana", "ben"]) {

@@ -65,7 +65,7 @@ function problemsOf(id, declaration) {
 		if (WIDTH.some((key) => declaration[key] != null) || declaration.defaultChild != null || declaration.compact != null || declaration.fold != null) problems.push("split-with-width");
 		const rows = declaration.rows;
 		const badHeight = (row) => (row.maxHeight === ELASTIC ? !(size(row.preferredHeight) && row.preferredHeight >= row.minHeight) : !size(row.maxHeight) || row.minHeight > row.maxHeight);
-		const badRow = (row) => !row || typeof row.destination !== "string" || Object.keys(row).some((key) => !ROW_FIELDS.has(key)) || !size(row.minHeight) || badHeight(row) || (row.fold != null && row.fold !== false && (!size(row.fold.size) || row.fold.size >= row.minHeight || Object.keys(row.fold).some((key) => key !== "size")));
+		const badRow = (row) => !row || typeof row.destination !== "string" || Object.keys(row).some((key) => !ROW_FIELDS.has(key)) || !size(row.minHeight) || badHeight(row) || (row.fold != null && row.fold !== false && ((!Number.isFinite(row.fold.size) || row.fold.size < 0) || row.fold.size >= row.minHeight || Object.keys(row.fold).some((key) => key !== "size")));
 		if (!Array.isArray(rows) || rows.length === 0 || rows.some(badRow)) problems.push("invalid-row-shape");
 		if (declaration.height != null) problems.push("invalid-height");
 		return problems;
@@ -76,7 +76,7 @@ function problemsOf(id, declaration) {
 	if (elastic && !(size(declaration.preferred) && declaration.preferred >= declaration.min)) problems.push("elastic-without-preferred");
 	else if (declaration.preferred != null && (!size(declaration.preferred) || declaration.preferred < declaration.min || (!elastic && declaration.preferred > declaration.max))) problems.push("invalid-preferred");
 	if (declaration.compact != null && (!size(declaration.compact.min) || Object.keys(declaration.compact).some((key) => key !== "min"))) problems.push("invalid-compact");
-	if (declaration.fold != null && declaration.fold !== false && (!size(declaration.fold.size) || declaration.fold.size >= declaration.min || Object.keys(declaration.fold).some((key) => key !== "size"))) problems.push("invalid-fold");
+	if (declaration.fold != null && declaration.fold !== false && ((!Number.isFinite(declaration.fold.size) || declaration.fold.size < 0) || declaration.fold.size >= declaration.min || Object.keys(declaration.fold).some((key) => key !== "size"))) problems.push("invalid-fold");
 	if (declaration.defaultChild != null && (typeof declaration.defaultChild !== "string" || declaration.defaultChild.length === 0 || declaration.defaultChild === id)) problems.push("invalid-default");
 	if (declaration.height != null && declaration.height !== "full") problems.push("invalid-height");
 	return problems;

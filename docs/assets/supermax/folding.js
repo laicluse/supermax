@@ -3,10 +3,10 @@
 
 function seamPattern(document) {
 	const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
-	svg.setAttribute("viewBox", "0 0 12 32");
+	svg.setAttribute("viewBox", "0 0 8 20");
 	svg.setAttribute("aria-hidden", "true");
 	const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
-	path.setAttribute("d", "M6 0V5M6 27V32M4 8L8 12M4 14L8 18M4 20L8 24");
+	path.setAttribute("d", "M2 2L6 6M2 8L6 12M2 14L6 18");
 	svg.append(path);
 	return svg;
 }
@@ -43,6 +43,21 @@ export class FoldController {
 			entry.foldCue.dataset.direction = direction;
 			entry.element.dataset.foldDirection = direction;
 		} else delete entry.foldCue.dataset.direction;
+	}
+
+	positionMarks() {
+		const bounds = this.workspace.body.getBoundingClientRect();
+		for (const cue of this.workspace.element.querySelectorAll(".is-folded > .supermax-fold-cue")) {
+			const mark = cue.querySelector(".supermax-fold-mark");
+			if (!mark) continue;
+			delete cue.dataset.edge;
+			const parent = cue.parentElement.getBoundingClientRect();
+			const horizontal = cue.classList.contains("is-horizontal");
+			const edge = horizontal && parent.right >= bounds.right - .5 ? "right"
+				: !horizontal && parent.bottom >= bounds.bottom - .5 ? "bottom" : "";
+			mark.dataset.edge = edge;
+			cue.dataset.edge = edge;
+		}
 	}
 
 	focus(occurrenceId, axis) {

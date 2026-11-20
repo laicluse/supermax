@@ -43,6 +43,8 @@ Research date: 2026-10-25. The alternatives are original adaptations, not twenty
 
 ## Decision
 
-Option 16, Fine hatching, is the accepted direction: three small diagonal strokes interrupt the hairline, with canvas ink on the application surface. Use the same gutter stroke width and rotate the motif for the other axis. Preserve the 28px tap target and existing fold transitions. The comparison sheet remains the accepted reference; the [live demo capture](../assets/captures/folding.png) shows the implementation. The earlier shortlist of 2, 9 and 11 was not selected.
+Option 16, Fine hatching, is the accepted direction: three small diagonal strokes interrupt the hairline, with canvas ink on the application surface. Use the same gutter stroke width and rotate the motif for the other axis. Only the hatch handle opens the fold; preserve the existing fold transitions. The marker attaches to the ordinary gutter on the unfolding side, with a padded host-surface background. Its attached side is straight and its two outward corners have a 2px radius, both between cells and at viewport edges. The hatch always uses canvas colour and its rectangle uses host background, including on hover. The comparison sheet remains the accepted reference; the [live demo capture](../assets/captures/folding.png) shows the implementation. The earlier shortlist of 2, 9 and 11 was not selected.
 
 The E motif's rotation offset and stroke mismatch are separate rendering defects. Correcting those does not establish visual acceptance. A selected replacement needs an actual-size trial in both themes, all four directions, joined corners, focus and both transition directions.
+
+The fold reserves no space by default; `fold: { size }` opts a cell or row into a reservation. The handle has a 1px canvas-coloured outline over the host background. The canvas gutter remains visible at the viewport edge. Hosts may independently set the gutter to 0px while retaining the handle.

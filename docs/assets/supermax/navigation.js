@@ -31,7 +31,7 @@ export function validateDestinations(destinations, { minViewportHeight, chrome =
 		if (destinations[id].height != null && (!isFull(destinations[id]) || isSplit(destinations[id]))) problems.push({ destination: id, reason: "invalid-height" });
 		if (isSplit(destinations[id]) && ["min", "max", "preferred"].some((key) => destinations[id][key] != null)) problems.push({ destination: id, reason: "split-with-width" });
 		if (destinations[id].header != null && destinations[id].header !== "title") problems.push({ destination: id, reason: "invalid-header" });
-		if (destinations[id].fold != null && (isSplit(destinations[id]) || (destinations[id].fold !== false && (!Number.isFinite(destinations[id].fold.size) || destinations[id].fold.size <= 0 || destinations[id].fold.size >= destinations[id].min)))) problems.push({ destination: id, reason: "invalid-fold" });
+		if (destinations[id].fold != null && (isSplit(destinations[id]) || (destinations[id].fold !== false && (!Number.isFinite(destinations[id].fold.size) || destinations[id].fold.size < 0 || destinations[id].fold.size >= destinations[id].min)))) problems.push({ destination: id, reason: "invalid-fold" });
 	}
 	const elastic = Object.keys(destinations).filter((id) => destinations[id].max === ELASTIC);
 	for (const id of elastic) {

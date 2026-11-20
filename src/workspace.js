@@ -466,6 +466,7 @@ export class Workspace extends EventTarget {
 		this.pruneClosed();
 		this.refreshContent();
 		this.renderUp();
+		this.folds.positionMarks();
 		this.modalHost.render();
 		this.notices.render();
 		this.announce(new CustomEvent("render", { detail: { layout } }));
@@ -475,7 +476,10 @@ export class Workspace extends EventTarget {
 		}
 		this.placeHorizon();
 		this.scheduleOrigins();
-		Promise.all([...this.chains.values()].map((entry) => entry.strip.finished)).then(() => this.scheduleOrigins());
+		Promise.all([...this.chains.values()].map((entry) => entry.strip.finished)).then(() => {
+			this.folds.positionMarks();
+			this.scheduleOrigins();
+		});
 	}
 
 	horizon() {
@@ -689,6 +693,7 @@ export class Workspace extends EventTarget {
 			}
 			const exchangingFold = entry.element.classList.contains("is-folded") !== row.folded;
 			this.folds.apply(entry, row.folded, rowIndex < activeIndex ? "down" : "up");
+			entry.element.classList.toggle("is-unreserved", row.folded && row.height === 0);
 			const leading = row === cell.rows.rows.find((candidate) => candidate.visible);
 			entry.leading = leading;
 			this.setRowHeight(entry, row.height, animating, strip, exchangingFold);

@@ -127,6 +127,7 @@
 .supermax-cell-title-leading:empty, .supermax-cell-title-trailing:empty { display: none; }
 .supermax-modal-controls { display: flex; align-items: center; gap: 8px; margin-left: auto; }
 .supermax-cell-body { flex: 1; min-height: 0; overflow: auto; }
+.supermax-cell.is-split > .supermax-cell-body { overflow: clip; overflow-clip-margin: 14px; }
 .supermax-cell[data-supermax-fold-paper] > :is(.supermax-cell-title, .supermax-cell-body) { width: var(--supermax-fold-paper-width); }
 .supermax-loading, .supermax-error { padding: 12px; font-size: 13px; color: var(--supermax-muted); display: flex; flex-direction: column; gap: 8px; }
 .supermax-loading { flex-direction: row; align-items: center; }
@@ -157,45 +158,30 @@
 .supermax-cell.is-compact { overflow: hidden; }
 .supermax-cell.is-compact > .supermax-cell-title, .supermax-cell.is-compact > .supermax-cell-body { visibility: hidden; }
 .supermax-room:has(> .supermax-cell.is-folded) { position: relative; overflow: visible; clip-path: none; z-index: 2; }
-.supermax-cell.is-folded { overflow: clip; overflow-clip-margin: 8px; }
-.supermax-cell > .supermax-cell-title, .supermax-cell > .supermax-cell-body, .supermax-row > .supermax-row-chain { transition: opacity 160ms ease; }
-.supermax-cell.is-folded > .supermax-cell-title, .supermax-cell.is-folded > .supermax-cell-body, .supermax-row.is-folded > .supermax-row-chain { opacity: 0; pointer-events: none; }
-.supermax-presentation-veil .supermax-cell.is-folded > :is(.supermax-cell-title, .supermax-cell-body), .supermax-presentation-veil .supermax-row.is-folded > .supermax-row-chain { transition: opacity 70ms cubic-bezier(0.4, 0, 1, 1); }
-.supermax-fold-cue { position: absolute; z-index: 2; display: grid; place-items: center; visibility: hidden; opacity: 0; padding: 0; border: 0; color: var(--supermax-fold-ink, var(--supermax-canvas)); background: transparent; cursor: pointer; transition: opacity 160ms ease; }
+.supermax-cell.is-folded { border-left-width: 0; overflow: clip; overflow-clip-margin: 14px; }
+.supermax-cell > .supermax-cell-title, .supermax-cell > .supermax-cell-body, .supermax-row > .supermax-row-chain .supermax-cell-body { transition: opacity 160ms ease; }
+.supermax-cell.is-folded > .supermax-cell-title, .supermax-cell.is-folded > .supermax-cell-body, .supermax-row.is-folded > .supermax-row-chain .supermax-cell-body { opacity: 0; pointer-events: none; }
+.supermax-presentation-veil .supermax-cell.is-folded > :is(.supermax-cell-title, .supermax-cell-body), .supermax-presentation-veil .supermax-row.is-folded > .supermax-row-chain .supermax-cell-body { transition: opacity 70ms cubic-bezier(0.4, 0, 1, 1); }
+.supermax-fold-cue { position: absolute; z-index: 2; display: grid; place-items: center; visibility: hidden; opacity: 0; padding: 0; border: 0; color: var(--supermax-canvas); background: transparent; pointer-events: none; cursor: pointer; transition: opacity 160ms ease; }
 .supermax-cell.is-folded > .supermax-fold-cue, .supermax-row.is-folded > .supermax-fold-cue { visibility: visible; opacity: 1; }
-.supermax-fold-cue::before, .supermax-fold-cue::after { content: ""; position: absolute; pointer-events: none; }
-.supermax-fold-cue::before { background: var(--supermax-fold-surface, var(--supermax-surface)); }
-.supermax-fold-cue.is-horizontal { top: 0; bottom: 0; left: 50%; width: 28px; height: 100%; transform: translateX(-50%); }
-.supermax-fold-cue.is-horizontal::before, .supermax-fold-cue.is-horizontal::after { top: 0; bottom: 0; left: 50%; width: 12px; transform: translateX(-50%); }
-.supermax-fold-cue.is-horizontal::after { background: linear-gradient(var(--supermax-fold-edge, currentColor), var(--supermax-fold-edge, currentColor)) center / var(--supermax-gutter) 100% no-repeat; }
-.supermax-fold-cue.is-vertical { left: 0; right: 0; top: 50%; width: 100%; height: 28px; transform: translateY(-50%); }
-.supermax-fold-cue.is-vertical::before, .supermax-fold-cue.is-vertical::after { left: 0; right: 0; top: 50%; height: 12px; transform: translateY(-50%); }
-.supermax-fold-cue.is-vertical::after { background: linear-gradient(var(--supermax-fold-edge, currentColor), var(--supermax-fold-edge, currentColor)) center / 100% var(--supermax-gutter) no-repeat; }
-.supermax-fold-cue.is-vertical[data-direction="down"] { top: 0; transform: none; }
-.supermax-fold-cue.is-vertical[data-direction="up"] { top: auto; bottom: 0; transform: none; }
-.supermax-fold-cue.is-vertical[data-direction="down"]::before, .supermax-fold-cue.is-vertical[data-direction="down"]::after { top: 0; transform: none; }
-.supermax-fold-cue.is-vertical[data-direction="up"]::before, .supermax-fold-cue.is-vertical[data-direction="up"]::after { top: auto; bottom: 0; transform: none; }
-.supermax-fold-cue:hover::before { background: var(--supermax-fold-hover, var(--supermax-fold-surface, var(--supermax-surface))); }
-.supermax-fold-mark { position: relative; z-index: 1; display: grid; place-items: center; width: 12px; height: 32px; background: var(--supermax-fold-surface, var(--supermax-surface)); line-height: 1; }
-.supermax-fold-cue:hover .supermax-fold-mark { background: var(--supermax-fold-hover, var(--supermax-fold-surface, var(--supermax-surface))); }
-.supermax-fold-mark svg { display: block; width: 12px; height: 32px; fill: none; stroke: currentColor; stroke-width: var(--supermax-gutter); stroke-linecap: butt; stroke-linejoin: miter; }
-.supermax-fold-cue.is-vertical .supermax-fold-mark { position: absolute; width: 32px; height: 12px; }
+.supermax-fold-cue::after { content: ""; position: absolute; pointer-events: none; background: var(--supermax-canvas); }
+.supermax-fold-cue.is-horizontal { top: 0; bottom: 0; width: 28px; height: 100%; transform: translateX(-50%); }
+.supermax-fold-cue.is-horizontal[data-direction="right"] { left: calc(100% + var(--supermax-gutter) / 2); }
+.supermax-fold-cue.is-horizontal[data-direction="left"] { left: calc(var(--supermax-gutter) / 2); }
+.supermax-fold-cue.is-horizontal::after { top: 0; bottom: 0; left: 50%; width: var(--supermax-gutter); transform: translateX(-50%); }
+.supermax-fold-cue.is-vertical { left: 0; right: 0; width: 100%; height: 28px; transform: translateY(-50%); }
+.supermax-fold-cue.is-vertical[data-direction="down"] { top: calc(100% + var(--supermax-gutter) / 2); }
+.supermax-fold-cue.is-vertical[data-direction="up"] { top: calc(var(--supermax-gutter) / 2); }
+.supermax-fold-cue.is-vertical::after { left: 0; right: 0; top: 50%; height: var(--supermax-gutter); transform: translateY(-50%); }
+.supermax-fold-mark { position: relative; z-index: 1; display: grid; place-items: center; padding: var(--supermax-fold-padding, 3px); border-radius: var(--supermax-fold-radius, 2px); background: var(--supermax-surface); outline: 1px solid var(--supermax-canvas); outline-offset: -1px; pointer-events: auto; line-height: 1; }
+.supermax-fold-cue > :not(.supermax-fold-mark) { pointer-events: auto; }
+.supermax-fold-cue[data-direction="right"] .supermax-fold-mark { transform: translateX(calc(50% - var(--supermax-gutter) / 2)); border-top-left-radius: 0; border-bottom-left-radius: 0; }
+.supermax-fold-cue[data-direction="left"] .supermax-fold-mark { transform: translateX(calc(-50% + var(--supermax-gutter) / 2)); border-top-right-radius: 0; border-bottom-right-radius: 0; }
+.supermax-fold-cue[data-direction="down"] .supermax-fold-mark { transform: translateY(calc(50% - var(--supermax-gutter) / 2)); border-top-left-radius: 0; border-top-right-radius: 0; }
+.supermax-fold-cue[data-direction="up"] .supermax-fold-mark { transform: translateY(calc(-50% + var(--supermax-gutter) / 2)); border-bottom-left-radius: 0; border-bottom-right-radius: 0; }
+.supermax-fold-mark svg { display: block; width: 8px; height: 20px; fill: none; stroke: currentColor; stroke-width: max(1px, var(--supermax-gutter)); stroke-linecap: butt; }
+.supermax-fold-cue.is-vertical .supermax-fold-mark { width: calc(20px + 2 * var(--supermax-fold-padding, 3px)); height: calc(8px + 2 * var(--supermax-fold-padding, 3px)); }
 .supermax-fold-cue.is-vertical .supermax-fold-mark svg { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%) rotate(90deg); }
-.supermax-fold-cue.is-vertical[data-direction="down"] .supermax-fold-mark { top: 0; }
-.supermax-fold-cue.is-vertical[data-direction="up"] .supermax-fold-mark { bottom: 0; }
-.supermax-row.is-folded:has(+ .supermax-row .supermax-cell.is-folded[data-fold-direction="right"]), .supermax-row:has(.supermax-cell.is-folded[data-fold-direction="right"]) + .supermax-row.is-folded { --supermax-fold-join-left: 6px; }
-.supermax-row.is-folded:has(+ .supermax-row .supermax-cell.is-folded[data-fold-direction="left"]), .supermax-row:has(.supermax-cell.is-folded[data-fold-direction="left"]) + .supermax-row.is-folded { --supermax-fold-join-right: 6px; }
-.supermax-row.is-folded > .supermax-fold-cue.is-vertical::after {
-	left: var(--supermax-fold-join-left, 0px);
-	right: var(--supermax-fold-join-right, 0px);
-	height: calc(12px + var(--supermax-gutter));
-	background:
-		linear-gradient(currentColor, currentColor) left bottom / var(--supermax-gutter) var(--supermax-fold-join-left, 0px) no-repeat,
-		linear-gradient(currentColor, currentColor) right bottom / var(--supermax-gutter) var(--supermax-fold-join-right, 0px) no-repeat,
-		linear-gradient(var(--supermax-fold-edge, currentColor), var(--supermax-fold-edge, currentColor)) center calc(6px - var(--supermax-gutter) / 2) / 100% var(--supermax-gutter) no-repeat;
-}
-.supermax-row.is-folded > .supermax-fold-cue.is-vertical[data-direction="up"]::after { background-position: left top, right top, center calc(6px + var(--supermax-gutter) / 2); }
-
 .supermax-presentation-origami .supermax-cell > .supermax-cell-title, .supermax-presentation-origami .supermax-cell > .supermax-cell-body, .supermax-presentation-origami .supermax-row > .supermax-row-chain { transition: opacity var(--supermax-time-stroke) ease, transform var(--supermax-time-stroke) ease; backface-visibility: hidden; }
 .supermax-presentation-origami .supermax-cell[data-fold-direction="right"] > :is(.supermax-cell-title, .supermax-cell-body) { transform-origin: left center; }
 .supermax-presentation-origami .supermax-cell[data-fold-direction="left"] > :is(.supermax-cell-title, .supermax-cell-body) { transform-origin: right center; }
@@ -264,11 +250,11 @@
 .supermax-peek-close { border: 0; background: transparent; font: inherit; font-size: 16px; cursor: pointer; color: inherit; width: 24px; height: 24px; }
 .supermax-peek-close:hover { background: var(--supermax-muted-surface); }
 .supermax-peek > .supermax-cell-body { flex: 1; min-height: 0; overflow: auto; width: auto !important; }
-.supermax-cell.is-split > .supermax-cell-body { overflow: hidden; }
+
 
 .supermax-rows { position: relative; display: flex; flex-direction: column; height: 100%; }
-.supermax-row { position: relative; overflow: hidden; border-top: var(--supermax-gutter) solid transparent; background: var(--supermax-surface); flex: none; }
-.supermax-row.is-folded { overflow: clip; overflow-clip-margin: 8px; z-index: 2; }
+.supermax-row { position: relative; overflow: hidden; border-top: var(--supermax-gutter) solid transparent; background: transparent; flex: none; }
+.supermax-row.is-folded { border-top-width: 0; overflow: clip; overflow-clip-margin: 14px; z-index: 2; }
 .supermax-row.is-leading, .supermax-row.is-hidden { border-top-width: 0; }
 [data-supermax-folded] { border-width: 0 !important; padding: 0 !important; overflow: hidden; }
 .supermax-row-chain { position: absolute; inset: 0 0 auto 0; }
@@ -478,3 +464,16 @@
 .supermax-frustum-near { stop-color: rgb(from currentColor r g b / calc(alpha + var(--supermax-origin-fade) / 2)); }
 .supermax-frustum-far { stop-color: rgb(from currentColor r g b / max(0, calc(alpha - var(--supermax-origin-fade) / 2))); }
 .supermax-frustum-target { fill: none; stroke: var(--supermax-origin-edge); stroke-width: 1; }
+
+.supermax-fold-cue.is-horizontal[data-edge="right"] { left: calc(100% - var(--supermax-gutter) / 2); }
+.supermax-fold-cue.is-vertical[data-edge="bottom"] { top: calc(100% - var(--supermax-gutter) / 2); }
+
+.supermax-room:has(> .supermax-cell.is-split .is-folded) { overflow: visible; }
+.supermax-cell.is-split:not(.is-leading) .supermax-row-chain:has(.is-folded) { clip-path: none; }
+
+.supermax-row:has(.supermax-cell.is-folded) { overflow: clip; overflow-clip-margin: 14px; }
+
+.supermax-chain:has(> .supermax-strip > .supermax-room > .supermax-cell.is-folded) { overflow: visible !important; }
+
+.supermax-row.is-unreserved.is-leading > .supermax-fold-cue.is-vertical[data-direction="down"] { top: calc(var(--supermax-gutter) / -2); }
+.supermax-row.is-unreserved.is-leading + .supermax-row { border-top-width: 0; }

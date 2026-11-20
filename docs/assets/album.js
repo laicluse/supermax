@@ -61,7 +61,7 @@ export const albums = [
 		id: "folding",
 		title: "Folding",
 		rows: [
-			{ key: "map", title: "Details", minHeight: 180, maxHeight: 520, preferredHeight: 320, fold: { size: 12 } },
+			{ key: "map", title: "Details", minHeight: 180, maxHeight: 520, preferredHeight: 320 },
 			{ key: "thumbnails", title: "Gallery", minHeight: 180, maxHeight: "*", preferredHeight: 320 },
 		],
 		photos: [{ id: "x", title: "Photo X", date: "Jan 1, 2024", place: "Lab", tags: "fixture", hue: 205 }],
@@ -115,7 +115,6 @@ export function destinations(context = "ana") {
 			result[key.row(row.key)] = {
 				title: row.title,
 				...(row.key === "map" ? widths.map : widths.selector),
-				...(album.id === "folding" && row.key === "thumbnails" ? { fold: { size: 12 } } : {}),
 				defaultChild: album.photos.length ? key.photo(album.photos[0]) : null,
 				data: { kind: "selector", album, row },
 			};

@@ -24,6 +24,7 @@ scenario("ordinary cells and rows fold by default while fold false excludes them
 		return model.layout().chain.cells[1];
 	};
 	assert.equal(horizontal().folded, true);
+	assert.equal(horizontal().width, 0);
 	assert.equal(horizontal(false).folded, false);
 	const vertical = (fold) => {
 		const model = new BaseNavigator({ root: "home", minViewportHeight: 300, destinations: {
@@ -40,6 +41,7 @@ scenario("ordinary cells and rows fold by default while fold false excludes them
 		return model.layout().chain.cells[1].rows.rows[0];
 	};
 	assert.equal(vertical().folded, true);
+	assert.equal(vertical().height, 0);
 	assert.equal(vertical(false).folded, false);
 });
 

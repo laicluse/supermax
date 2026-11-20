@@ -122,7 +122,7 @@ export class CellStrip {
 		const ids = new Set();
 		for (const entry of entries) {
 			if (ids.has(entry.id)) throw new Error(`Duplicate cell id: ${entry.id}`);
-			if (!Number.isFinite(entry.width) || entry.width <= 0) throw new Error(`Invalid cell width: ${entry.id}`);
+			if (!Number.isFinite(entry.width) || (entry.width < 0 || (entry.width === 0 && !entry.folded))) throw new Error(`Invalid cell width: ${entry.id}`);
 			ids.add(entry.id);
 		}
 		const firstPaint = !this.initialized;
@@ -392,7 +392,7 @@ export class CellStrip {
 			}
 			entry.element.inert = !entry.visible;
 			entry.element.toggleAttribute("data-supermax-exiting", entry.departing);
-			entry.element.toggleAttribute("data-supermax-folded", !entry.departing && entry.displayWidth === 0);
+			entry.element.toggleAttribute("data-supermax-folded", !entry.departing && !entry.folded && entry.displayWidth === 0);
 			if (!this.strip.contains(box)) this.strip.append(box);
 		}
 		const siblings = new Map();
