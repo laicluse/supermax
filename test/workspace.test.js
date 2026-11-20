@@ -347,6 +347,38 @@ test("content that arrives after its cell has appeared swaps in without a fade o
 	assert.deepEqual(await page.evaluate(() => window.__innerFades), [], "nothing inside the cell fades on its own");
 });
 
+test("each frustum face fades from its modal edge towards the source, in bands parallel to that edge", async () => {
+	await openDemo([open("album:coast", "albums"), open("coast:photo:b", coast.row("map"))]);
+	await page.click(inFrame("a", `[data-occurrence="${coast.photo("map", "b")}"] .caption-edit`));
+	await settle();
+	await page.waitForFunction(() => document.querySelector('.frame[data-frame="a"] .supermax-origin.is-modal .supermax-frustum-face'));
+	const faces = await page.evaluate(() => {
+		const layer = document.querySelector('.frame[data-frame="a"] .supermax-origin.is-modal');
+		return [...layer.querySelectorAll(".supermax-frustum-face")].map((face) => {
+			const across = face.dataset.side === "top" || face.dataset.side === "bottom";
+			const points = face.getAttribute("points").split(" ").map((point) => point.split(",").map(Number)[across ? 1 : 0]);
+			const id = /url\("?#([^")]+)"?\)/.exec(face.getAttribute("fill") ?? "")?.[1];
+			const gradient = id ? layer.querySelector(`#${CSS.escape(id)}`) : null;
+			const at = (name) => Number(gradient?.getAttribute(name));
+			const stops = gradient ? [...gradient.querySelectorAll("stop")].map((stop) => ({ offset: Number(stop.getAttribute("offset")), opacity: Number(getComputedStyle(stop).stopOpacity), color: getComputedStyle(stop).stopColor })) : [];
+			return { side: face.dataset.side, modalEdge: points[0], sourceEdge: points[2], units: gradient?.getAttribute("gradientUnits"), x1: at("x1"), y1: at("y1"), x2: at("x2"), y2: at("y2"), stops, color: getComputedStyle(face).color };
+		});
+	});
+	assert.ok(faces.length > 0, "the modal has faces");
+	for (const face of faces) {
+		const across = face.side === "top" || face.side === "bottom";
+		assert.equal(face.units, "userSpaceOnUse", `the ${face.side} face fills with a gradient in the layer's own coordinates`);
+		const [start, end] = across ? [face.y1, face.y2] : [face.x1, face.x2];
+		assert.ok((across ? face.x1 === face.x2 : face.y1 === face.y2) && Math.abs(start - face.modalEdge) < 0.01 && Math.abs(end - face.sourceEdge) < 0.01, `which runs straight from the modal's ${face.side} edge to the source's: ${JSON.stringify(face)}`);
+		const alpha = (color) => Number(color.match(/[\d.]+/g)[3] ?? 1);
+		const rgb = (color) => color.match(/[\d.]+/g).slice(0, 3).join();
+		const [near, far] = face.stops;
+		assert.ok(near?.offset === 0 && far?.offset === 1 && rgb(near.color) === rgb(face.color) && rgb(far.color) === rgb(face.color), `in the face's own colour: ${JSON.stringify(face)}`);
+		const own = alpha(face.color);
+		assert.ok(Math.abs(alpha(near.color) - own - 0.05) < 0.005 && Math.abs(alpha(far.color) - Math.max(0, own - 0.05)) < 0.005, `five points more opaque at the modal edge and five less at the source, ten in all: ${JSON.stringify(face)}`);
+	}
+});
+
 test("in dark mode the frustum is lighter than what lies behind it, still lit from above", async () => {
 	await page.emulateMedia({ colorScheme: "dark" });
 	try {
@@ -354,7 +386,7 @@ test("in dark mode the frustum is lighter than what lies behind it, still lit fr
 		await page.click(inFrame("a", `[data-occurrence="${coast.photo("map", "b")}"] .caption-edit`));
 		await settle();
 		await page.waitForFunction(() => document.querySelector('.frame[data-frame="a"] .supermax-origin.is-modal .supermax-frustum-face'));
-		const fills = await page.evaluate(() => Object.fromEntries([...document.querySelectorAll('.frame[data-frame="a"] .supermax-origin.is-modal .supermax-frustum-face')].map((face) => [face.dataset.side, getComputedStyle(face).fill])));
+		const fills = await page.evaluate(() => Object.fromEntries([...document.querySelectorAll('.frame[data-frame="a"] .supermax-origin.is-modal .supermax-frustum-face')].map((face) => [face.dataset.side, getComputedStyle(face).color])));
 		const white = (fill) => { const [r, g, b, a] = fill.match(/[\d.]+/g).map(Number); return r === 255 && g === 255 && b === 255 ? a : -1; };
 		assert.ok(Object.values(fills).length > 0 && Object.values(fills).every((fill) => white(fill) > 0), `every face is a light veil: ${JSON.stringify(fills)}`);
 		if (fills.top && fills.bottom) assert.ok(white(fills.top) > white(fills.bottom), "the top face catches the most light");

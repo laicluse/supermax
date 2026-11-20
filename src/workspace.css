@@ -26,6 +26,7 @@
 	--supermax-origin-right: light-dark(rgba(0, 0, 0, 0.1), rgba(255, 255, 255, 0.08));
 	--supermax-origin-bottom: light-dark(rgba(0, 0, 0, 0.13), rgba(255, 255, 255, 0.04));
 	--supermax-origin-edge: transparent;
+	--supermax-origin-fade: 0.1;
 }
 
 .supermax-workspace,
@@ -419,8 +420,10 @@
 .supermax-origin { position: fixed; inset: 0; width: 100%; height: 100%; overflow: visible; pointer-events: none; }
 .supermax-origin.is-notices { z-index: 1000; }
 .supermax-frustum-face { stroke: none; }
-.supermax-frustum-face.is-top { fill: var(--supermax-origin-top); }
-.supermax-frustum-face.is-left { fill: var(--supermax-origin-left); }
-.supermax-frustum-face.is-right { fill: var(--supermax-origin-right); }
-.supermax-frustum-face.is-bottom { fill: var(--supermax-origin-bottom); }
+:is(.supermax-frustum-face, .supermax-frustum-fade).is-top { color: var(--supermax-origin-top); }
+:is(.supermax-frustum-face, .supermax-frustum-fade).is-left { color: var(--supermax-origin-left); }
+:is(.supermax-frustum-face, .supermax-frustum-fade).is-right { color: var(--supermax-origin-right); }
+:is(.supermax-frustum-face, .supermax-frustum-fade).is-bottom { color: var(--supermax-origin-bottom); }
+.supermax-frustum-near { stop-color: rgb(from currentColor r g b / calc(alpha + var(--supermax-origin-fade) / 2)); }
+.supermax-frustum-far { stop-color: rgb(from currentColor r g b / max(0, calc(alpha - var(--supermax-origin-fade) / 2))); }
 .supermax-frustum-target { fill: none; stroke: var(--supermax-origin-edge); stroke-width: 1; }

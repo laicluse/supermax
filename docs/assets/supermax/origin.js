@@ -5,6 +5,7 @@ import { TIMING } from "./motion.js";
 
 const SVG = "http://www.w3.org/2000/svg";
 const starts = new WeakMap();
+let gradients = 0;
 
 const corners = (rect) => ({
 	topLeft: [rect.left, rect.top],
@@ -34,12 +35,15 @@ function facesOf(from, to) {
 function paint(group, from, to, progress) {
 	const faces = facesOf(from, between(from, to, 1 - (1 - progress) ** 3));
 	group.style.opacity = String(progress);
+	const far = between(from, to, 1 - (1 - progress) ** 3);
 	for (const face of group.querySelectorAll(".supermax-frustum-face")) {
-		const [, points] = faces[face.dataset.side];
+		const side = face.dataset.side;
+		const [, points] = faces[side];
 		face.setAttribute("points", points.map((point) => point.join(",")).join(" "));
+		const [x1, y1, x2, y2] = side === "top" || side === "bottom" ? [from.left, from[side], from.left, far[side]] : [from[side], from.top, far[side], from.top];
+		for (const [name, value] of Object.entries({ x1, y1, x2, y2 })) face.gradient.setAttribute(name, String(value));
 	}
 	const target = group.querySelector(".supermax-frustum-target");
-	const far = between(from, to, 1 - (1 - progress) ** 3);
 	for (const [name, value] of [["x", far.left], ["y", far.top], ["width", far.width], ["height", far.height]]) target.setAttribute(name, String(value));
 }
 
@@ -62,7 +66,19 @@ export function frustumOrigin({ kind, layer, links, entering = null, time = null
 			const face = document.createElementNS(SVG, "polygon");
 			face.setAttribute("class", `supermax-frustum-face is-${side}`);
 			face.dataset.side = side;
-			group.append(face);
+			// allow-comment: the face fades from the modal's edge towards its source, so its bands of equal opacity run parallel to that edge.
+			face.gradient = document.createElementNS(SVG, "linearGradient");
+			face.gradient.id = `supermax-frustum-fade-${(gradients += 1)}`;
+			face.gradient.setAttribute("class", `supermax-frustum-fade is-${side}`);
+			face.gradient.setAttribute("gradientUnits", "userSpaceOnUse");
+			for (const offset of ["0", "1"]) {
+				const stop = document.createElementNS(SVG, "stop");
+				stop.setAttribute("offset", offset);
+				stop.setAttribute("class", offset === "0" ? "supermax-frustum-near" : "supermax-frustum-far");
+				face.gradient.append(stop);
+			}
+			face.setAttribute("fill", `url(#${face.gradient.id})`);
+			group.append(face.gradient, face);
 		}
 		const target = document.createElementNS(SVG, "rect");
 		target.setAttribute("class", "supermax-frustum-target");
