@@ -110,7 +110,7 @@ export class CellStrip {
 		this.strip.className = "supermax-strip";
 		this.strip.style.cssText = "position:relative;display:flex;flex-shrink:0;height:100%;will-change:transform;transform:translateX(0px)";
 		this.previousOverflow = viewport.style.overflow;
-		viewport.style.overflow = "hidden";
+		viewport.style.overflow = "clip";
 		viewport.append(this.strip);
 		this.entries = [];
 		this.geometry = [];
