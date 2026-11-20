@@ -1,13 +1,21 @@
 export const minViewportHeight = 360;
 
 const widths = {
-	albums: { min: 200, max: 320 },
+	albums: { min: 200, max: 320, compact: { min: 48 } },
 	album: { min: 320, max: 1600 },
-	selector: { min: 200, max: 360 },
-	map: { min: 220, max: 480 },
-	photo: { min: 240, max: 520 },
-	metadata: { min: 200, max: 320 },
+	selector: { min: 200, max: 360, compact: { min: 40 } },
+	map: { min: 220, max: 480, compact: { min: 40 } },
+	photo: { min: 240, max: 520, compact: { min: 40 } },
+	metadata: { min: 200, max: 320, compact: { min: 40 } },
+	history: { min: 200, max: 320, compact: { min: 40 } },
+	edit: { min: 200, max: 320 },
 };
+
+export const edits = [
+	{ n: 1, title: "Exposure +1", note: "Lifted the shadows after the import." },
+	{ n: 2, title: "Crop 3:2", note: "Straightened the horizon and cropped the left edge." },
+	{ n: 3, title: "Warm tint", note: "Nudged the white balance toward the evening light." },
+];
 
 export const albums = [
 	{
@@ -60,6 +68,8 @@ export function ids(album) {
 		row: (key) => `${album.id}:${key}`,
 		photo: (photo) => `${album.id}:photo:${photo.id}`,
 		metadata: (photo) => `${album.id}:metadata:${photo.id}`,
+		history: (photo) => `${album.id}:history:${photo.id}`,
+		edit: (photo, edit) => `${album.id}:edit:${photo.id}:${edit.n}`,
 	};
 }
 
@@ -69,7 +79,9 @@ export function paths(album) {
 	const row = (rowKey) => `${albumPath}/${key.row(rowKey)}`;
 	const photo = (rowKey, photoId) => `${row(rowKey)}/${key.photo({ id: photoId })}`;
 	const metadata = (rowKey, photoId) => `${photo(rowKey, photoId)}/${key.metadata({ id: photoId })}`;
-	return { album: albumPath, row, photo, metadata };
+	const history = (rowKey, photoId) => `${metadata(rowKey, photoId)}/${key.history({ id: photoId })}`;
+	const edit = (rowKey, photoId, n) => `${history(rowKey, photoId)}/${key.edit({ id: photoId }, { n })}`;
+	return { album: albumPath, row, photo, metadata, history, edit };
 }
 
 export function destinations() {
@@ -93,6 +105,10 @@ export function destinations() {
 		for (const photo of album.photos) {
 			result[key.photo(photo)] = { title: photo.title, ...widths.photo, defaultChild: key.metadata(photo), data: { kind: "photo", album, photo } };
 			result[key.metadata(photo)] = { title: `Metadata ${photo.id.toUpperCase()}`, ...widths.metadata, data: { kind: "metadata", album, photo } };
+			result[key.history(photo)] = { title: `History ${photo.id.toUpperCase()}`, ...widths.history, data: { kind: "history", album, photo } };
+			for (const edit of edits) {
+				result[key.edit(photo, edit)] = { title: `${edit.title} (${photo.id.toUpperCase()})`, ...widths.edit, data: { kind: "edit", album, photo, edit } };
+			}
 		}
 	}
 	return result;

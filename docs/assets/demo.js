@@ -1,9 +1,10 @@
 import { Navigator, Workspace } from "./supermax/index.js";
-import { albums, destinations, ids, minViewportHeight, paths } from "./album.js";
+import { albums, destinations, edits, ids, minViewportHeight, paths } from "./album.js";
 import { decodeLog, encodeLog } from "./deeplink.js";
 
 const definitions = destinations();
 const coast = paths(albums[0]);
+definitions.albums.compact = { min: 48, content: renderAlbumIcons };
 
 const frames = [
 	{ key: "a", name: "Frame A", width: 960, height: 640 },
@@ -36,6 +37,15 @@ const scenarios = [
 		label: "Replace Photo A by B in one row",
 		actions: [open("album:coast", "albums"), open("coast:photo:a", coast.row("thumbnails")), open("coast:photo:b", coast.row("thumbnails"))],
 	},
+	{
+		label: "Long chain: history and one edit",
+		actions: [open("album:coast", "albums"), open("coast:history:a", coast.metadata("thumbnails", "a")), open("coast:edit:a:2", coast.history("thumbnails", "a"))],
+	},
+	{
+		label: "Collapse photo and history in that chain",
+		actions: [open("album:coast", "albums"), open("coast:history:a", coast.metadata("thumbnails", "a")), open("coast:edit:a:2", coast.history("thumbnails", "a"))],
+		local: (frame) => [coast.photo("thumbnails", "a"), coast.history("thumbnails", "a")].forEach((id) => frame.workspace.navigator.collapse(id, true)),
+	},
 	{ label: "Empty album", actions: [open(ids(albums[1]).album, "albums")] },
 	{ label: "Lab: exact fit", actions: [open(ids(albums[2]).album, "albums")] },
 	{ label: "Lab: one pixel over", actions: [open(ids(albums[3]).album, "albums")] },
@@ -53,7 +63,22 @@ const renderers = {
 	selector: renderSelector,
 	photo: renderPhoto,
 	metadata: renderMetadata,
+	history: renderHistory,
+	edit: renderEdit,
 };
+
+function renderAlbumIcons(occurrence, workspace) {
+	const rail = element("div", "supermax-compact-icons album-icons");
+	for (const album of albums) {
+		const button = element("button", "album-icon", album.title.slice(0, 1));
+		button.type = "button";
+		button.setAttribute("aria-label", `Open ${album.title}`);
+		button.dataset.destination = ids(album).album;
+		button.addEventListener("click", () => workspace.navigate(ids(album).album, { from: occurrence.id }));
+		rail.append(button);
+	}
+	return rail;
+}
 
 function renderContent(occurrence, definition, workspace) {
 	return renderers[definition.data.kind](occurrence, definition.data, workspace);
@@ -176,17 +201,62 @@ function renderPhoto(occurrence, data, workspace) {
 	};
 }
 
-function renderMetadata(occurrence, data) {
+function renderMetadata(occurrence, data, workspace) {
 	const { album, photo } = data;
+	const key = ids(album);
 	const host = element("div", "metadata");
 	const list = element("dl");
 	for (const [term, value] of [["Date", photo.date], ["Place", photo.place], ["Tags", photo.tags], ["Album", album.title]]) {
 		list.append(element("dt", null, term), element("dd", null, value));
 	}
 	host.append(list);
-	const history = element("ol", "history");
-	for (let index = 1; index <= 24; index += 1) history.append(element("li", null, `Edit ${index}: adjusted exposure by ${(index % 5) - 2} stops`));
-	host.append(element("h4", null, "Edit history"), history);
+	const link = element("button", "metadata-link", "Edit history");
+	link.type = "button";
+	link.addEventListener("click", () => workspace.navigate(key.history(photo), { from: occurrence.id }));
+	host.append(link);
+	const notes = element("ol", "history");
+	for (let index = 1; index <= 24; index += 1) notes.append(element("li", null, `Note ${index}: adjusted exposure by ${(index % 5) - 2} stops`));
+	host.append(element("h4", null, "Notes"), notes);
+	return {
+		element: host,
+		update(current) {
+			link.setAttribute("aria-current", workspace.navigator.child(current) ? "true" : "false");
+		},
+	};
+}
+
+function renderHistory(occurrence, data, workspace) {
+	const { album, photo } = data;
+	const key = ids(album);
+	const host = element("ol", "edit-list");
+	const buttons = edits.map((edit) => {
+		const item = element("li");
+		const button = element("button", "edit-item", edit.title);
+		button.type = "button";
+		button.dataset.destination = key.edit(photo, edit);
+		button.addEventListener("click", () => workspace.navigate(key.edit(photo, edit), { from: occurrence.id }));
+		item.append(button);
+		host.append(item);
+		return button;
+	});
+	return {
+		element: host,
+		update(current) {
+			const selected = workspace.navigator.child(current)?.destination ?? null;
+			for (const button of buttons) button.setAttribute("aria-current", button.dataset.destination === selected ? "true" : "false");
+		},
+	};
+}
+
+function renderEdit(occurrence, data) {
+	const { edit, photo } = data;
+	const host = element("div", "edit");
+	host.append(element("h4", null, edit.title), element("p", null, edit.note));
+	const note = element("textarea", "caption");
+	note.rows = 2;
+	note.placeholder = "Reviewer note";
+	note.setAttribute("aria-label", `Reviewer note for ${edit.title} of ${photo.title}`);
+	host.append(note);
 	return { element: host };
 }
 
@@ -302,7 +372,10 @@ const scenarioHost = document.querySelector("[data-scenarios]");
 for (const scenario of scenarios) {
 	const button = element("button", "scenario", scenario.label);
 	button.type = "button";
-	button.addEventListener("click", () => session.replay(scenario.actions.map((action) => ({ ...action }))));
+	button.addEventListener("click", () => {
+		session.replay(scenario.actions.map((action) => ({ ...action })));
+		if (scenario.local) session.frames.forEach((frame) => { scenario.local(frame); frame.workspace.render({ animate: false }); });
+	});
 	scenarioHost.append(button);
 }
 const presetHost = document.querySelector("[data-size-presets]");

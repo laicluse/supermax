@@ -182,7 +182,7 @@ scenario("rows collapse from the top and the focused row keeps its minimum below
 });
 
 scenario("reveal shifts the row window and never changes what is open", () => {
-	const narrow = model(150, 500);
+	const narrow = model(110, 500);
 	openGallery(narrow);
 	narrow.open("item:a", { from: row("list") });
 	let chain = narrow.layout().chain.cells[1].rows.rows[0].chain;
@@ -207,6 +207,39 @@ scenario("a revealed outer chain does not change which defaults open", () => {
 	assert.equal(instance.open("item:b", { from: row("grid") }).ok, true);
 	assert.ok(instance.get(detail("grid", "b")), "the row width ignores the reveal, so the detail still fits");
 	assert.equal(instance.layout().chain.revealOffset, 0, "an opening resets the reveal of every chain above it");
+});
+
+scenario("cells with a compact form go compact from the left before anything hides, up to the cap", () => {
+	const instance = model(1000, 500);
+	openGallery(instance);
+	const chain = () => instance.layout().chain.cells[1].rows.rows[0].chain;
+	instance.resize({ width: 520, height: 500 });
+	let cells = chain().cells;
+	assert.deepEqual(cells.map((cell) => [cell.compact, cell.visible]), [[true, true], [false, true], [false, true], [false, true]], "one compact cell is enough in a 420 row");
+	assert.deepEqual(cells.map((cell) => cell.collapsible), [true, true, true, false], "the last cell is never collapsible");
+	instance.resize({ width: 440, height: 500 });
+	cells = chain().cells;
+	assert.deepEqual(cells.map((cell) => [cell.compact, cell.visible, Math.round(cell.width)]), [[true, true, 20], [true, true, 20], [false, true, 150], [false, true, 150]], "list and item go compact so detail and notes keep their room in a 340 row");
+	instance.resize({ width: 280, height: 500 });
+	cells = chain().cells;
+	assert.deepEqual(cells.map((cell) => [cell.compact, cell.visible]), [[false, false], [true, true], [false, true], [false, true]], "beyond the cap of two the oldest cell hides instead of a third compact");
+	assert.equal(chain().hiddenLeft, "List");
+	instance.resize({ width: 1000, height: 500 });
+	assert.ok(chain().cells.every((cell) => !cell.compact), "with room nothing is compact");
+	instance.collapse(item("list", "a"), true);
+	cells = chain().cells;
+	assert.deepEqual(cells.map((cell) => cell.compact), [false, true, false, false], "a user collapse goes compact regardless of room");
+	assert.deepEqual(titles(instance), ["Gallery"], "collapsing is not a navigation group");
+	const snapshot = instance.snapshot();
+	instance.collapse(item("list", "a"), false);
+	assert.ok(chain().cells.every((cell) => !cell.compact));
+	instance.restore(snapshot);
+	assert.equal(chain().cells[1].compact, true, "the collapse is part of the snapshot");
+	instance.collapse(detail("list", "a"), true);
+	instance.collapse(row("list"), true);
+	assert.equal(chain().cells.filter((cell) => cell.compact).length, 2, "user collapses beyond the cap are ignored, oldest first");
+	assert.equal(instance.back().ok, true);
+	assert.equal(instance.collapsed.size, 0, "closing removes the collapse state of closed cells");
 });
 
 scenario("the focus title carries its ancestors as context", () => {

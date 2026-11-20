@@ -2,6 +2,7 @@
 .supermax-workspace * { box-sizing: border-box; }
 
 .supermax-workspace {
+	position: relative;
 	display: flex;
 	flex-direction: column;
 	height: 100%;
@@ -69,6 +70,7 @@
 
 .supermax-chain { position: relative; height: 100%; background: var(--supermax-canvas, #f5f7fa); }
 .supermax-cell {
+	position: relative;
 	display: flex;
 	flex-direction: column;
 	border-right: 1px solid var(--supermax-line, #d6dde5);
@@ -89,6 +91,70 @@
 	flex: none;
 }
 .supermax-cell-body { flex: 1; min-height: 0; overflow: auto; }
+.supermax-collapse {
+	margin-left: auto;
+	flex: none;
+	width: 22px;
+	height: 22px;
+	border: 0;
+	border-radius: 999px;
+	background: transparent;
+	color: var(--supermax-muted, #5c6b7a);
+	font: inherit;
+	cursor: pointer;
+}
+.supermax-collapse:hover, .supermax-collapse:focus-visible { background: var(--supermax-muted-surface, #f5f7fa); color: var(--supermax-ink, #16202c); outline: 2px solid var(--supermax-accent, #0b6bcb); outline-offset: -2px; }
+.supermax-cell.is-compact { overflow: hidden; }
+.supermax-cell.is-compact > .supermax-cell-title, .supermax-cell.is-compact > .supermax-cell-body { visibility: hidden; }
+.supermax-cell.is-peeked > .supermax-cell-body { display: none; }
+.supermax-compact { position: absolute; inset: 0; display: none; flex-direction: column; align-items: stretch; background: var(--supermax-muted-surface, #f5f7fa); border-right: 1px solid var(--supermax-line, #d6dde5); }
+.supermax-cell.is-compact > .supermax-compact { display: flex; }
+.supermax-rail {
+	flex: none;
+	height: 100%;
+	border: 0;
+	padding: 10px 0;
+	background: transparent;
+	color: var(--supermax-ink, #16202c);
+	font: inherit;
+	font-size: 12px;
+	font-weight: 600;
+	cursor: pointer;
+	writing-mode: vertical-rl;
+	text-orientation: mixed;
+	text-align: left;
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+.supermax-rail:hover, .supermax-rail:focus-visible, .supermax-rail[aria-expanded="true"] { color: var(--supermax-accent, #0b6bcb); outline: 2px solid var(--supermax-accent, #0b6bcb); outline-offset: -2px; }
+.supermax-compact:has(.supermax-compact-icons) .supermax-rail { height: 44px; writing-mode: horizontal-tb; font-size: 0; }
+.supermax-peek {
+	position: absolute;
+	z-index: 5;
+	display: flex;
+	flex-direction: column;
+	background: var(--supermax-surface, #ffffff);
+	border: 1px solid var(--supermax-accent, #0b6bcb);
+	box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
+	overflow: hidden;
+}
+.supermax-peek-title {
+	height: 28px;
+	padding: 0 6px 0 10px;
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	font-size: 12px;
+	font-weight: 600;
+	color: var(--supermax-accent, #0b6bcb);
+	border-bottom: 1px dashed var(--supermax-accent, #0b6bcb);
+	flex: none;
+}
+.supermax-peek-title::before { content: "peek"; margin-right: 8px; font-weight: 400; text-transform: uppercase; letter-spacing: 0.08em; font-size: 10px; }
+.supermax-peek-close { border: 0; background: transparent; font: inherit; font-size: 16px; cursor: pointer; color: inherit; width: 24px; height: 24px; border-radius: 999px; }
+.supermax-peek-close:hover, .supermax-peek-close:focus-visible { background: var(--supermax-muted-surface, #f5f7fa); outline: 2px solid var(--supermax-accent, #0b6bcb); outline-offset: -2px; }
+.supermax-peek > .supermax-cell-body { flex: 1; min-height: 0; overflow: auto; width: auto !important; }
 .supermax-cell.is-split > .supermax-cell-body { overflow: hidden; }
 
 .supermax-rows { display: flex; flex-direction: column; height: 100%; }

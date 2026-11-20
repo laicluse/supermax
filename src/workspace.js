@@ -14,6 +14,8 @@ export class Workspace extends EventTarget {
 		this.rows = new Map();
 		this.rendering = false;
 		this.pendingFocus = null;
+		this.peek = null;
+		this.peekTimer = null;
 		this.reducedMotion = this.document.defaultView.matchMedia("(prefers-reduced-motion: reduce)");
 		this.onFocusIn = (event) => this.followFocus(event.target);
 		this.buildChrome();
@@ -71,8 +73,85 @@ export class Workspace extends EventTarget {
 	}
 
 	intent(action) {
+		this.closePeek();
 		if (this.onIntent) return this.onIntent(action, this);
 		return this.apply(action, { focus: true });
+	}
+
+	collapse(occurrenceId, collapsed = !this.navigator.collapsed.has(occurrenceId)) {
+		this.closePeek();
+		this.navigator.collapse(occurrenceId, collapsed);
+		this.render({ animate: true });
+		this.focusCell(occurrenceId);
+	}
+
+	openPeek(occurrenceId) {
+		this.cancelPeekTimer();
+		if (this.peek?.occurrence === occurrenceId) return;
+		this.closePeek();
+		const entry = this.cells.get(occurrenceId);
+		const cell = this.findCell(occurrenceId);
+		if (!entry || !cell?.compact) return;
+		const definition = this.navigator.destination(this.navigator.get(occurrenceId).destination);
+		const overlay = this.create("div", "supermax-peek");
+		overlay.setAttribute("role", "dialog");
+		overlay.setAttribute("aria-label", `${entry.header.firstChild.textContent}, peek`);
+		const header = this.create("header", "supermax-peek-title");
+		header.append(this.document.createTextNode(entry.header.firstChild.textContent));
+		const close = this.create("button", "supermax-peek-close");
+		close.type = "button";
+		close.setAttribute("aria-label", "Close peek");
+		close.textContent = "×";
+		close.addEventListener("click", () => { this.closePeek(); entry.rail.focus(); });
+		header.append(close);
+		overlay.append(header, entry.body);
+		const host = this.element.getBoundingClientRect();
+		const rail = entry.element.getBoundingClientRect();
+		const width = Math.min(definition.min, host.width - (rail.right - host.left));
+		const left = width < definition.min ? rail.left - host.left - width : rail.right - host.left;
+		overlay.style.left = `${Math.max(0, left)}px`;
+		overlay.style.top = `${rail.top - host.top}px`;
+		overlay.style.width = `${Math.max(width, Math.min(definition.min, host.width))}px`;
+		overlay.style.height = `${rail.height}px`;
+		overlay.addEventListener("pointerenter", () => this.cancelPeekTimer());
+		overlay.addEventListener("pointerleave", () => this.schedulePeekClose());
+		overlay.addEventListener("keydown", (event) => {
+			if (event.key !== "Escape") return;
+			event.stopPropagation();
+			this.closePeek();
+			entry.rail.focus();
+		});
+		overlay.addEventListener("focusout", (event) => {
+			if (!event.relatedTarget || overlay.contains(event.relatedTarget) || event.relatedTarget === entry.rail) return;
+			this.closePeek();
+		});
+		this.element.append(overlay);
+		this.peek = { occurrence: occurrenceId, overlay, entry, openedAt: Date.now() };
+		entry.element.classList.add("is-peeked");
+		entry.rail.setAttribute("aria-expanded", "true");
+		this.dispatchEvent(new CustomEvent("peek", { detail: { occurrence: occurrenceId, open: true } }));
+	}
+
+	closePeek() {
+		this.cancelPeekTimer();
+		if (!this.peek) return;
+		const { occurrence, overlay, entry } = this.peek;
+		this.peek = null;
+		entry.element.append(entry.body);
+		entry.element.classList.remove("is-peeked");
+		entry.rail.setAttribute("aria-expanded", "false");
+		overlay.remove();
+		this.dispatchEvent(new CustomEvent("peek", { detail: { occurrence, open: false } }));
+	}
+
+	schedulePeekClose() {
+		this.cancelPeekTimer();
+		this.peekTimer = this.document.defaultView.setTimeout(() => this.closePeek(), 200);
+	}
+
+	cancelPeekTimer() {
+		if (this.peekTimer) this.document.defaultView.clearTimeout(this.peekTimer);
+		this.peekTimer = null;
 	}
 
 	run(action) {
@@ -134,7 +213,11 @@ export class Workspace extends EventTarget {
 	focusCell(occurrenceId) {
 		const target = this.visibleCellFor(occurrenceId);
 		const entry = target ? this.cells.get(target) : null;
-		if (entry) entry.element.focus({ preventScroll: true });
+		if (!entry) return;
+		const focusable = this.findCell(target)?.compact ? entry.rail : entry.element;
+		this.programmaticFocus = true;
+		focusable.focus({ preventScroll: true });
+		this.programmaticFocus = false;
 	}
 
 	visibleCellFor(occurrenceId) {
@@ -256,6 +339,7 @@ export class Workspace extends EventTarget {
 			width: cell.width,
 			visible: cell.visible,
 		}));
+		for (const cell of chain.cells) this.applyCompact(cell);
 		this.protectFocus(entries.filter((cell) => !cell.visible).map((cell) => cell.element));
 		entry.strip.update(entries, { animate: animating });
 		for (const cell of chain.cells) {
@@ -265,6 +349,19 @@ export class Workspace extends EventTarget {
 		this.placeReveal(entry.left, chain.hiddenLeft, visible[0], "prepend");
 		this.placeReveal(entry.right, chain.hiddenRight, visible[visible.length - 1], "append");
 		return entry.viewport;
+	}
+
+	applyCompact(cell) {
+		const entry = this.cells.get(cell.occurrence);
+		if (!entry.rail) return;
+		const definition = this.navigator.destination(this.navigator.get(cell.occurrence).destination);
+		if (this.peek?.occurrence === cell.occurrence && !cell.compact) this.closePeek();
+		if (cell.compact && !entry.element.classList.contains("is-compact")) this.protectFocus([entry.body], cell.occurrence);
+		entry.element.classList.toggle("is-compact", cell.compact);
+		entry.body.style.width = cell.compact ? `${definition.min}px` : "";
+		entry.collapseButton.hidden = !cell.collapsible || cell.compact;
+		entry.collapseButton.setAttribute("aria-pressed", String(this.navigator.collapsed.has(cell.occurrence)));
+		entry.rail.inert = !cell.compact;
 	}
 
 	protectFocus(elements, target = this.navigator.focused) {
@@ -314,9 +411,49 @@ export class Workspace extends EventTarget {
 			if (handle.element) body.append(handle.element);
 		}
 		element.append(body);
-		entry = { element, body, header, handle, parent: occurrence.parent };
+		entry = { element, body, header, handle, parent: occurrence.parent, rail: null, collapseButton: null };
+		if (!isSplit(definition) && definition.compact) this.mountCompact(entry, occurrence, definition);
 		this.cells.set(occurrenceId, entry);
 		return element;
+	}
+
+	mountCompact(entry, occurrence, definition) {
+		const collapseButton = this.create("button", "supermax-collapse");
+		collapseButton.type = "button";
+		collapseButton.hidden = true;
+		collapseButton.setAttribute("aria-label", `Collapse ${occurrence.title}`);
+		collapseButton.textContent = "⌃";
+		collapseButton.addEventListener("click", () => this.collapse(occurrence.id, true));
+		entry.header.append(collapseButton);
+		const compact = this.create("div", "supermax-compact");
+		const rail = this.create("button", "supermax-rail");
+		rail.type = "button";
+		rail.inert = true;
+		rail.setAttribute("aria-label", `Peek ${occurrence.title}`);
+		rail.setAttribute("aria-haspopup", "dialog");
+		rail.setAttribute("aria-expanded", "false");
+		rail.append(this.document.createTextNode(occurrence.title));
+		rail.addEventListener("click", () => {
+			const settled = this.peek?.occurrence === occurrence.id && Date.now() - this.peek.openedAt > 250;
+			if (settled) this.closePeek();
+			else this.openPeek(occurrence.id);
+		});
+		rail.addEventListener("pointerenter", (event) => {
+			if (event.pointerType === "touch") return;
+			this.cancelPeekTimer();
+			this.peekTimer = this.document.defaultView.setTimeout(() => this.openPeek(occurrence.id), 150);
+		});
+		rail.addEventListener("pointerleave", () => this.schedulePeekClose());
+		rail.addEventListener("focus", () => { if (!this.programmaticFocus) this.openPeek(occurrence.id); });
+		rail.addEventListener("keydown", (event) => {
+			if (event.key === "Escape") this.closePeek();
+		});
+		compact.append(rail);
+		const extra = definition.compact.content?.(occurrence, this);
+		if (extra) compact.append(extra);
+		entry.element.append(compact);
+		entry.rail = rail;
+		entry.collapseButton = collapseButton;
 	}
 
 	renderRows(cell, animating) {
@@ -367,6 +504,7 @@ export class Workspace extends EventTarget {
 	pruneClosed() {
 		for (const [occurrenceId, entry] of this.cells) {
 			if (this.navigator.get(occurrenceId)) continue;
+			if (this.peek?.occurrence === occurrenceId) this.closePeek();
 			this.protectFocus([entry.element], entry.parent);
 			this.cells.delete(occurrenceId);
 			this.afterExit(entry.element, () => entry.handle.dispose?.());
@@ -411,6 +549,7 @@ export class Workspace extends EventTarget {
 	}
 
 	destroy() {
+		this.closePeek();
 		this.observer.disconnect();
 		this.element.removeEventListener("focusin", this.onFocusIn);
 		for (const entry of this.cells.values()) entry.handle.dispose?.();

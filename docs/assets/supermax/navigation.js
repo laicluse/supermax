@@ -3,7 +3,7 @@
 
 import { chainCells, chainRootOf, chainWidth, isSplit, layoutWorkspace, validateSplit } from "./layout.js";
 
-const DEFAULT_CHROME = { navbar: 44, rowTab: 32, maxRows: 4 };
+const DEFAULT_CHROME = { navbar: 44, rowTab: 32, maxRows: 4, maxCompact: 2 };
 
 export class Navigator {
 	constructor({ destinations, root, minViewportHeight, chrome = {} }) {
@@ -21,6 +21,7 @@ export class Navigator {
 		this.groups = [];
 		this.groupSequence = 0;
 		this.revealOffsets = new Map();
+		this.collapsed = new Set();
 		this.root = this.createOccurrence(this.rootDestination, null, 0, null);
 		this.focused = this.root.id;
 	}
@@ -159,6 +160,7 @@ export class Navigator {
 		if (parent && parent.children[occurrence.row] === occurrence.id) parent.children[occurrence.row] = undefined;
 		this.occurrences.delete(occurrence.id);
 		this.revealOffsets.delete(occurrence.id);
+		this.collapsed.delete(occurrence.id);
 		if (this.focused === occurrence.id) this.focused = parent ? parent.id : this.root.id;
 		closed.unshift({ id: occurrence.id, title: occurrence.title });
 		return closed;
@@ -196,6 +198,12 @@ export class Navigator {
 		}
 	}
 
+	collapse(occurrenceId, collapsed = true) {
+		if (!this.get(occurrenceId)) return;
+		if (collapsed) this.collapsed.add(occurrenceId);
+		else this.collapsed.delete(occurrenceId);
+	}
+
 	reveal(chainRootId, delta) {
 		const chainRoot = this.get(chainRootId);
 		if (!chainRoot) return;
@@ -228,6 +236,7 @@ export class Navigator {
 			groupSequence: this.groupSequence,
 			focused: this.focused,
 			revealOffsets: [...this.revealOffsets],
+			collapsed: [...this.collapsed],
 		};
 	}
 
@@ -238,6 +247,7 @@ export class Navigator {
 		this.groupSequence = snapshot.groupSequence;
 		this.focused = snapshot.focused;
 		this.revealOffsets = new Map(snapshot.revealOffsets);
+		this.collapsed = new Set(snapshot.collapsed ?? []);
 		this.root = this.get(this.rootDestination);
 		return true;
 	}

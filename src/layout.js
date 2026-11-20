@@ -59,19 +59,40 @@ export function chainCells(model, chainRoot) {
 	return cells;
 }
 
-function configsOf(model, cells) {
-	return cells.map((occurrence) => {
+export function compactWidth(definition) {
+	return definition.compact ? definition.compact.min : null;
+}
+
+export function allocateChain(model, cells, width) {
+	const last = cells[cells.length - 1];
+	const compact = new Set();
+	for (const occurrence of cells) {
+		if (compact.size >= model.chrome.maxCompact) break;
+		if (occurrence !== last && model.collapsed.has(occurrence.id) && compactWidth(model.destination(occurrence.destination)) !== null) compact.add(occurrence.id);
+	}
+	const sumOfMins = () => cells.reduce((sum, occurrence) => {
 		const definition = model.destination(occurrence.destination);
-		return { id: occurrence.id, title: occurrence.title, min: definition.min, max: definition.max };
+		return sum + (compact.has(occurrence.id) ? compactWidth(definition) : definition.min);
+	}, 0);
+	for (const occurrence of cells) {
+		if (sumOfMins() <= width || compact.size >= model.chrome.maxCompact) break;
+		if (occurrence === last || compact.has(occurrence.id) || compactWidth(model.destination(occurrence.destination)) === null) continue;
+		compact.add(occurrence.id);
+	}
+	const configs = cells.map((occurrence) => {
+		const definition = model.destination(occurrence.destination);
+		const size = compact.has(occurrence.id) ? compactWidth(definition) : null;
+		return { id: occurrence.id, title: occurrence.title, min: size ?? definition.min, max: size ?? definition.max };
 	});
+	const allocation = new CellCollection(configs).distribute(width);
+	return { allocation, compact };
 }
 
 export function chainWidth(model, chainRoot) {
 	if (!chainRoot.parent) return model.size.width;
 	const split = model.get(chainRoot.parent);
 	const outerRoot = chainRootOf(model, split);
-	const outerCells = chainCells(model, outerRoot);
-	const allocation = new CellCollection(configsOf(model, outerCells)).distribute(chainWidth(model, outerRoot));
+	const { allocation } = allocateChain(model, chainCells(model, outerRoot), chainWidth(model, outerRoot));
 	const cell = allocation.cells.find((candidate) => candidate.config.id === split.id);
 	return cell && cell.visible ? cell.actual : model.destination(split.destination).min;
 }
@@ -94,7 +115,7 @@ function layoutChain(model, chainRoot, width, height) {
 	const cells = chainCells(model, chainRoot);
 	const offset = Math.min(model.revealOffsets.get(chainRoot.id) ?? 0, cells.length - 1);
 	const shown = cells.slice(0, cells.length - offset);
-	const allocation = new CellCollection(configsOf(model, shown)).distribute(width);
+	const { allocation, compact } = allocateChain(model, shown, width);
 	let overflow = false;
 	let contentHeight = height;
 	const layoutCells = cells.map((occurrence, index) => {
@@ -102,7 +123,7 @@ function layoutChain(model, chainRoot, width, height) {
 		const allocated = allocation.cells[index];
 		const visible = allocated ? allocated.visible : false;
 		const cellWidth = visible ? allocated.actual : definition.min;
-		const cell = { occurrence: occurrence.id, title: occurrence.title, width: cellWidth, visible };
+		const cell = { occurrence: occurrence.id, title: occurrence.title, width: cellWidth, visible, compact: visible && compact.has(occurrence.id), collapsible: compactWidth(definition) !== null && occurrence !== cells[cells.length - 1] };
 		if (isSplit(definition)) {
 			cell.rows = layoutRows(model, occurrence, cellWidth, height);
 			overflow = overflow || cell.rows.overflow;

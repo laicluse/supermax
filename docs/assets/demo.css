@@ -122,6 +122,34 @@ body {
 .album-item:hover { background: var(--paper); }
 .album-item[aria-current="true"] { background: #e3effc; border-color: var(--accent); }
 .album-note { margin: 2px 10px 6px; font-size: 12px; color: var(--warn); }
+.album-icons { display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 6px 0; }
+.album-icon {
+	width: 32px;
+	height: 32px;
+	border-radius: 8px;
+	border: 1px solid var(--line);
+	background: var(--card);
+	font: inherit;
+	font-weight: 700;
+	cursor: pointer;
+}
+.album-icon:hover, .album-icon:focus-visible { border-color: var(--accent); color: var(--accent); }
+.edit-list { list-style: none; margin: 0; padding: 6px; display: flex; flex-direction: column; gap: 4px; }
+.edit-item {
+	width: 100%;
+	text-align: left;
+	padding: 8px 10px;
+	border: 1px solid transparent;
+	border-radius: 6px;
+	background: transparent;
+	font: inherit;
+	font-size: 14px;
+	cursor: pointer;
+}
+.edit-item:hover { background: var(--paper); }
+.edit-item[aria-current="true"] { background: #e3effc; border-color: var(--accent); }
+.edit { padding: 10px; display: flex; flex-direction: column; gap: 8px; font-size: 13px; }
+.edit h4, .edit p { margin: 0; }
 
 .selector { padding: 10px; }
 .empty-state { margin: 0; color: var(--muted); font-size: 14px; }
@@ -194,4 +222,5 @@ body {
 .metadata dt { color: var(--muted); }
 .metadata dd { margin: 0; }
 .metadata h4 { margin: 8px 0 4px; font-size: 12px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); }
+.metadata .metadata-link { margin: 4px 0 8px; }
 .history { margin: 0; padding-left: 18px; color: var(--muted); }

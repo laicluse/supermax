@@ -3,7 +3,7 @@ export const minViewportHeight = 300;
 export const chrome = { navbar: 40, rowTab: 20, maxRows: 4 };
 
 export const destinations = {
-	root: { title: "Root", min: 100, max: 100 },
+	root: { title: "Root", min: 100, max: 100, compact: { min: 20 } },
 	gallery: {
 		title: "Gallery",
 		min: 300,
@@ -14,13 +14,13 @@ export const destinations = {
 			{ destination: "tags", minHeight: 100, maxHeight: 200 },
 		],
 	},
-	list: { title: "List", min: 100, max: 150, defaultChild: "item:a" },
+	list: { title: "List", min: 100, max: 150, defaultChild: "item:a", compact: { min: 20 } },
 	grid: { title: "Grid", min: 100, max: 150, defaultChild: "item:a" },
 	tags: { title: "Tags", min: 100, max: 150, defaultChild: "item:a" },
-	"item:a": { title: "Item A", min: 100, max: 200, defaultChild: "detail:a" },
+	"item:a": { title: "Item A", min: 100, max: 200, defaultChild: "detail:a", compact: { min: 20 } },
 	"item:b": { title: "Item B", min: 100, max: 200, defaultChild: "detail:b" },
 	"item:c": { title: "Item C", min: 100, max: 200, defaultChild: "detail:c" },
-	"detail:a": { title: "Detail A", min: 150, max: 200, defaultChild: "notes:a" },
+	"detail:a": { title: "Detail A", min: 150, max: 200, defaultChild: "notes:a", compact: { min: 20 } },
 	"detail:b": { title: "Detail B", min: 150, max: 200 },
 	"detail:c": { title: "Detail C", min: 150, max: 200 },
 	"notes:a": { title: "Notes A", min: 100, max: 200 },

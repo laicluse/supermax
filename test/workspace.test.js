@@ -103,9 +103,8 @@ test("frames diverge on what one Back closes and the demo does not equalise them
 	assert.deepEqual(await groups("a"), ["Coast", "Photo A"], "the auto-opened photo is promoted in the wide frame");
 	assert.equal(await activeOccurrence(), coast.photo("thumbnails", "a"), "focus follows the opened photo in the narrow frame");
 	await settle();
-	const narrowChain = await boxes(inFrame("b", `[data-occurrence="${coast.row("thumbnails")}"], [data-occurrence="${coast.photo("thumbnails", "a")}"]`));
-	assert.deepEqual(narrowChain.map((cell) => cell.visible), [false, true], "the narrow row hides the selector for the photo");
-	assert.equal(await page.locator(inFrame("b", `[data-occurrence="${coast.photo("thumbnails", "a")}"] .supermax-reveal.is-left`)).textContent(), "Thumbnails");
+	const narrowChain = await page.locator(inFrame("b", `[data-occurrence="${coast.row("thumbnails")}"], [data-occurrence="${coast.photo("thumbnails", "a")}"]`)).evaluateAll((elements) => elements.map((element) => element.classList.contains("is-compact")));
+	assert.deepEqual(narrowChain, [true, false], "the narrow row makes the selector compact for the photo");
 	await page.click(inFrame("b", ".supermax-back"));
 	assert.deepEqual(await groups("b"), ["Coast"]);
 	assert.ok((await state("b")).occurrences.includes(coast.row("thumbnails")));
@@ -177,16 +176,16 @@ test("collapse thresholds keep navigation, draft and scroll, and the content cel
 	await resize([[420, 400], [420, 640]]);
 	const after = await state("a");
 	assert.deepEqual({ occurrences: after.occurrences, groups: after.groups }, { occurrences: before.occurrences, groups: before.groups }, "collapse thresholds rewrite no navigation state");
-	assert.equal(await activeOccurrence(), coast.metadata("people", "c"), "focus moves to the visible cell of the same row when its cell slides out");
+	assert.equal(await activeOccurrence(), coast.photo("people", "c"), "focus moves to the rail of the cell that went compact");
 	assert.deepEqual(await collapsedRows("a"), [true, true, false], "top rows collapse first");
 	assert.equal(await page.locator(inFrame("a", ".supermax-row-tab:not([hidden])")).count(), 2, "collapsed rows show a tab");
-	const chain = await boxes(inFrame("a", `[data-occurrence="${coast.row("people")}"], [data-occurrence="${coast.photo("people", "c")}"], [data-occurrence="${coast.metadata("people", "c")}"]`));
-	assert.deepEqual(chain.map((cell) => cell.visible), [false, false, true], "the narrow row keeps the newest cell");
+	const chain = await page.locator(inFrame("a", `[data-occurrence="${coast.row("people")}"], [data-occurrence="${coast.photo("people", "c")}"], [data-occurrence="${coast.metadata("people", "c")}"]`)).evaluateAll((elements) => elements.map((element) => element.classList.contains("is-compact")));
+	assert.deepEqual(chain, [true, true, false], "the narrow row makes the selector and the photo compact and keeps the newest cell full");
 	assert.equal(await page.inputValue(captionSelector), "Lighthouse at dusk", "the draft survives the collapse");
 	await page.click(inFrame("a", `.supermax-row[data-row="${coast.row("thumbnails")}"] .supermax-row-tab`));
 	await settle();
 	assert.deepEqual(await collapsedRows("a"), [false, true, true], "a tab opens its row");
-	assert.equal(await activeOccurrence(), coast.metadata("thumbnails", "a"), "the tab focuses the row's visible cell");
+	assert.equal(await activeOccurrence(), coast.row("thumbnails"), "the tab focuses the row's first visible cell, here a compact rail");
 	const afterFocus = await state("a");
 	assert.deepEqual({ occurrences: afterFocus.occurrences, groups: afterFocus.groups }, { occurrences: before.occurrences, groups: before.groups });
 	await resize([[960, 640], [420, 640]]);
@@ -201,7 +200,11 @@ test("below the declared minimum the focused row keeps its height and the worksp
 		.map((element) => ({ id: element.dataset.occurrence, width: element.getBoundingClientRect().width })));
 	const minima = await page.evaluate(() => {
 		const model = window.supermaxDemo.frames[1].workspace.navigator;
-		return Object.fromEntries([...model.occurrences.values()].map((occurrence) => [occurrence.id, model.destination(occurrence.destination).min]));
+		return Object.fromEntries([...model.occurrences.values()].map((occurrence) => {
+			const definition = model.destination(occurrence.destination);
+			const compact = model.layout && window.supermaxDemo.frames[1].workspace.findCell(occurrence.id)?.compact;
+			return [occurrence.id, compact ? definition.compact.min : definition.min];
+		}));
 	});
 	for (const cell of visible) assert.ok(cell.width >= minima[cell.id], `${cell.id} is not narrower than its own minimum`);
 	await resize([[960, 640], [420, 260]]);
@@ -247,13 +250,71 @@ test("keyboard opening in the narrow frame keeps focus on the opened content", a
 	await page.focus(inFrame("b", `[data-occurrence="${coast.row("thumbnails")}"] .thumb[data-destination="coast:photo:a"]`));
 	await page.keyboard.press("Enter");
 	await settle();
-	assert.equal(await activeOccurrence(), coast.photo("thumbnails", "a"), "focus follows the photo although its selector slid out");
+	assert.equal(await activeOccurrence(), coast.photo("thumbnails", "a"), "focus follows the photo although its selector went compact");
+	await resize([[960, 640], [260, 640]]);
+	assert.equal(await page.locator(inFrame("b", `[data-occurrence="${coast.row("thumbnails")}"]`)).evaluate((element) => getComputedStyle(element).visibility), "hidden", "at 260px the selector hides behind a chip");
 	await page.click(inFrame("b", `[data-occurrence="${coast.photo("thumbnails", "a")}"] .supermax-reveal.is-left`));
 	await settle();
 	assert.equal(await activeOccurrence(), coast.row("thumbnails"), "revealing focuses the revealed selector");
 	const hidden = await boxes(inFrame("b", `[data-occurrence="${coast.photo("thumbnails", "a")}"]`));
 	assert.equal(hidden[0].visible, false, "the cell hidden by the reveal is not painted");
 	assert.equal(await page.locator(inFrame("b", `[data-occurrence="${coast.row("thumbnails")}"] .supermax-reveal.is-right`)).textContent(), "Photo A");
+});
+
+const LONG_CHAIN = [open("album:coast", "albums"), open("coast:history:a", coast.metadata("thumbnails", "a")), open("coast:edit:a:2", coast.history("thumbnails", "a"))];
+
+test("compact cells keep a long chain and the albums menu usable", async () => {
+	await openDemo(LONG_CHAIN);
+	const widths = await page.locator(inFrame("a", `[data-occurrence^="${coast.row("thumbnails")}"]`)).evaluateAll((elements) => elements.map((element) => [element.dataset.occurrence.split("/").pop(), Math.round(element.getBoundingClientRect().width), element.classList.contains("is-compact")]));
+	assert.deepEqual(widths.map((entry) => entry[2]), [true, true, false, false, false], "the two oldest cells go compact, the rest stay full");
+	assert.deepEqual(widths.slice(0, 2).map((entry) => entry[1]), [40, 40], "compact cells are 40px rails");
+	assert.equal(await page.locator(inFrame("a", `[data-occurrence="${coast.row("thumbnails")}"] .supermax-rail`)).getAttribute("aria-label"), "Peek Thumbnails");
+	await page.click(inFrame("a", `[data-occurrence="${coast.metadata("thumbnails", "a")}"] .supermax-collapse`));
+	await settle();
+	const afterCollapse = await page.locator(inFrame("a", `[data-occurrence^="${coast.row("thumbnails")}"]`)).evaluateAll((elements) => elements.map((element) => [element.classList.contains("is-compact"), getComputedStyle(element).visibility === "visible" && element.getBoundingClientRect().width > 0]));
+	assert.deepEqual(afterCollapse, [[true, true], [false, true], [true, true], [false, true], [false, true]], "the user's collapse counts first, one automatic compact remains within the cap, and the chain fits again");
+	assert.deepEqual(await groups("a"), ["Coast", "History A", "Crop 3:2 (A)"], "collapsing changes no group");
+	assert.equal(await page.locator(inFrame("b", '[data-occurrence="albums"]')).evaluate((element) => element.classList.contains("is-compact")), true, "the narrow frame shows the albums menu as a rail");
+	await page.click(inFrame("b", '.album-icon[data-destination="album:empty"]'));
+	assert.deepEqual(await groups("b"), ["Empty album"], "an icon in the rail navigates");
+	assert.deepEqual(await groups("a"), ["Empty album"], "and the other frame follows");
+	await resize([[960, 640], [420, 360]]);
+	assert.equal(await page.locator(inFrame("b", '[data-occurrence="albums"] .album-icon')).first().isVisible(), true, "at the supported minimum height the menu rail is still there");
+});
+
+test("a peek shows a compact cell's own content without touching history", async () => {
+	await openDemo(LONG_CHAIN);
+	const rail = inFrame("a", `[data-occurrence="${coast.photo("thumbnails", "a")}"] .supermax-rail`);
+	const urlBefore = page.url();
+	await page.hover(rail);
+	await page.waitForSelector(inFrame("a", ".supermax-peek"));
+	await page.fill(inFrame("a", ".supermax-peek .caption"), "Peeked draft");
+	assert.deepEqual(await groups("a"), ["Coast", "History A", "Crop 3:2 (A)"]);
+	assert.equal(page.url(), urlBefore, "a peek writes no history");
+	await page.mouse.move(5, 5);
+	await page.waitForSelector(inFrame("a", ".supermax-peek"), { state: "detached" });
+	assert.equal(await page.locator(inFrame("a", `[data-occurrence="${coast.photo("thumbnails", "a")}"] .caption`)).inputValue(), "Peeked draft", "the draft typed in the peek lives in the cell");
+	await page.focus(rail);
+	await page.waitForSelector(inFrame("a", ".supermax-peek"));
+	await page.keyboard.press("Escape");
+	await page.waitForSelector(inFrame("a", ".supermax-peek"), { state: "detached" });
+	assert.equal(await page.evaluate(() => document.activeElement?.className), "supermax-rail", "Escape returns focus to the rail");
+	await page.click(rail);
+	await page.waitForSelector(inFrame("a", ".supermax-peek"));
+	await page.waitForTimeout(300);
+	await page.click(rail);
+	await page.waitForSelector(inFrame("a", ".supermax-peek"), { state: "detached" });
+	await page.click(rail);
+	await page.waitForSelector(inFrame("a", ".supermax-peek"));
+	assert.equal(await page.locator(inFrame("b", ".supermax-peek")).count(), 0, "the peek is local to its frame");
+	await page.keyboard.press("Escape");
+	await page.waitForSelector(inFrame("a", ".supermax-peek"), { state: "detached" });
+	await page.click(inFrame("a", `[data-occurrence="${coast.row("thumbnails")}"] .supermax-rail`));
+	await page.waitForSelector(inFrame("a", ".supermax-peek"));
+	await page.click(inFrame("a", '.supermax-peek .thumb[data-destination="coast:photo:d"]'));
+	await page.waitForSelector(inFrame("a", ".supermax-peek"), { state: "detached" });
+	assert.deepEqual(await groups("a"), ["Coast", "Photo D"], "a navigation from the peek is applied, replacing the deeper chain, and closes the peek");
+	assert.deepEqual(await groups("b"), ["Coast", "Photo D"], "the other frame receives the same action");
 });
 
 test("reset restores both frames and clears the URL", async () => {
@@ -283,7 +344,7 @@ test("empty and rejected albums are told apart and keep the workspace usable", a
 test("hostile deeplinks are rejected without breaking the page", async () => {
 	await openDemo([open("album:coast", "albums"), open("coast:thumbnails", coast.album), { type: "back" }, open("constructor", "albums")]);
 	assert.deepEqual(await groups("a"), [], "the row root could not be promoted, so Back closed the album");
-	assert.equal(await page.locator("[data-scenarios] .scenario").count(), 8, "the page finished loading");
+	assert.equal(await page.locator("[data-scenarios] .scenario").count(), 10, "the page finished loading");
 	assert.equal(await page.locator(readout("a", "rejection")).textContent(), "Rejected: constructor is not a destination.");
 	assert.equal(page.url().split("#")[1], "o:album:coast@albums;b", "only applied actions survive in the URL");
 });
@@ -329,6 +390,7 @@ test("history restore that removes the focused cell hands focus to visible conte
 
 test("rows inside a split hidden by a reveal are not painted", async () => {
 	await openDemo([open("album:coast", "albums")]);
+	await resize([[960, 640], [300, 640]]);
 	await page.click(inFrame("b", ".supermax-navbar .supermax-reveal.is-left"));
 	await settle();
 	const visibility = await page.locator(inFrame("b", `[data-occurrence="${coast.album}"] .supermax-row .supermax-cell`)).evaluateAll((elements) => [...new Set(elements.map((element) => getComputedStyle(element).visibility))]);
