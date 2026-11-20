@@ -286,3 +286,105 @@ test("a closing modal keeps its content until it has gone, and tells the content
 	});
 	assert.deepEqual(result.events, [["leave", true], ["closed"], ["dispose", false]], "leave runs while the dialog is still there, dispose only once it is gone");
 });
+
+test("every change of the zoom emits a zoom event, also when it ends because its cell closes or a restore puts it back", async () => {
+	const events = await page.evaluate(async () => {
+		const { Navigator, Workspace } = await import("/src/index.js");
+		const host = document.createElement("div");
+		host.style.cssText = "width:1180px;height:500px";
+		document.body.append(host);
+		const navigator = new Navigator({
+			destinations: {
+				menu: { title: "Menu", min: 195, max: 256 },
+				list: { title: "List", min: 320, max: "*", preferred: 640 },
+				detail: { title: "Detail", min: 320, max: 640, zoomable: true },
+			},
+			root: "menu",
+			minViewportHeight: window.fixture.minViewportHeight,
+			chrome: window.fixture.chrome,
+		});
+		const workspace = new Workspace(host, { navigator, content: () => ({ element: document.createElement("div") }) });
+		const seen = [];
+		workspace.addEventListener("zoom", (event) => seen.push(event.detail.occurrence?.split("/").pop() ?? null));
+		workspace.sync(["menu", "list", "detail"], { animate: false, origin: null });
+		const zoomedOut = navigator.snapshot();
+		workspace.zoom("menu/list/detail", { animate: false });
+		const zoomedIn = navigator.snapshot();
+		workspace.restore(zoomedOut);
+		workspace.restore(zoomedIn);
+		workspace.sync(["menu", "list"], { animate: false, origin: null });
+		host.remove();
+		return seen;
+	});
+	assert.deepEqual(events, ["detail", null, "detail", null], "zooming, restoring both ways and closing the zoomed cell each emit zoom once");
+});
+
+test("a compact rail with its own content leaves that content room inside the cell, with only the package stylesheet", async () => {
+	const measured = await page.evaluate(async () => {
+		const { Navigator, Workspace } = await import("/src/index.js");
+		const host = document.createElement("div");
+		host.style.cssText = "width:700px;height:500px";
+		document.body.append(host);
+		const navigator = new Navigator({
+			destinations: {
+				menu: { title: "Mail", min: 195, max: 256, keep: true, compact: { min: 48 } },
+				list: { title: "List", min: 320, max: "*", preferred: 640 },
+				detail: { title: "Detail", min: 320, max: 640 },
+			},
+			root: "menu",
+			minViewportHeight: window.fixture.minViewportHeight,
+			chrome: window.fixture.chrome,
+		});
+		const workspace = new Workspace(host, {
+			navigator,
+			content: () => ({ element: document.createElement("div") }),
+			compactContent: () => {
+				const icons = document.createElement("div");
+				icons.className = "test-icons";
+				for (const letter of ["I", "X"]) { const button = document.createElement("button"); button.textContent = letter; icons.append(button); }
+				return icons;
+			},
+		});
+		workspace.sync(["menu", "list", "detail"], { animate: false, origin: null });
+		await new Promise((resolve) => requestAnimationFrame(resolve));
+		const cell = host.querySelector('[data-occurrence="menu"]');
+		const compact = cell.querySelector(".supermax-compact").getBoundingClientRect();
+		const icons = [...cell.querySelectorAll(".test-icons button")].map((button) => button.getBoundingClientRect());
+		const result = { compact: cell.classList.contains("is-compact"), bottom: Math.round(compact.bottom), icons: icons.map((rect) => Math.round(rect.bottom)), widths: icons.map((rect) => Math.round(rect.width)) };
+		host.remove();
+		return result;
+	});
+	assert.equal(measured.compact, true, "the menu shows as a rail");
+	assert.ok(measured.icons.every((bottom) => bottom <= measured.bottom), `its icons stay inside the cell: icons end at ${measured.icons}, the rail at ${measured.bottom}px`);
+	assert.ok(measured.widths.every((width) => width > 0), "and take room");
+});
+
+test("a sync that carries the zoom replaces a zoomed cell in one render, without showing the cells before it", async () => {
+	const result = await page.evaluate(async () => {
+		const { Navigator, Workspace } = await import("/src/index.js");
+		const host = document.createElement("div");
+		host.style.cssText = "width:1180px;height:500px";
+		document.body.append(host);
+		const navigator = new Navigator({
+			destinations: {
+				menu: { title: "Menu", min: 195, max: 256 },
+				list: { title: "List", min: 320, max: "*", preferred: 640 },
+				"messages:1": { title: "Messages 1", min: 320, max: 640, zoomable: true },
+				"messages:2": { title: "Messages 2", min: 320, max: 640, zoomable: true },
+			},
+			root: "menu",
+			minViewportHeight: window.fixture.minViewportHeight,
+			chrome: window.fixture.chrome,
+		});
+		const workspace = new Workspace(host, { navigator, content: () => ({ element: document.createElement("div") }) });
+		workspace.sync(["menu", "list", "messages:1"], { animate: false, origin: null, zoom: "messages:1" });
+		const renders = [];
+		workspace.addEventListener("render", (event) => renders.push(event.detail.layout.cells.get("menu/list")?.visible ?? false));
+		workspace.sync(["menu", "list", "messages:2"], { animate: false, origin: null, zoom: "messages:2" });
+		const zoomed = navigator.zoomed;
+		host.remove();
+		return { renders, zoomed };
+	});
+	assert.deepEqual(result.renders, [false], "one render, in which the list stays hidden behind the zoom");
+	assert.equal(result.zoomed, "menu/list/messages:2");
+});

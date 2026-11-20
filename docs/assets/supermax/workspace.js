@@ -178,7 +178,6 @@ export class Workspace extends EventTarget {
 		if (previous === this.navigator.zoomed) return true;
 		this.closePeek();
 		this.render({ animate });
-		this.announce(new CustomEvent("zoom", { detail: { occurrence: this.navigator.zoomed } }));
 		return true;
 	}
 
@@ -378,10 +377,10 @@ export class Workspace extends EventTarget {
 		for (const { strip } of this.chains.values()) strip.stay?.(ids);
 	}
 
-	sync(destinationIds, { animate = true, origin, ifRoom = [] } = {}) {
-		const action = { type: "sync", destinations: [...destinationIds], ifRoom: [...ifRoom] };
+	sync(destinationIds, { animate = true, origin, ifRoom = [], zoom } = {}) {
+		const action = { type: "sync", destinations: [...destinationIds], ifRoom: [...ifRoom], ...(zoom === undefined ? {} : { zoom }) };
 		const before = new Set(this.navigator.occurrences.keys());
-		const result = this.navigator.sync(destinationIds, { ifRoom });
+		const result = this.navigator.sync(destinationIds, { ifRoom, zoom });
 		if (result.ok && !result.noop && animate && origin === undefined && [...before].some((id) => !this.navigator.get(id))) this.warn("sync()", "replaced cells without an origin, so they fold away on their far edge. Pass the element the user clicked as { origin }, or origin: null when no element started it.");
 		if (result.ok && origin) {
 			let opened = this.navigator.root;
@@ -456,6 +455,10 @@ export class Workspace extends EventTarget {
 		this.modalHost.render();
 		this.notices.render();
 		this.announce(new CustomEvent("render", { detail: { layout } }));
+		if ((this.navigator.zoomed ?? null) !== (this.announcedZoom ?? null)) {
+			this.announcedZoom = this.navigator.zoomed ?? null;
+			this.announce(new CustomEvent("zoom", { detail: { occurrence: this.announcedZoom } }));
+		}
 		this.placeHorizon();
 		this.scheduleOrigins();
 		Promise.all([...this.chains.values()].map((entry) => entry.strip.finished)).then(() => this.scheduleOrigins());

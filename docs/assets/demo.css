@@ -64,7 +64,7 @@ body {
 	cursor: pointer;
 }
 .scenario:hover, .reset:hover { color: var(--accent); }
-.supermax-compact:has(.album-icons) .supermax-rail { height: 44px; writing-mode: horizontal-tb; font-size: 10px; letter-spacing: 0; padding: 0 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.supermax-compact:has(.album-icons) .supermax-rail { font-size: 10px; letter-spacing: 0; }
 .depth { display: flex; flex-direction: column; gap: 10px; padding: 12px; align-items: flex-start; }
 .depth-number { margin: 0; font-size: 40px; font-weight: 700; color: var(--accent); line-height: 1; }
 .depth-end { margin: 0; font-size: 13px; color: var(--muted); }

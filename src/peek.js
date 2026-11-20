@@ -108,7 +108,10 @@ export class PeekController {
 		rail.addEventListener("pointerleave", () => this.scheduleClose());
 		compact.append(rail);
 		const extra = workspace.compactContent?.(occurrence, workspace);
-		if (extra) compact.append(extra);
+		if (extra) {
+			compact.classList.add("has-content");
+			compact.append(extra);
+		}
 		entry.element.append(compact);
 		entry.rail = rail;
 	}

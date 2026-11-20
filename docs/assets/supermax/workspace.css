@@ -187,6 +187,8 @@
 	text-overflow: ellipsis;
 }
 .supermax-rail:hover, .supermax-rail[aria-expanded="true"] { color: var(--supermax-accent); }
+.supermax-compact.has-content .supermax-rail { height: auto; writing-mode: horizontal-tb; padding: 10px 4px; text-align: center; }
+.supermax-compact.has-content > :not(.supermax-rail) { flex: 1 1 auto; min-height: 0; overflow-y: auto; }
 .supermax-peek {
 	position: absolute;
 	border-radius: var(--supermax-radius);

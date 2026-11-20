@@ -259,11 +259,12 @@ export class Navigator {
 		return true;
 	}
 
-	sync(destinationIds, { ifRoom = [] } = {}) {
+	sync(destinationIds, { ifRoom = [], zoom } = {}) {
 		const [rootId] = destinationIds;
 		if (rootId !== this.root.destination) return { ok: false, reason: "other-root", destination: rootId };
 		const unknown = [...destinationIds, ...ifRoom.flat()].find((id) => !this.definitionOf(id));
 		if (unknown) return { ok: false, reason: "unknown-destination", destination: unknown };
+		if (zoom != null && (!destinationIds.includes(zoom) || !this.definitionOf(zoom).zoomable)) return { ok: false, reason: "not-zoomable", destination: zoom };
 		const open = [];
 		for (let current = this.root; current; current = this.child(current)) open.push(current);
 		let shared = 1;
@@ -290,6 +291,14 @@ export class Navigator {
 			}
 			last = result.occurrence;
 			changed = true;
+		}
+		if (zoom !== undefined) {
+			let target = null;
+			for (let current = this.root; current && zoom !== null; current = this.child(current)) if (current.destination === zoom) target = current.id;
+			if ((this.zoomed ?? null) !== target) {
+				this.zoomed = target;
+				changed = true;
+			}
 		}
 		const offered = ifRoom.flat();
 		let kept = last;

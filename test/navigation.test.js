@@ -551,6 +551,33 @@ scenario("a sync closes the optional cells it no longer offers, and keeps the on
 	assert.deepEqual(open(), ["inbox", "list", "metadata:2"], "and one that offers other cells replaces them");
 });
 
+scenario("a sync can carry the zoom, so the next chain opens zoomed in the same step", () => {
+	const chain = new Navigator({
+		destinations: {
+			elsewhere,
+			inbox: { title: "Inbox", min: 200, max: 300 },
+			list: { title: "List", min: 200, max: "*", preferred: 300 },
+			"messages:1": { title: "Messages 1", min: 300, max: 600, zoomable: true },
+			"messages:2": { title: "Messages 2", min: 300, max: 600, zoomable: true },
+		},
+		root: "inbox",
+		minViewportHeight,
+		chrome,
+	});
+	chain.resize({ width: 1200, height: 500 });
+	chain.sync(["inbox", "list", "messages:1"], { zoom: "messages:1" });
+	assert.equal(chain.zoomed, "inbox/list/messages:1", "the sync zooms the cell it names");
+	const result = chain.sync(["inbox", "list", "messages:2"], { zoom: "messages:2" });
+	assert.equal(result.ok, true);
+	assert.equal(chain.zoomed, "inbox/list/messages:2", "replacing the zoomed cell keeps the zoom on its successor");
+	assert.equal(chain.sync(["inbox", "list", "messages:2"], { zoom: "messages:2" }).noop, true, "the same chain and zoom change nothing");
+	chain.sync(["inbox", "list", "messages:2"], { zoom: null });
+	assert.equal(chain.zoomed, null, "zoom: null zooms out");
+	const before = JSON.stringify(chain.snapshot());
+	assert.deepEqual(chain.sync(["inbox", "list", "messages:2"], { zoom: "list" }), { ok: false, reason: "not-zoomable", destination: "list" }, "a zoom that is not zoomable refuses the whole sync");
+	assert.equal(JSON.stringify(chain.snapshot()), before, "without touching the model");
+});
+
 scenario("a title can change after a cell opened, in its occurrence, its group and where the application is, without a new declaration", () => {
 	const instance = model();
 	openGallery(instance);
