@@ -414,3 +414,39 @@ scenario("a snapshot restores the exact state, including groups and windows", ()
 });
 
 console.log("Navigation scenarios passed");
+
+scenario("sync brings the open chain to a list of destinations in one transaction, keeping what both share", () => {
+	const chain = new Navigator({
+		destinations: {
+			elsewhere,
+			inbox: { title: "Inbox", min: 200, max: 300 },
+			list: { title: "List", min: 200, max: "*", preferred: 300 },
+			"conversation:1": { title: "Conversation 1", min: 200, max: 300, defaultChild: "messages:1" },
+			"messages:1": { title: "Messages 1", min: 200, max: 300 },
+			"conversation:2": { title: "Conversation 2", min: 200, max: 300 },
+		},
+		root: "inbox",
+		minViewportHeight,
+		chrome,
+	});
+	chain.resize({ width: 1400, height: 500 });
+	const open = () => {
+		const ids = [];
+		for (let current = chain.root; current; current = chain.child(current)) ids.push(current.destination);
+		return ids;
+	};
+	const first = chain.sync(["inbox", "list", "conversation:1"]);
+	assert.equal(first.ok, true);
+	assert.deepEqual(open(), ["inbox", "list", "conversation:1", "messages:1"], "it opens what is missing, defaults included");
+	const list = chain.child(chain.root).id;
+	assert.equal(chain.sync(["inbox", "list", "conversation:2"]).ok, true);
+	assert.deepEqual(open(), ["inbox", "list", "conversation:2"], "it replaces the tail that differs");
+	assert.equal(chain.child(chain.root).id, list, "and keeps the occurrence both chains share");
+	assert.equal(chain.sync(["inbox", "list"]).ok, true);
+	assert.deepEqual(open(), ["inbox", "list"], "it closes what the list no longer names");
+	const before = JSON.stringify(chain.snapshot());
+	assert.deepEqual(chain.sync(["inbox", "list", "conversation:9"]), { ok: false, reason: "unknown-destination", destination: "conversation:9" }, "an unknown destination refuses the whole sync");
+	assert.deepEqual(chain.sync(["list"]), { ok: false, reason: "other-root", destination: "list" }, "and so does a list that starts elsewhere");
+	assert.equal(JSON.stringify(chain.snapshot()), before, "leaving the model as it was");
+	assert.equal(chain.sync(["inbox", "list"]).noop, true, "a list that is already open changes nothing");
+});

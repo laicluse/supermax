@@ -238,6 +238,35 @@ export class Navigator {
 		return group ? { id: group.id, title: group.title } : null;
 	}
 
+	sync(destinationIds) {
+		const [rootId] = destinationIds;
+		if (rootId !== this.root.destination) return { ok: false, reason: "other-root", destination: rootId };
+		const unknown = destinationIds.find((id) => !this.definitionOf(id));
+		if (unknown) return { ok: false, reason: "unknown-destination", destination: unknown };
+		const open = [];
+		for (let current = this.root; current; current = this.child(current)) open.push(current);
+		let shared = 1;
+		while (shared < destinationIds.length && shared < open.length && open[shared].destination === destinationIds[shared]) shared += 1;
+		const beyond = open[shared];
+		if (shared === destinationIds.length && (!beyond || this.isAuto(beyond))) return { ok: true, noop: true, occurrence: open[shared - 1] };
+		const before = this.snapshot();
+		if (shared === destinationIds.length) {
+			this.closeSubtree(beyond);
+			this.dropEmptyGroups();
+		}
+		let last = open[shared - 1];
+		for (const id of destinationIds.slice(shared)) {
+			const result = this.open(id, { from: last.id });
+			if (!result.ok) {
+				this.restore(before);
+				return { ok: false, reason: result.reason, destination: id };
+			}
+			last = result.occurrence;
+		}
+		this.bringIntoView(last.id);
+		return { ok: true, occurrence: last };
+	}
+
 	closeNewestGroup() {
 		const group = this.groups[this.groups.length - 1];
 		if (!group) return { ok: false, reason: "history-empty" };

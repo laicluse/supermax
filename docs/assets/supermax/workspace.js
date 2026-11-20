@@ -234,6 +234,21 @@ export class Workspace extends EventTarget {
 		return result;
 	}
 
+	sync(destinationIds, { animate = true } = {}) {
+		const action = { type: "sync", destinations: [...destinationIds] };
+		const result = this.navigator.sync(destinationIds);
+		if (!result.ok) {
+			this.dispatchEvent(new CustomEvent("rejected", { detail: { action, result } }));
+			return result;
+		}
+		if (result.noop) return result;
+		this.closePeek();
+		if (this.modal) this.closeModal("navigation");
+		this.render({ animate });
+		this.dispatchEvent(new CustomEvent("change", { detail: { action, result } }));
+		return result;
+	}
+
 	replay(actions) {
 		this.navigator.reset();
 		const results = actions.map((action) => {
