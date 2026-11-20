@@ -1,0 +1,1979 @@
+[
+  {
+    "dpr": 1,
+    "fonts": [
+      {
+        "family": "Spleen",
+        "title": "DOCUMENTS",
+        "text": "DOCUMENTS",
+        "height": 6,
+        "length": 44,
+        "padding": 4,
+        "column": true,
+        "pixelCoordinatesInteger": true
+      },
+      {
+        "family": "Spleen",
+        "title": "MESSAGES",
+        "text": "MESSAGES",
+        "height": 6,
+        "length": 39,
+        "padding": 4,
+        "column": false,
+        "pixelCoordinatesInteger": true
+      },
+      {
+        "family": "Spleen",
+        "title": "NOTES",
+        "text": "NOTES",
+        "height": 6,
+        "length": 24,
+        "padding": 4,
+        "column": false,
+        "pixelCoordinatesInteger": true
+      },
+      {
+        "family": "Spleen",
+        "title": "NOTES",
+        "text": "NOTES",
+        "height": 6,
+        "length": 24,
+        "padding": 4,
+        "column": true,
+        "pixelCoordinatesInteger": true
+      },
+      {
+        "family": "Spleen",
+        "title": "NOTES",
+        "text": "NOTES",
+        "height": 6,
+        "length": 24,
+        "padding": 4,
+        "column": false,
+        "pixelCoordinatesInteger": true
+      },
+      {
+        "family": "Spleen",
+        "title": "PROJECT HISTORY",
+        "text": "PROJECT HISTORY",
+        "height": 6,
+        "length": 74,
+        "padding": 4,
+        "column": false,
+        "pixelCoordinatesInteger": true
+      },
+      {
+        "family": "Spleen",
+        "title": "AN EXCEPTIONALLY LONG SECTION TITLE",
+        "text": "AN EXCEPTIONALLY...",
+        "height": 6,
+        "length": 93,
+        "padding": 4,
+        "column": false,
+        "pixelCoordinatesInteger": true
+      },
+      {
+        "family": "Spleen",
+        "title": "ÉTÉ · CAFÉ",
+        "fallback": true
+      },
+      {
+        "family": "TomThumb",
+        "title": "DOCUMENTS",
+        "text": "DOCUMENTS",
+        "height": 5,
+        "length": 35,
+        "padding": 4.5,
+        "column": true,
+        "pixelCoordinatesInteger": true
+      },
+      {
+        "family": "TomThumb",
+        "title": "MESSAGES",
+        "text": "MESSAGES",
+        "height": 5,
+        "length": 31,
+        "padding": 4.5,
+        "column": false,
+        "pixelCoordinatesInteger": true
+      },
+      {
+        "family": "TomThumb",
+        "title": "NOTES",
+        "text": "NOTES",
+        "height": 5,
+        "length": 19,
+        "padding": 4.5,
+        "column": false,
+        "pixelCoordinatesInteger": true
+      },
+      {
+        "family": "TomThumb",
+        "title": "NOTES",
+        "text": "NOTES",
+        "height": 5,
+        "length": 19,
+        "padding": 4.5,
+        "column": true,
+        "pixelCoordinatesInteger": true
+      },
+      {
+        "family": "TomThumb",
+        "title": "NOTES",
+        "text": "NOTES",
+        "height": 5,
+        "length": 19,
+        "padding": 4.5,
+        "column": false,
+        "pixelCoordinatesInteger": true
+      },
+      {
+        "family": "TomThumb",
+        "title": "PROJECT HISTORY",
+        "text": "PROJECT HISTORY",
+        "height": 5,
+        "length": 59,
+        "padding": 4.5,
+        "column": false,
+        "pixelCoordinatesInteger": true
+      },
+      {
+        "family": "TomThumb",
+        "title": "AN EXCEPTIONALLY LONG SECTION TITLE",
+        "text": "AN EXCEPTIONALLY LONG...",
+        "height": 5,
+        "length": 94,
+        "padding": 4.5,
+        "column": false,
+        "pixelCoordinatesInteger": true
+      },
+      {
+        "family": "TomThumb",
+        "title": "ÉTÉ · CAFÉ",
+        "fallback": true
+      },
+      {
+        "family": "Micro5",
+        "title": "DOCUMENTS",
+        "text": "DOCUMENTS",
+        "height": 5,
+        "length": 36,
+        "padding": 4.5,
+        "column": true,
+        "pixelCoordinatesInteger": true
+      },
+      {
+        "family": "Micro5",
+        "title": "MESSAGES",
+        "text": "MESSAGES",
+        "height": 5,
+        "length": 33,
+        "padding": 4.5,
+        "column": false,
+        "pixelCoordinatesInteger": true
+      },
+      {
+        "family": "Micro5",
+        "title": "NOTES",
+        "text": "NOTES",
+        "height": 5,
+        "length": 19,
+        "padding": 4.5,
+        "column": false,
+        "pixelCoordinatesInteger": true
+      },
+      {
+        "family": "Micro5",
+        "title": "NOTES",
+        "text": "NOTES",
+        "height": 5,
+        "length": 19,
+        "padding": 4.5,
+        "column": true,
+        "pixelCoordinatesInteger": true
+      },
+      {
+        "family": "Micro5",
+        "title": "NOTES",
+        "text": "NOTES",
+        "height": 5,
+        "length": 19,
+        "padding": 4.5,
+        "column": false,
+        "pixelCoordinatesInteger": true
+      },
+      {
+        "family": "Micro5",
+        "title": "PROJECT HISTORY",
+        "text": "PROJECT HISTORY",
+        "height": 5,
+        "length": 54,
+        "padding": 4.5,
+        "column": false,
+        "pixelCoordinatesInteger": true
+      },
+      {
+        "family": "Micro5",
+        "title": "AN EXCEPTIONALLY LONG SECTION TITLE",
+        "text": "AN EXCEPTIONALLY LONG SEC...",
+        "height": 5,
+        "length": 95,
+        "padding": 4.5,
+        "column": false,
+        "pixelCoordinatesInteger": true
+      },
+      {
+        "family": "Micro5",
+        "title": "ÉTÉ · CAFÉ",
+        "fallback": true
+      },
+      {
+        "family": "Tiny5",
+        "title": "DOCUMENTS",
+        "text": "DOCUMENTS",
+        "height": 5,
+        "length": 44,
+        "padding": 4.5,
+        "column": true,
+        "pixelCoordinatesInteger": true
+      },
+      {
+        "family": "Tiny5",
+        "title": "MESSAGES",
+        "text": "MESSAGES",
+        "height": 5,
+        "length": 40,
+        "padding": 4.5,
+        "column": false,
+        "pixelCoordinatesInteger": true
+      },
+      {
+        "family": "Tiny5",
+        "title": "NOTES",
+        "text": "NOTES",
+        "height": 5,
+        "length": 23,
+        "padding": 4.5,
+        "column": false,
+        "pixelCoordinatesInteger": true
+      },
+      {
+        "family": "Tiny5",
+        "title": "NOTES",
+        "text": "NOTES",
+        "height": 5,
+        "length": 23,
+        "padding": 4.5,
+        "column": true,
+        "pixelCoordinatesInteger": true
+      },
+      {
+        "family": "Tiny5",
+        "title": "NOTES",
+        "text": "NOTES",
+        "height": 5,
+        "length": 23,
+        "padding": 4.5,
+        "column": false,
+        "pixelCoordinatesInteger": true
+      },
+      {
+        "family": "Tiny5",
+        "title": "PROJECT HISTORY",
+        "text": "PROJECT HISTORY",
+        "height": 5,
+        "length": 66,
+        "padding": 4.5,
+        "column": false,
+        "pixelCoordinatesInteger": true
+      },
+      {
+        "family": "Tiny5",
+        "title": "AN EXCEPTIONALLY LONG SECTION TITLE",
+        "text": "AN EXCEPTIONALLY LO...",
+        "height": 5,
+        "length": 92,
+        "padding": 4.5,
+        "column": false,
+        "pixelCoordinatesInteger": true
+      },
+      {
+        "family": "Tiny5",
+        "title": "ÉTÉ · CAFÉ",
+        "fallback": true
+      }
+    ],
+    "handles": [
+      {
+        "title": "DOCUMENTS",
+        "detail": false,
+        "thickness": 14,
+        "margins": [
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      {
+        "title": "MESSAGES",
+        "detail": false,
+        "thickness": 14,
+        "margins": [
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      {
+        "title": "NOTES",
+        "detail": true,
+        "thickness": 28,
+        "margins": [
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      {
+        "title": "NOTES",
+        "detail": true,
+        "thickness": 28,
+        "margins": [
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      {
+        "title": "NOTES",
+        "detail": false,
+        "thickness": 14,
+        "margins": [
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      {
+        "title": "PROJECT HISTORY",
+        "detail": false,
+        "thickness": 14,
+        "margins": [
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      {
+        "title": "AN EXCEPTIONALLY LONG SECTION TITLE",
+        "detail": false,
+        "thickness": 14,
+        "margins": [
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      {
+        "title": "ÉTÉ · CAFÉ",
+        "detail": false,
+        "thickness": 14,
+        "margins": [
+          3,
+          3,
+          3,
+          3
+        ]
+      },
+      {
+        "title": "DOCUMENTS",
+        "detail": false,
+        "thickness": 14,
+        "margins": [
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      {
+        "title": "MESSAGES",
+        "detail": false,
+        "thickness": 14,
+        "margins": [
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      {
+        "title": "NOTES",
+        "detail": true,
+        "thickness": 28,
+        "margins": [
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      {
+        "title": "NOTES",
+        "detail": true,
+        "thickness": 28,
+        "margins": [
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      {
+        "title": "NOTES",
+        "detail": false,
+        "thickness": 14,
+        "margins": [
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      {
+        "title": "PROJECT HISTORY",
+        "detail": false,
+        "thickness": 14,
+        "margins": [
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      {
+        "title": "AN EXCEPTIONALLY LONG SECTION TITLE",
+        "detail": false,
+        "thickness": 14,
+        "margins": [
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      {
+        "title": "ÉTÉ · CAFÉ",
+        "detail": false,
+        "thickness": 14,
+        "margins": [
+          3,
+          3,
+          3,
+          3
+        ]
+      },
+      {
+        "title": "DOCUMENTS",
+        "detail": false,
+        "thickness": 14,
+        "margins": [
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      {
+        "title": "MESSAGES",
+        "detail": false,
+        "thickness": 14,
+        "margins": [
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      {
+        "title": "NOTES",
+        "detail": true,
+        "thickness": 28,
+        "margins": [
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      {
+        "title": "NOTES",
+        "detail": true,
+        "thickness": 28,
+        "margins": [
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      {
+        "title": "NOTES",
+        "detail": false,
+        "thickness": 14,
+        "margins": [
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      {
+        "title": "PROJECT HISTORY",
+        "detail": false,
+        "thickness": 14,
+        "margins": [
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      {
+        "title": "AN EXCEPTIONALLY LONG SECTION TITLE",
+        "detail": false,
+        "thickness": 14,
+        "margins": [
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      {
+        "title": "ÉTÉ · CAFÉ",
+        "detail": false,
+        "thickness": 14,
+        "margins": [
+          3,
+          3,
+          3,
+          3
+        ]
+      },
+      {
+        "title": "DOCUMENTS",
+        "detail": false,
+        "thickness": 14,
+        "margins": [
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      {
+        "title": "MESSAGES",
+        "detail": false,
+        "thickness": 14,
+        "margins": [
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      {
+        "title": "NOTES",
+        "detail": true,
+        "thickness": 28,
+        "margins": [
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      {
+        "title": "NOTES",
+        "detail": true,
+        "thickness": 28,
+        "margins": [
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      {
+        "title": "NOTES",
+        "detail": false,
+        "thickness": 14,
+        "margins": [
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      {
+        "title": "PROJECT HISTORY",
+        "detail": false,
+        "thickness": 14,
+        "margins": [
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      {
+        "title": "AN EXCEPTIONALLY LONG SECTION TITLE",
+        "detail": false,
+        "thickness": 14,
+        "margins": [
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      {
+        "title": "ÉTÉ · CAFÉ",
+        "detail": false,
+        "thickness": 14,
+        "margins": [
+          3,
+          3,
+          3,
+          3
+        ]
+      }
+    ]
+  },
+  {
+    "dpr": 1.5,
+    "fonts": [
+      {
+        "family": "Spleen",
+        "title": "DOCUMENTS",
+        "text": "DOCUMENTS",
+        "height": 6,
+        "length": 44,
+        "padding": 4,
+        "column": true,
+        "pixelCoordinatesInteger": true
+      },
+      {
+        "family": "Spleen",
+        "title": "MESSAGES",
+        "text": "MESSAGES",
+        "height": 6,
+        "length": 39,
+        "padding": 4,
+        "column": false,
+        "pixelCoordinatesInteger": true
+      },
+      {
+        "family": "Spleen",
+        "title": "NOTES",
+        "text": "NOTES",
+        "height": 6,
+        "length": 24,
+        "padding": 4,
+        "column": false,
+        "pixelCoordinatesInteger": true
+      },
+      {
+        "family": "Spleen",
+        "title": "NOTES",
+        "text": "NOTES",
+        "height": 6,
+        "length": 24,
+        "padding": 4,
+        "column": true,
+        "pixelCoordinatesInteger": true
+      },
+      {
+        "family": "Spleen",
+        "title": "NOTES",
+        "text": "NOTES",
+        "height": 6,
+        "length": 24,
+        "padding": 4,
+        "column": false,
+        "pixelCoordinatesInteger": true
+      },
+      {
+        "family": "Spleen",
+        "title": "PROJECT HISTORY",
+        "text": "PROJECT HISTORY",
+        "height": 6,
+        "length": 74,
+        "padding": 4,
+        "column": false,
+        "pixelCoordinatesInteger": true
+      },
+      {
+        "family": "Spleen",
+        "title": "AN EXCEPTIONALLY LONG SECTION TITLE",
+        "text": "AN EXCEPTIONALLY...",
+        "height": 6,
+        "length": 93,
+        "padding": 4,
+        "column": false,
+        "pixelCoordinatesInteger": true
+      },
+      {
+        "family": "Spleen",
+        "title": "ÉTÉ · CAFÉ",
+        "fallback": true
+      },
+      {
+        "family": "TomThumb",
+        "title": "DOCUMENTS",
+        "text": "DOCUMENTS",
+        "height": 5,
+        "length": 35,
+        "padding": 4.5,
+        "column": true,
+        "pixelCoordinatesInteger": true
+      },
+      {
+        "family": "TomThumb",
+        "title": "MESSAGES",
+        "text": "MESSAGES",
+        "height": 5,
+        "length": 31,
+        "padding": 4.5,
+        "column": false,
+        "pixelCoordinatesInteger": true
+      },
+      {
+        "family": "TomThumb",
+        "title": "NOTES",
+        "text": "NOTES",
+        "height": 5,
+        "length": 19,
+        "padding": 4.5,
+        "column": false,
+        "pixelCoordinatesInteger": true
+      },
+      {
+        "family": "TomThumb",
+        "title": "NOTES",
+        "text": "NOTES",
+        "height": 5,
+        "length": 19,
+        "padding": 4.5,
+        "column": true,
+        "pixelCoordinatesInteger": true
+      },
+      {
+        "family": "TomThumb",
+        "title": "NOTES",
+        "text": "NOTES",
+        "height": 5,
+        "length": 19,
+        "padding": 4.5,
+        "column": false,
+        "pixelCoordinatesInteger": true
+      },
+      {
+        "family": "TomThumb",
+        "title": "PROJECT HISTORY",
+        "text": "PROJECT HISTORY",
+        "height": 5,
+        "length": 59,
+        "padding": 4.5,
+        "column": false,
+        "pixelCoordinatesInteger": true
+      },
+      {
+        "family": "TomThumb",
+        "title": "AN EXCEPTIONALLY LONG SECTION TITLE",
+        "text": "AN EXCEPTIONALLY LONG...",
+        "height": 5,
+        "length": 94,
+        "padding": 4.5,
+        "column": false,
+        "pixelCoordinatesInteger": true
+      },
+      {
+        "family": "TomThumb",
+        "title": "ÉTÉ · CAFÉ",
+        "fallback": true
+      },
+      {
+        "family": "Micro5",
+        "title": "DOCUMENTS",
+        "text": "DOCUMENTS",
+        "height": 5,
+        "length": 36,
+        "padding": 4.5,
+        "column": true,
+        "pixelCoordinatesInteger": true
+      },
+      {
+        "family": "Micro5",
+        "title": "MESSAGES",
+        "text": "MESSAGES",
+        "height": 5,
+        "length": 33,
+        "padding": 4.5,
+        "column": false,
+        "pixelCoordinatesInteger": true
+      },
+      {
+        "family": "Micro5",
+        "title": "NOTES",
+        "text": "NOTES",
+        "height": 5,
+        "length": 19,
+        "padding": 4.5,
+        "column": false,
+        "pixelCoordinatesInteger": true
+      },
+      {
+        "family": "Micro5",
+        "title": "NOTES",
+        "text": "NOTES",
+        "height": 5,
+        "length": 19,
+        "padding": 4.5,
+        "column": true,
+        "pixelCoordinatesInteger": true
+      },
+      {
+        "family": "Micro5",
+        "title": "NOTES",
+        "text": "NOTES",
+        "height": 5,
+        "length": 19,
+        "padding": 4.5,
+        "column": false,
+        "pixelCoordinatesInteger": true
+      },
+      {
+        "family": "Micro5",
+        "title": "PROJECT HISTORY",
+        "text": "PROJECT HISTORY",
+        "height": 5,
+        "length": 54,
+        "padding": 4.5,
+        "column": false,
+        "pixelCoordinatesInteger": true
+      },
+      {
+        "family": "Micro5",
+        "title": "AN EXCEPTIONALLY LONG SECTION TITLE",
+        "text": "AN EXCEPTIONALLY LONG SEC...",
+        "height": 5,
+        "length": 95,
+        "padding": 4.5,
+        "column": false,
+        "pixelCoordinatesInteger": true
+      },
+      {
+        "family": "Micro5",
+        "title": "ÉTÉ · CAFÉ",
+        "fallback": true
+      },
+      {
+        "family": "Tiny5",
+        "title": "DOCUMENTS",
+        "text": "DOCUMENTS",
+        "height": 5,
+        "length": 44,
+        "padding": 4.5,
+        "column": true,
+        "pixelCoordinatesInteger": true
+      },
+      {
+        "family": "Tiny5",
+        "title": "MESSAGES",
+        "text": "MESSAGES",
+        "height": 5,
+        "length": 40,
+        "padding": 4.5,
+        "column": false,
+        "pixelCoordinatesInteger": true
+      },
+      {
+        "family": "Tiny5",
+        "title": "NOTES",
+        "text": "NOTES",
+        "height": 5,
+        "length": 23,
+        "padding": 4.5,
+        "column": false,
+        "pixelCoordinatesInteger": true
+      },
+      {
+        "family": "Tiny5",
+        "title": "NOTES",
+        "text": "NOTES",
+        "height": 5,
+        "length": 23,
+        "padding": 4.5,
+        "column": true,
+        "pixelCoordinatesInteger": true
+      },
+      {
+        "family": "Tiny5",
+        "title": "NOTES",
+        "text": "NOTES",
+        "height": 5,
+        "length": 23,
+        "padding": 4.5,
+        "column": false,
+        "pixelCoordinatesInteger": true
+      },
+      {
+        "family": "Tiny5",
+        "title": "PROJECT HISTORY",
+        "text": "PROJECT HISTORY",
+        "height": 5,
+        "length": 66,
+        "padding": 4.5,
+        "column": false,
+        "pixelCoordinatesInteger": true
+      },
+      {
+        "family": "Tiny5",
+        "title": "AN EXCEPTIONALLY LONG SECTION TITLE",
+        "text": "AN EXCEPTIONALLY LO...",
+        "height": 5,
+        "length": 92,
+        "padding": 4.5,
+        "column": false,
+        "pixelCoordinatesInteger": true
+      },
+      {
+        "family": "Tiny5",
+        "title": "ÉTÉ · CAFÉ",
+        "fallback": true
+      }
+    ],
+    "handles": [
+      {
+        "title": "DOCUMENTS",
+        "detail": false,
+        "thickness": 14,
+        "margins": [
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      {
+        "title": "MESSAGES",
+        "detail": false,
+        "thickness": 14,
+        "margins": [
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      {
+        "title": "NOTES",
+        "detail": true,
+        "thickness": 28,
+        "margins": [
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      {
+        "title": "NOTES",
+        "detail": true,
+        "thickness": 28,
+        "margins": [
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      {
+        "title": "NOTES",
+        "detail": false,
+        "thickness": 14,
+        "margins": [
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      {
+        "title": "PROJECT HISTORY",
+        "detail": false,
+        "thickness": 14,
+        "margins": [
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      {
+        "title": "AN EXCEPTIONALLY LONG SECTION TITLE",
+        "detail": false,
+        "thickness": 14,
+        "margins": [
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      {
+        "title": "ÉTÉ · CAFÉ",
+        "detail": false,
+        "thickness": 14,
+        "margins": [
+          3,
+          3,
+          3,
+          3
+        ]
+      },
+      {
+        "title": "DOCUMENTS",
+        "detail": false,
+        "thickness": 14,
+        "margins": [
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      {
+        "title": "MESSAGES",
+        "detail": false,
+        "thickness": 14,
+        "margins": [
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      {
+        "title": "NOTES",
+        "detail": true,
+        "thickness": 28,
+        "margins": [
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      {
+        "title": "NOTES",
+        "detail": true,
+        "thickness": 28,
+        "margins": [
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      {
+        "title": "NOTES",
+        "detail": false,
+        "thickness": 14,
+        "margins": [
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      {
+        "title": "PROJECT HISTORY",
+        "detail": false,
+        "thickness": 14,
+        "margins": [
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      {
+        "title": "AN EXCEPTIONALLY LONG SECTION TITLE",
+        "detail": false,
+        "thickness": 14,
+        "margins": [
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      {
+        "title": "ÉTÉ · CAFÉ",
+        "detail": false,
+        "thickness": 14,
+        "margins": [
+          3,
+          3,
+          3,
+          3
+        ]
+      },
+      {
+        "title": "DOCUMENTS",
+        "detail": false,
+        "thickness": 14,
+        "margins": [
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      {
+        "title": "MESSAGES",
+        "detail": false,
+        "thickness": 14,
+        "margins": [
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      {
+        "title": "NOTES",
+        "detail": true,
+        "thickness": 28,
+        "margins": [
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      {
+        "title": "NOTES",
+        "detail": true,
+        "thickness": 28,
+        "margins": [
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      {
+        "title": "NOTES",
+        "detail": false,
+        "thickness": 14,
+        "margins": [
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      {
+        "title": "PROJECT HISTORY",
+        "detail": false,
+        "thickness": 14,
+        "margins": [
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      {
+        "title": "AN EXCEPTIONALLY LONG SECTION TITLE",
+        "detail": false,
+        "thickness": 14,
+        "margins": [
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      {
+        "title": "ÉTÉ · CAFÉ",
+        "detail": false,
+        "thickness": 14,
+        "margins": [
+          3,
+          3,
+          3,
+          3
+        ]
+      },
+      {
+        "title": "DOCUMENTS",
+        "detail": false,
+        "thickness": 14,
+        "margins": [
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      {
+        "title": "MESSAGES",
+        "detail": false,
+        "thickness": 14,
+        "margins": [
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      {
+        "title": "NOTES",
+        "detail": true,
+        "thickness": 28,
+        "margins": [
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      {
+        "title": "NOTES",
+        "detail": true,
+        "thickness": 28,
+        "margins": [
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      {
+        "title": "NOTES",
+        "detail": false,
+        "thickness": 14,
+        "margins": [
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      {
+        "title": "PROJECT HISTORY",
+        "detail": false,
+        "thickness": 14,
+        "margins": [
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      {
+        "title": "AN EXCEPTIONALLY LONG SECTION TITLE",
+        "detail": false,
+        "thickness": 14,
+        "margins": [
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      {
+        "title": "ÉTÉ · CAFÉ",
+        "detail": false,
+        "thickness": 14,
+        "margins": [
+          3,
+          3,
+          3,
+          3
+        ]
+      }
+    ]
+  },
+  {
+    "dpr": 2,
+    "fonts": [
+      {
+        "family": "Spleen",
+        "title": "DOCUMENTS",
+        "text": "DOCUMENTS",
+        "height": 6,
+        "length": 44,
+        "padding": 4,
+        "column": true,
+        "pixelCoordinatesInteger": true
+      },
+      {
+        "family": "Spleen",
+        "title": "MESSAGES",
+        "text": "MESSAGES",
+        "height": 6,
+        "length": 39,
+        "padding": 4,
+        "column": false,
+        "pixelCoordinatesInteger": true
+      },
+      {
+        "family": "Spleen",
+        "title": "NOTES",
+        "text": "NOTES",
+        "height": 6,
+        "length": 24,
+        "padding": 4,
+        "column": false,
+        "pixelCoordinatesInteger": true
+      },
+      {
+        "family": "Spleen",
+        "title": "NOTES",
+        "text": "NOTES",
+        "height": 6,
+        "length": 24,
+        "padding": 4,
+        "column": true,
+        "pixelCoordinatesInteger": true
+      },
+      {
+        "family": "Spleen",
+        "title": "NOTES",
+        "text": "NOTES",
+        "height": 6,
+        "length": 24,
+        "padding": 4,
+        "column": false,
+        "pixelCoordinatesInteger": true
+      },
+      {
+        "family": "Spleen",
+        "title": "PROJECT HISTORY",
+        "text": "PROJECT HISTORY",
+        "height": 6,
+        "length": 74,
+        "padding": 4,
+        "column": false,
+        "pixelCoordinatesInteger": true
+      },
+      {
+        "family": "Spleen",
+        "title": "AN EXCEPTIONALLY LONG SECTION TITLE",
+        "text": "AN EXCEPTIONALLY...",
+        "height": 6,
+        "length": 93,
+        "padding": 4,
+        "column": false,
+        "pixelCoordinatesInteger": true
+      },
+      {
+        "family": "Spleen",
+        "title": "ÉTÉ · CAFÉ",
+        "fallback": true
+      },
+      {
+        "family": "TomThumb",
+        "title": "DOCUMENTS",
+        "text": "DOCUMENTS",
+        "height": 5,
+        "length": 35,
+        "padding": 4.5,
+        "column": true,
+        "pixelCoordinatesInteger": true
+      },
+      {
+        "family": "TomThumb",
+        "title": "MESSAGES",
+        "text": "MESSAGES",
+        "height": 5,
+        "length": 31,
+        "padding": 4.5,
+        "column": false,
+        "pixelCoordinatesInteger": true
+      },
+      {
+        "family": "TomThumb",
+        "title": "NOTES",
+        "text": "NOTES",
+        "height": 5,
+        "length": 19,
+        "padding": 4.5,
+        "column": false,
+        "pixelCoordinatesInteger": true
+      },
+      {
+        "family": "TomThumb",
+        "title": "NOTES",
+        "text": "NOTES",
+        "height": 5,
+        "length": 19,
+        "padding": 4.5,
+        "column": true,
+        "pixelCoordinatesInteger": true
+      },
+      {
+        "family": "TomThumb",
+        "title": "NOTES",
+        "text": "NOTES",
+        "height": 5,
+        "length": 19,
+        "padding": 4.5,
+        "column": false,
+        "pixelCoordinatesInteger": true
+      },
+      {
+        "family": "TomThumb",
+        "title": "PROJECT HISTORY",
+        "text": "PROJECT HISTORY",
+        "height": 5,
+        "length": 59,
+        "padding": 4.5,
+        "column": false,
+        "pixelCoordinatesInteger": true
+      },
+      {
+        "family": "TomThumb",
+        "title": "AN EXCEPTIONALLY LONG SECTION TITLE",
+        "text": "AN EXCEPTIONALLY LONG...",
+        "height": 5,
+        "length": 94,
+        "padding": 4.5,
+        "column": false,
+        "pixelCoordinatesInteger": true
+      },
+      {
+        "family": "TomThumb",
+        "title": "ÉTÉ · CAFÉ",
+        "fallback": true
+      },
+      {
+        "family": "Micro5",
+        "title": "DOCUMENTS",
+        "text": "DOCUMENTS",
+        "height": 5,
+        "length": 36,
+        "padding": 4.5,
+        "column": true,
+        "pixelCoordinatesInteger": true
+      },
+      {
+        "family": "Micro5",
+        "title": "MESSAGES",
+        "text": "MESSAGES",
+        "height": 5,
+        "length": 33,
+        "padding": 4.5,
+        "column": false,
+        "pixelCoordinatesInteger": true
+      },
+      {
+        "family": "Micro5",
+        "title": "NOTES",
+        "text": "NOTES",
+        "height": 5,
+        "length": 19,
+        "padding": 4.5,
+        "column": false,
+        "pixelCoordinatesInteger": true
+      },
+      {
+        "family": "Micro5",
+        "title": "NOTES",
+        "text": "NOTES",
+        "height": 5,
+        "length": 19,
+        "padding": 4.5,
+        "column": true,
+        "pixelCoordinatesInteger": true
+      },
+      {
+        "family": "Micro5",
+        "title": "NOTES",
+        "text": "NOTES",
+        "height": 5,
+        "length": 19,
+        "padding": 4.5,
+        "column": false,
+        "pixelCoordinatesInteger": true
+      },
+      {
+        "family": "Micro5",
+        "title": "PROJECT HISTORY",
+        "text": "PROJECT HISTORY",
+        "height": 5,
+        "length": 54,
+        "padding": 4.5,
+        "column": false,
+        "pixelCoordinatesInteger": true
+      },
+      {
+        "family": "Micro5",
+        "title": "AN EXCEPTIONALLY LONG SECTION TITLE",
+        "text": "AN EXCEPTIONALLY LONG SEC...",
+        "height": 5,
+        "length": 95,
+        "padding": 4.5,
+        "column": false,
+        "pixelCoordinatesInteger": true
+      },
+      {
+        "family": "Micro5",
+        "title": "ÉTÉ · CAFÉ",
+        "fallback": true
+      },
+      {
+        "family": "Tiny5",
+        "title": "DOCUMENTS",
+        "text": "DOCUMENTS",
+        "height": 5,
+        "length": 44,
+        "padding": 4.5,
+        "column": true,
+        "pixelCoordinatesInteger": true
+      },
+      {
+        "family": "Tiny5",
+        "title": "MESSAGES",
+        "text": "MESSAGES",
+        "height": 5,
+        "length": 40,
+        "padding": 4.5,
+        "column": false,
+        "pixelCoordinatesInteger": true
+      },
+      {
+        "family": "Tiny5",
+        "title": "NOTES",
+        "text": "NOTES",
+        "height": 5,
+        "length": 23,
+        "padding": 4.5,
+        "column": false,
+        "pixelCoordinatesInteger": true
+      },
+      {
+        "family": "Tiny5",
+        "title": "NOTES",
+        "text": "NOTES",
+        "height": 5,
+        "length": 23,
+        "padding": 4.5,
+        "column": true,
+        "pixelCoordinatesInteger": true
+      },
+      {
+        "family": "Tiny5",
+        "title": "NOTES",
+        "text": "NOTES",
+        "height": 5,
+        "length": 23,
+        "padding": 4.5,
+        "column": false,
+        "pixelCoordinatesInteger": true
+      },
+      {
+        "family": "Tiny5",
+        "title": "PROJECT HISTORY",
+        "text": "PROJECT HISTORY",
+        "height": 5,
+        "length": 66,
+        "padding": 4.5,
+        "column": false,
+        "pixelCoordinatesInteger": true
+      },
+      {
+        "family": "Tiny5",
+        "title": "AN EXCEPTIONALLY LONG SECTION TITLE",
+        "text": "AN EXCEPTIONALLY LO...",
+        "height": 5,
+        "length": 92,
+        "padding": 4.5,
+        "column": false,
+        "pixelCoordinatesInteger": true
+      },
+      {
+        "family": "Tiny5",
+        "title": "ÉTÉ · CAFÉ",
+        "fallback": true
+      }
+    ],
+    "handles": [
+      {
+        "title": "DOCUMENTS",
+        "detail": false,
+        "thickness": 14,
+        "margins": [
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      {
+        "title": "MESSAGES",
+        "detail": false,
+        "thickness": 14,
+        "margins": [
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      {
+        "title": "NOTES",
+        "detail": true,
+        "thickness": 28,
+        "margins": [
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      {
+        "title": "NOTES",
+        "detail": true,
+        "thickness": 28,
+        "margins": [
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      {
+        "title": "NOTES",
+        "detail": false,
+        "thickness": 14,
+        "margins": [
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      {
+        "title": "PROJECT HISTORY",
+        "detail": false,
+        "thickness": 14,
+        "margins": [
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      {
+        "title": "AN EXCEPTIONALLY LONG SECTION TITLE",
+        "detail": false,
+        "thickness": 14,
+        "margins": [
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      {
+        "title": "ÉTÉ · CAFÉ",
+        "detail": false,
+        "thickness": 14,
+        "margins": [
+          3,
+          3,
+          3,
+          3
+        ]
+      },
+      {
+        "title": "DOCUMENTS",
+        "detail": false,
+        "thickness": 14,
+        "margins": [
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      {
+        "title": "MESSAGES",
+        "detail": false,
+        "thickness": 14,
+        "margins": [
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      {
+        "title": "NOTES",
+        "detail": true,
+        "thickness": 28,
+        "margins": [
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      {
+        "title": "NOTES",
+        "detail": true,
+        "thickness": 28,
+        "margins": [
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      {
+        "title": "NOTES",
+        "detail": false,
+        "thickness": 14,
+        "margins": [
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      {
+        "title": "PROJECT HISTORY",
+        "detail": false,
+        "thickness": 14,
+        "margins": [
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      {
+        "title": "AN EXCEPTIONALLY LONG SECTION TITLE",
+        "detail": false,
+        "thickness": 14,
+        "margins": [
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      {
+        "title": "ÉTÉ · CAFÉ",
+        "detail": false,
+        "thickness": 14,
+        "margins": [
+          3,
+          3,
+          3,
+          3
+        ]
+      },
+      {
+        "title": "DOCUMENTS",
+        "detail": false,
+        "thickness": 14,
+        "margins": [
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      {
+        "title": "MESSAGES",
+        "detail": false,
+        "thickness": 14,
+        "margins": [
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      {
+        "title": "NOTES",
+        "detail": true,
+        "thickness": 28,
+        "margins": [
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      {
+        "title": "NOTES",
+        "detail": true,
+        "thickness": 28,
+        "margins": [
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      {
+        "title": "NOTES",
+        "detail": false,
+        "thickness": 14,
+        "margins": [
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      {
+        "title": "PROJECT HISTORY",
+        "detail": false,
+        "thickness": 14,
+        "margins": [
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      {
+        "title": "AN EXCEPTIONALLY LONG SECTION TITLE",
+        "detail": false,
+        "thickness": 14,
+        "margins": [
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      {
+        "title": "ÉTÉ · CAFÉ",
+        "detail": false,
+        "thickness": 14,
+        "margins": [
+          3,
+          3,
+          3,
+          3
+        ]
+      },
+      {
+        "title": "DOCUMENTS",
+        "detail": false,
+        "thickness": 14,
+        "margins": [
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      {
+        "title": "MESSAGES",
+        "detail": false,
+        "thickness": 14,
+        "margins": [
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      {
+        "title": "NOTES",
+        "detail": true,
+        "thickness": 28,
+        "margins": [
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      {
+        "title": "NOTES",
+        "detail": true,
+        "thickness": 28,
+        "margins": [
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      {
+        "title": "NOTES",
+        "detail": false,
+        "thickness": 14,
+        "margins": [
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      {
+        "title": "PROJECT HISTORY",
+        "detail": false,
+        "thickness": 14,
+        "margins": [
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      {
+        "title": "AN EXCEPTIONALLY LONG SECTION TITLE",
+        "detail": false,
+        "thickness": 14,
+        "margins": [
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      {
+        "title": "ÉTÉ · CAFÉ",
+        "detail": false,
+        "thickness": 14,
+        "margins": [
+          3,
+          3,
+          3,
+          3
+        ]
+      }
+    ]
+  }
+]

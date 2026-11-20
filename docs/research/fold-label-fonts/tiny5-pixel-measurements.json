@@ -1,0 +1,188 @@
+[
+  {
+    "name": "Before",
+    "samples": [
+      {
+        "title": "Horizontal · MESSAGES",
+        "detail": false,
+        "outline": {
+          "left": 2435,
+          "right": 2532,
+          "top": 1038,
+          "bottom": 1065
+        },
+        "ink": {
+          "left": 2445,
+          "right": 2524,
+          "top": 1046,
+          "bottom": 1055
+        },
+        "white": {
+          "left": 8,
+          "right": 6,
+          "top": 6,
+          "bottom": 8
+        }
+      },
+      {
+        "title": "Vertical · DOCUMENTS",
+        "detail": false,
+        "outline": {
+          "left": 2186,
+          "right": 2213,
+          "top": 738,
+          "bottom": 843
+        },
+        "ink": {
+          "left": 2196,
+          "right": 2205,
+          "top": 746,
+          "bottom": 833
+        },
+        "white": {
+          "left": 8,
+          "right": 6,
+          "top": 6,
+          "bottom": 8
+        }
+      },
+      {
+        "title": "2× detail · NOTES",
+        "detail": true,
+        "outline": {
+          "left": 2210,
+          "right": 2337,
+          "top": 1252,
+          "bottom": 1307
+        },
+        "ink": {
+          "left": 2230,
+          "right": 2321,
+          "top": 1272,
+          "bottom": 1291
+        },
+        "white": {
+          "left": 16,
+          "right": 12,
+          "top": 16,
+          "bottom": 12
+        }
+      },
+      {
+        "title": "2× detail · NOTES vertical",
+        "detail": true,
+        "outline": {
+          "left": 2418,
+          "right": 2473,
+          "top": 1216,
+          "bottom": 1343
+        },
+        "ink": {
+          "left": 2438,
+          "right": 2457,
+          "top": 1236,
+          "bottom": 1327
+        },
+        "white": {
+          "left": 16,
+          "right": 12,
+          "top": 16,
+          "bottom": 12
+        }
+      }
+    ]
+  },
+  {
+    "name": "After",
+    "samples": [
+      {
+        "title": "Horizontal · MESSAGES",
+        "detail": false,
+        "outline": {
+          "left": 2435,
+          "right": 2532,
+          "top": 1038,
+          "bottom": 1065
+        },
+        "ink": {
+          "left": 2444,
+          "right": 2523,
+          "top": 1047,
+          "bottom": 1056
+        },
+        "white": {
+          "left": 7,
+          "right": 7,
+          "top": 7,
+          "bottom": 7
+        }
+      },
+      {
+        "title": "Vertical · DOCUMENTS",
+        "detail": false,
+        "outline": {
+          "left": 2186,
+          "right": 2213,
+          "top": 738,
+          "bottom": 843
+        },
+        "ink": {
+          "left": 2195,
+          "right": 2204,
+          "top": 747,
+          "bottom": 834
+        },
+        "white": {
+          "left": 7,
+          "right": 7,
+          "top": 7,
+          "bottom": 7
+        }
+      },
+      {
+        "title": "2× detail · NOTES",
+        "detail": true,
+        "outline": {
+          "left": 2210,
+          "right": 2337,
+          "top": 1252,
+          "bottom": 1307
+        },
+        "ink": {
+          "left": 2228,
+          "right": 2319,
+          "top": 1270,
+          "bottom": 1289
+        },
+        "white": {
+          "left": 14,
+          "right": 14,
+          "top": 14,
+          "bottom": 14
+        }
+      },
+      {
+        "title": "2× detail · NOTES vertical",
+        "detail": true,
+        "outline": {
+          "left": 2418,
+          "right": 2473,
+          "top": 1216,
+          "bottom": 1343
+        },
+        "ink": {
+          "left": 2436,
+          "right": 2455,
+          "top": 1234,
+          "bottom": 1325
+        },
+        "white": {
+          "left": 14,
+          "right": 14,
+          "top": 14,
+          "bottom": 14
+        }
+      }
+    ]
+  }
+]

@@ -1,0 +1,133 @@
+import { TIMING } from "./motion.js";
+import { mountPart } from "./renderer.js";
+
+const SVG = "http://www.w3.org/2000/svg";
+const layers = new WeakMap();
+let serial = 0;
+const corners = (rect) => ({
+	topLeft: [rect.left, rect.top],
+	topRight: [rect.right, rect.top],
+	bottomRight: [rect.right, rect.bottom],
+	bottomLeft: [rect.left, rect.bottom]
+});
+function between(from, to, progress) {
+	const mix = (first, last) => first + (last - first) * progress;
+	const left = mix(from.left, to.left),
+		top = mix(from.top, to.top),
+		right = mix(from.right, to.right),
+		bottom = mix(from.bottom, to.bottom);
+	return { left, top, right, bottom, width: right - left, height: bottom - top };
+}
+function facesOf(from, to) {
+	const near = corners(from),
+		far = corners(to);
+	return {
+		top: [to.top < from.top, [near.topLeft, near.topRight, far.topRight, far.topLeft]],
+		right: [to.right > from.right, [near.topRight, near.bottomRight, far.bottomRight, far.topRight]],
+		bottom: [to.bottom > from.bottom, [near.bottomRight, near.bottomLeft, far.bottomLeft, far.bottomRight]],
+		left: [to.left < from.left, [near.bottomLeft, near.topLeft, far.topLeft, far.bottomLeft]]
+	};
+}
+function disposeLink(link) {
+	for (const face of link.faces.values()) face.part.dispose();
+	link.group.remove();
+}
+export function disposeOrigin(layer) {
+	const state = layer && layers.get(layer);
+	if (!state) return;
+	if (state.frame) layer.ownerDocument.defaultView.cancelAnimationFrame(state.frame);
+	for (const link of state.links.values()) disposeLink(link);
+	layers.delete(layer);
+}
+function paint(workspace, link, progress) {
+	const far = between(link.from, link.to, 1 - (1 - progress) ** 3);
+	link.group.style.opacity = String(link.entering ?? progress);
+	for (const [side, [facing, points]] of Object.entries(facesOf(link.from, far))) {
+		let face = link.faces.get(side);
+		if (!face) {
+			const polygon = workspace.document.createElementNS(SVG, "polygon");
+			polygon.setAttribute("class", `supermax-frustum-face is-${side}`);
+			polygon.dataset.side = side;
+			polygon.setAttribute("fill", "none");
+			const defs = workspace.document.createElementNS(SVG, "defs");
+			link.group.append(defs, polygon);
+			face = {
+				polygon,
+				part: mountPart(workspace, "frustum", polygon, { kind: link.kind, side }, { side, defs, id: `supermax-frustum-fade-${++serial}` })
+			};
+			link.faces.set(side, face);
+		}
+		face.polygon.style.display = facing ? "" : "none";
+		face.polygon.setAttribute("points", points.map((point) => point.join(",")).join(" "));
+		const [x1, y1, x2, y2] =
+			side === "top" || side === "bottom"
+				? [link.from.left, link.from[side], link.from.left, far[side]]
+				: [link.from[side], link.from.top, far[side], link.from.top];
+		const from = Object.freeze({
+			left: link.from.left,
+			top: link.from.top,
+			right: link.from.right,
+			bottom: link.from.bottom,
+			width: link.from.width,
+			height: link.from.height
+		});
+		face.part.paint(Object.freeze({ progress, from, to: Object.freeze(far), side, kind: link.kind, gradient: Object.freeze({ x1, y1, x2, y2 }) }));
+	}
+	for (const [key, value] of [
+		["x", far.left],
+		["y", far.top],
+		["width", far.width],
+		["height", far.height]
+	])
+		link.target.setAttribute(key, String(value));
+}
+export function frustumOrigin({ workspace, kind, layer, links, entering = null }) {
+	if (!layer) return;
+	const view = workspace.document.defaultView;
+	let state = layers.get(layer);
+	if (!state) {
+		state = { links: new Map(), frame: null };
+		layers.set(layer, state);
+	}
+	const wanted = new Set(links.map((link) => link.id));
+	for (const [id, link] of state.links)
+		if (!wanted.has(id)) {
+			disposeLink(link);
+			state.links.delete(id);
+		}
+	const now = view.performance.now();
+	for (const geometry of links) {
+		let link = state.links.get(geometry.id);
+		if (!link) {
+			const group = workspace.document.createElementNS(SVG, "g");
+			group.setAttribute("class", `supermax-frustum is-${kind}`);
+			const target = workspace.document.createElementNS(SVG, "rect");
+			target.setAttribute("class", "supermax-frustum-target");
+			target.setAttribute("fill", "none");
+			target.setAttribute("stroke", "none");
+			group.append(target);
+			layer.append(group);
+			link = { group, target, faces: new Map(), start: now, duration: workspace.time.ms(TIMING.frustum) };
+			state.links.set(geometry.id, link);
+		}
+		Object.assign(link, geometry, { kind, entering });
+		if (entering !== null) link.complete = true;
+	}
+	const tick = (stamp) => {
+		state.frame = null;
+		let pending = false;
+		try {
+			for (const link of state.links.values()) {
+				const progress = workspace.reducedMotion.matches || link.complete ? 1 : Math.min(1, (stamp - link.start) / link.duration);
+				paint(workspace, link, progress);
+				pending ||= progress < 1;
+			}
+		} catch (error) {
+			disposeOrigin(layer);
+			throw error;
+		}
+		if (pending) state.frame = view.requestAnimationFrame(tick);
+	};
+	if (state.frame) view.cancelAnimationFrame(state.frame);
+	tick(now);
+}

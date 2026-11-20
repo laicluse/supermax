@@ -1,7 +1,7 @@
 {
   "name": "@laicluse/supermax",
-  "version": "1.0.0",
-  "description": "Framework-free responsive cell layout primitives for left-to-right drilldown interfaces.",
+  "version": "2.0.0",
+  "description": "Framework-free workspace shell with branching rows, one Back history, dividers, loading cells, modals and notices, on top of a cell allocator and an animated cell strip.",
   "type": "module",
   "license": "MIT",
   "repository": {
@@ -10,26 +10,48 @@
   },
   "exports": {
     ".": {
-      "import": "./src/cell-collection.js",
-      "default": "./src/cell-collection.js"
+      "import": "./src/index.js",
+      "default": "./src/index.js"
     },
-    "./cell-collection": "./src/cell-collection.js"
+    "./cell-collection": "./src/cell-collection.js",
+    "./cell-strip": "./src/cell-strip.js",
+    "./workspace.css": "./src/workspace.css"
   },
   "files": [
-    "src/cell-collection.js",
+    "src",
+    "docs/application-shell.md",
+    "docs/rendering.md",
+    "docs/renderers.html",
+    "docs/assets/renderers.js",
+    "docs/assets/renderers.css",
+    "docs/assets/supermax",
+    "docs/folding.md",
+    "docs/reachability.md",
+    "docs/research/cell-transitions.md",
+    "docs/migrating-to-v2.md",
+    "docs/assets/captures",
+    "CHANGELOG.md",
     "LICENSE",
     "README.md"
   ],
   "scripts": {
     "build:docs": "node scripts/build-docs.mjs",
     "check:docs": "node scripts/build-docs.mjs --check",
-    "test": "node test/smoke.test.js",
-    "test:node": "node test/smoke.test.js",
-    "test:bun": "bun test/smoke.test.js",
-    "check": "node scripts/build-docs.mjs --check && node test/smoke.test.js && bun test/smoke.test.js"
+    "serve": "node scripts/serve-demo.mjs",
+    "test:node": "node test/smoke.test.js && node test/variants.test.js && node test/navigation.test.js && node test/reachability.test.js && node test/layout-declaration.test.js && node test/edge-drag.test.js && node --test test/resize-allocation.test.js test/unfold.test.js test/root-split.test.js test/aspect-ratio.test.js",
+    "test:bun": "bun test/smoke.test.js && bun test/navigation.test.js && bun test/layout-declaration.test.js",
+    "test:browser": "node test/cell-strip.test.js && node test/serve-demo.test.js && node --test --test-concurrency=1 test/renderer.test.js test/divider-drag.test.js test/variants-browser.test.js test/variant-gutters.test.js test/cell-gutters.test.js test/fold-label.test.js test/fold-stability.test.js test/folding.test.js test/workspace.test.js test/workspace-package.test.js test/retention.test.js test/chain-scroll.test.js test/cell-sweep.test.js",
+    "test:browser:fold": "SUPERMAX_PRESENTATION=fold node --test --test-concurrency=1 test/workspace.test.js",
+    "test:browser:veil": "SUPERMAX_PRESENTATION=veil node --test --test-concurrency=1 test/workspace.test.js",
+    "test": "npm run check:docs && npm run test:node && npm run test:browser",
+    "check": "npm run test && npm run test:bun",
+    "bench:transitions": "node bench/transitions.mjs"
   },
   "engines": {
     "node": ">=22"
   },
-  "packageManager": "pnpm@11.10.0+sha512.0b7f8b98060031904c017e3a41eb187a16d40eeb829b95c4f8cb03681761fc4ab53dd219115b9b447f4dce1a05a214764461e7d3703392a9f32f9511ce8c86c8"
+  "packageManager": "pnpm@11.10.0+sha512.0b7f8b98060031904c017e3a41eb187a16d40eeb829b95c4f8cb03681761fc4ab53dd219115b9b447f4dce1a05a214764461e7d3703392a9f32f9511ce8c86c8",
+  "devDependencies": {
+    "playwright": "^1.63.0"
+  }
 }

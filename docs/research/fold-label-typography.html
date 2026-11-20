@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Fold labels · typography study</title>
+<link rel="stylesheet" href="../../src/workspace.css">
+<style>
+@font-face{font-family:Tiny5;src:url(fold-label-fonts/Tiny5.ttf)}@font-face{font-family:Departure;src:url(fold-label-fonts/DepartureMono.otf)}@font-face{font-family:Bebas;src:url(fold-label-fonts/BebasNeue.ttf)}
+*{box-sizing:border-box}body{margin:0;padding:32px;background:#f3f4f5;color:#25282d;font:14px/1.5 system-ui}h1{font-size:27px;margin:0}header p{max-width:1000px;color:#606770;margin:8px 0 24px}main{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:20px}article{background:white;border:1px solid #ddd;padding:20px}h2{font-size:18px;margin:0 0 4px}.meta{color:#606770;font-size:12px;margin:0 0 18px}.context{position:relative;height:230px;overflow:hidden;--supermax-canvas:#bbb;--supermax-surface:#fff;background:white;border:1px solid #bbb}.content{padding:18px 26px}.content h3{font-size:15px;margin:0 0 14px}.line{height:27px;border-bottom:1px solid #eee;color:#777;font-size:12px}.seam-v{position:absolute;left:0;top:0;bottom:0;width:1px;background:#bbb}.seam-h{position:absolute;left:0;right:0;bottom:0;height:1px;background:#bbb}.v-slot{position:absolute;left:0;top:42px}.h-slot{position:absolute;bottom:0;left:55%}.handle{position:relative!important;left:auto!important;top:auto!important}.label-mark{width:auto!important;height:auto!important;flex:none}.ink{position:relative;display:block;height:8px}.ink-drawing{display:block;background:currentColor;mask-size:100% 100%;mask-repeat:no-repeat}.column .ink-drawing{position:absolute;left:0;top:100%;transform:rotate(-90deg);transform-origin:0 0}.column .ink{width:8px}.detail{height:180px;margin-top:20px;background:#fafafa;padding:16px;position:relative;overflow:hidden}.detail small{font:11px system-ui;color:#666}.detail .samples{display:flex;align-items:center;gap:22px;margin-top:28px;transform:scale(2);transform-origin:top left}.detail .handle{--supermax-canvas:#999;--supermax-surface:#fff}.examples{display:flex;flex-wrap:wrap;gap:12px;align-items:center;margin:14px 0}.examples .handle{--supermax-canvas:#999;--supermax-surface:#fff}.notes{font-size:12px;color:#606770;margin:10px 0 0}footer{margin-top:22px;max-width:1050px;color:#606770;font-size:12px}#baseline{display:flex;gap:24px;align-items:center;background:white;padding:14px 20px;border:1px solid #ddd;margin-bottom:20px}#baseline .handle{--supermax-canvas:#999;--supermax-surface:#fff}.baseline-h .supermax-fold-mark{width:26px;height:14px}.baseline-h svg{transform:rotate(90deg);width:8px!important;height:20px!important;position:absolute;left:9px;top:-3px}
+</style>
+<header><h1>Fold labels · three retro typefaces</h1><p>Exploration · real browser typography. Each visible handle stays <b>14 px thin</b>: <b>8 px of visible ink</b> and exactly <b>3 px optical whitespace</b> on every side, with font sidebearings removed. Only length changes. Colour is inherited from the current handle; text contrast remains an open decision. Vertical words read bottom → top; horizontal words read left → right.</p></header>
+<div id="baseline"><span>Current hatching · 1×</span><button class="supermax-fold-cue handle" data-direction="right"><span class="supermax-fold-mark"><svg viewBox="0 0 8 20"><path d="M2 2L6 6M2 8L6 12M2 14L6 18"/></svg></span></button><button class="supermax-fold-cue handle baseline-h" data-direction="up"><span class="supermax-fold-mark"><svg viewBox="0 0 8 20"><path d="M2 2L6 6M2 8L6 12M2 14L6 18"/></svg></span></button><span>14 × 26 px / 26 × 14 px · unchanged outline, fill and corner attachment</span></div>
+<main></main><footer>2026-10-27 · Unaccepted typography proposals. Context panels are static geometry specimens, not a navigation test. The live shell and its default hatching are unchanged. Labels cap at 96 px of ink length here, then use an ellipsis; the full title remains the accessible name and tooltip. Every word is cropped to its actual visible pixels and fitted to 8 px ink height, including accents. No accents are stripped. 2× details are explicitly enlarged; context panels above them are at 1× CSS size. Sources and licenses: <a href="fold-label-fonts/sources.json">pinned font sources</a>.</footer>
+<script type="module">
+await document.fonts.ready;
+const canvas=document.createElement('canvas').getContext('2d');
+window.measurements=[];
+function inkBounds(context) {
+ const {width,height}=context.canvas, data=context.getImageData(0,0,width,height).data;
+ let left=width,top=height,right=-1,bottom=-1;
+ for(let y=0;y<height;y++)for(let x=0;x<width;x++)if(data[(y*width+x)*4+3]){left=Math.min(left,x);top=Math.min(top,y);right=Math.max(right,x);bottom=Math.max(bottom,y)}
+ if(right<left)throw Error('Empty glyph raster');
+ return {left,top,right,bottom,width:right-left+1,height:bottom-top+1};
+}
+function label(family,title,column=false){
+ const dpr=devicePixelRatio;let size=family==='Tiny5'?8:11;
+ const measure=text=>{canvas.font=`${size}px ${family}`;return canvas.measureText(text)};
+ let m=measure(title);size*=8/(m.actualBoundingBoxAscent+m.actualBoundingBoxDescent);
+ let text=title;
+ while((measure(text).actualBoundingBoxLeft+measure(text).actualBoundingBoxRight)>96&&text.length>1)text=text.replace(/…$/,'').slice(0,-1)+'…';
+ m=measure(text);
+ const source=document.createElement('canvas');source.width=Math.ceil((m.width+32)*dpr);source.height=Math.ceil(64*dpr);
+ const c=source.getContext('2d');c.font=`${size*dpr}px ${family}`;c.fillText(text,16*dpr,40*dpr);
+ const crop=inkBounds(c), target=document.createElement('canvas');target.height=Math.round(8*dpr);target.width=Math.max(1,Math.round(crop.width*target.height/crop.height));
+ const tc=target.getContext('2d');tc.drawImage(source,crop.left,crop.top,crop.width,crop.height,0,0,target.width,target.height);
+ const visible=inkBounds(tc);if(visible.left!==0||visible.top!==0||visible.width!==target.width||visible.height!==target.height)throw Error('Raster has outer whitespace');
+ const w=target.width/dpr;
+ let cue=document.createElement('button');cue.className='supermax-fold-cue handle'+(column?' column':'');cue.dataset.direction=column?'right':'up';cue.title=title;cue.setAttribute('aria-label','Show '+title);
+ let mark=document.createElement('span');mark.className='supermax-fold-mark label-mark';mark.setAttribute('aria-hidden','true');let inner=document.createElement('span');inner.className='ink';inner.style.width=(column?8:w)+'px';inner.style.height=(column?w:8)+'px';
+ const drawing=document.createElement('span');drawing.className='ink-drawing';drawing.style.width=w+'px';drawing.style.height='8px';drawing.style.maskImage=`url(${target.toDataURL()})`;inner.append(drawing);mark.append(inner);cue.append(mark);
+ window.measurements.push({family,title,text,size,inkHeight:8,length:w,column,raster:visible,devicePixelRatio:dpr,opticalPadding:3});return cue;
+}
+for(const [family,name,description] of [['Tiny5','Tiny5','Calculator pixels · narrow rhythm'],['Departure','Departure Mono','Monospaced · computer terminal'],['Bebas','Bebas Neue','Condensed outline · compact poster lettering']]){
+ await document.fonts.load(`11px ${family}`);let a=document.createElement('article');a.innerHTML=`<h2>${name}</h2><p class="meta">${description}</p><div class="context"><div class="content"><h3>Workspace</h3><div class="line">Overview</div><div class="line">Recent activity</div><div class="line">Selected document</div><div class="line">Draft saved</div></div><div class="seam-v"></div><div class="seam-h"></div><div class="v-slot"></div><div class="h-slot"></div></div><div class="detail"><small>2× detail · same glyphs, both axes</small><div class="samples"></div></div><p class="notes">1× · short, long and accented titles</p><div class="examples"></div><p class="notes">${family==='Tiny5'?'8 px visible cap ink':family==='Departure'?'8 px visible cap ink':'8 px visible cap ink'}. Equal visible margins, independent of font metrics.</p>`;
+ a.querySelector('.v-slot').append(label(family,'DOCUMENTS',true));a.querySelector('.h-slot').append(label(family,'MESSAGES'));
+ a.querySelector('.samples').append(label(family,'NOTES'),label(family,'NOTES',true));
+ for(const s of ['NOTES','PROJECT HISTORY','AN EXCEPTIONALLY LONG SECTION TITLE','ÉTÉ · CAFÉ'])a.querySelector('.examples').append(label(family,s)); const accent=window.measurements.at(-1);a.querySelector('.notes:last-child').textContent += ` Accent source size: ${accent.size.toFixed(2)} px; final ink: 8 px.`;document.querySelector('main').append(a);
+}
+window.ready=true;
+</script></html>

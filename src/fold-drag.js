@@ -1,0 +1,170 @@
+import { TIMING } from "./motion.js";
+
+const OPEN_THRESHOLD = (Math.sqrt(5) - 1) / 2;
+const SAMPLES = 48;
+
+export class FoldDrag {
+	constructor(controller, cue, event) {
+		this.controller = controller;
+		this.workspace = controller.workspace;
+		this.cue = cue;
+		this.pointer = event.pointerId;
+		this.record = controller.entries.get(cue);
+		this.horizontal = this.record.axis === "horizontal";
+		this.direction = cue.dataset.direction;
+		this.sign = ["left", "up"].includes(this.direction) ? -1 : 1;
+		this.start = this.coordinate(event);
+		this.progress = 0;
+		this.visible = new Set([...controller.entries.keys()].filter((handle) => !handle.hidden));
+		this.animations = [];
+		this.move = (next) => this.update(next);
+		this.release = (next) => this.end(next);
+		this.cancelPointer = (next) => { if (next.pointerId === this.pointer) this.settle(false); };
+		this.escape = (next) => { if (next.key === "Escape") { next.preventDefault(); this.settle(false); } };
+		cue.setPointerCapture(this.pointer);
+		cue.addEventListener("pointermove", this.move);
+		cue.addEventListener("pointerup", this.release);
+		cue.addEventListener("pointercancel", this.cancelPointer);
+		cue.addEventListener("lostpointercapture", this.cancelPointer);
+		this.workspace.document.addEventListener("keydown", this.escape);
+	}
+
+	coordinate(event) {
+		return this.horizontal ? event.clientX : event.clientY;
+	}
+
+	motionAnimations() {
+		const owned = new Set();
+		for (const { strip } of this.workspace.chains.values()) {
+			for (const animation of strip.geometry) owned.add(animation);
+			for (const { animation } of strip.motions.values()) { owned.add(animation); if (animation.shade) owned.add(animation.shade); for (const conceal of animation.conceal ?? []) owned.add(conceal); }
+		}
+		for (const row of this.workspace.rows.values()) {
+			if (row.animation) owned.add(row.animation);
+			if (row.slide) owned.add(row.slide);
+		}
+		const { CSSTransition } = this.workspace.document.defaultView;
+		for (const animation of this.workspace.body.getAnimations({ subtree: true })) {
+			if (animation instanceof CSSTransition && ["opacity", "transform"].includes(animation.transitionProperty) && animation.effect.target?.matches(".supermax-cell-body, .supermax-cell-title, .supermax-row-chain")) owned.add(animation);
+		}
+		return [...owned].filter((animation) => animation.playState !== "idle");
+	}
+
+	begin() {
+		const { workspace, record } = this;
+		for (const animation of this.motionAnimations()) animation.finish();
+		this.trial = workspace.rehearse(() => workspace.navigator.unfold(record.occurrence, record.axis));
+		workspace.element.classList.add("is-fold-dragging");
+		this.rendering = true;
+		workspace.navigator.preview(this.trial, () => workspace.render({ animate: true }));
+		this.rendering = false;
+		// allow-comment: the drag is the transition Show plays, untouched: every stroke keeps its delay, duration and easing, and the pointer takes the place of the clock. Only the wait before the first stroke is skipped.
+		this.animations = this.motionAnimations();
+		for (const animation of this.animations) animation.pause();
+		const timings = this.animations.map((animation) => animation.effect.getComputedTiming());
+		this.from = timings.length ? Math.min(...timings.map((timing) => timing.delay)) : 0;
+		this.until = timings.length ? Math.max(...timings.map((timing) => timing.endTime)) : 1;
+		this.active = true;
+		this.chart();
+		this.seek(0);
+	}
+
+	// allow-comment: the handle rides the edge of the cell it opens, which the transition moves on its own curve. Sampling that travel once lets the pointer pick the moment of the transition at which the handle lies under it.
+	chart() {
+		const place = () => this.cue.getBoundingClientRect()[this.horizontal ? "left" : "top"];
+		this.seek(0);
+		const start = place();
+		let reached = 0;
+		this.travel = Array.from({ length: SAMPLES + 1 }, (unused, index) => {
+			this.seek(index / SAMPLES);
+			reached = Math.max(reached, (place() - start) * this.sign);
+			return reached;
+		});
+		this.distance = Math.max(1, reached);
+	}
+
+	progressAt(distance) {
+		if (distance <= 0) return 0;
+		if (distance >= this.distance) return 1;
+		const index = this.travel.findIndex((reached) => reached >= distance);
+		const before = this.travel[index - 1];
+		return (index - 1 + (distance - before) / (this.travel[index] - before)) / SAMPLES;
+	}
+
+	update(event) {
+		if (event.pointerId !== this.pointer || this.settling) return;
+		const distance = (this.coordinate(event) - this.start) * this.sign;
+		if (!this.active && Math.abs(distance) < 4) return;
+		if (!this.active) this.begin();
+		this.reach = Math.min(1, Math.max(0, distance / this.distance));
+		this.seek(this.progressAt(distance));
+	}
+
+	seek(progress) {
+		this.progress = progress;
+		for (const animation of this.animations) animation.currentTime = this.from + progress * (this.until - this.from);
+		for (const { strip } of this.workspace.chains.values()) strip.step();
+		this.controller.place();
+	}
+
+	end(event) {
+		if (event.pointerId !== this.pointer || this.settling) return;
+		if (!this.active) {
+			this.detach();
+			this.controller.drag = null;
+			this.controller.open(this.record.occurrence, this.record.axis);
+			return;
+		}
+		this.update(event);
+		this.settle(this.reach > OPEN_THRESHOLD);
+	}
+
+	settle(open) {
+		if (this.settling) return;
+		this.detach();
+		if (!this.active) { this.controller.drag = null; return; }
+		if (open && !this.workspace.askToShow(this.record.occurrence, this.trial.closed)) open = false;
+		this.settling = true;
+		if (open) {
+			this.visible = new Set([...this.controller.entries].filter(([, { occurrence, axis }]) => {
+				const state = axis === "horizontal" ? this.workspace.findCell(occurrence) : this.workspace.findRow(occurrence);
+				return this.controller.offers(state);
+			}).map(([cue]) => cue));
+			this.controller.place();
+		}
+		const from = this.progress;
+		const target = open ? 1 : 0;
+		const duration = this.workspace.reducedMotion.matches ? 0 : this.workspace.time.ms(TIMING.travel);
+		const view = this.workspace.document.defaultView;
+		const start = view.performance.now();
+		const tick = (now) => {
+			const elapsed = duration ? Math.min(1, (now - start) / duration) : 1;
+			this.seek(from + (target - from) * elapsed * elapsed * (3 - 2 * elapsed));
+			if (elapsed < 1) this.frame = view.requestAnimationFrame(tick);
+			else {
+				const closed = open ? this.workspace.navigator.unfold(this.record.occurrence, this.record.axis) : [];
+				this.cancel();
+				this.workspace.render({ animate: false });
+				if (open) this.controller.announce(this.record.occurrence, this.record.axis, closed);
+			}
+		};
+		this.frame = view.requestAnimationFrame(tick);
+	}
+
+	detach() {
+		this.cue.removeEventListener("pointermove", this.move);
+		this.cue.removeEventListener("pointerup", this.release);
+		this.cue.removeEventListener("pointercancel", this.cancelPointer);
+		this.cue.removeEventListener("lostpointercapture", this.cancelPointer);
+		this.workspace.document.removeEventListener("keydown", this.escape);
+		if (this.cue.hasPointerCapture(this.pointer)) this.cue.releasePointerCapture(this.pointer);
+	}
+
+	cancel() {
+		this.detach();
+		this.workspace.document.defaultView.cancelAnimationFrame(this.frame);
+		for (const animation of this.animations) animation.cancel();
+		this.workspace.element.classList.remove("is-fold-dragging");
+		this.controller.drag = null;
+	}
+}
