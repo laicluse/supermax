@@ -115,15 +115,21 @@ test("frames diverge on what one Back closes and the demo does not equalise them
 	assert.equal(await activeOccurrence(), coast.row("thumbnails"), "Back returns focus to the selector of the closed group");
 });
 
-test("a deeplink opens three rows in both frames and a reload reproduces each frame", async () => {
+test("a deeplink opens three rows in both frames; a fresh navigation replays it and a reload restores it", async () => {
 	await openDemo(THREE_ROWS);
 	for (const key of ["a", "b"]) assert.deepEqual(await groups(key), ["Coast", "Photo A", "Photo B", "Photo C"], `frame ${key}`);
 	await page.click(inFrame("a", `[data-occurrence="${coast.row("thumbnails")}"] .thumb[data-destination="coast:photo:d"]`));
 	const live = { a: await state("a"), b: await state("b") };
+	const url = page.url();
+	await page.goto("about:blank");
+	await page.goto(url);
+	await page.waitForFunction(() => window.supermaxDemo?.frames.length === 2);
+	assert.deepEqual(await state("a"), live.a, "a fresh navigation replays the wide frame after clicks");
+	assert.deepEqual(await state("b"), live.b, "a fresh navigation replays the narrow frame after clicks");
+	await resize([[600, 640], [420, 640]]);
 	await page.reload();
 	await page.waitForFunction(() => window.supermaxDemo?.frames.length === 2);
-	assert.deepEqual(await state("a"), live.a, "reload reproduces the wide frame after clicks");
-	assert.deepEqual(await state("b"), live.b, "reload reproduces the narrow frame after clicks");
+	assert.deepEqual(await state("a"), live.a, "a reload restores the stored snapshot, not a replay at the resized width");
 });
 
 test("the Back control names content in another row than the focus, also when hidden", async () => {
@@ -281,6 +287,53 @@ test("hostile deeplinks are rejected without breaking the page", async () => {
 	await openDemo([open("album:coast", "albums"), open("coast:thumbnails", coast.album), { type: "back" }, open("constructor", "albums")]);
 	assert.deepEqual(await groups("a"), [], "the row root could not be promoted, so Back closed the album");
 	assert.equal(await page.locator("[data-scenarios] .scenario").count(), 8, "the page finished loading");
+	assert.equal(await page.locator(readout("a", "rejection")).textContent(), "Rejected: constructor is not a destination.");
+	assert.equal(page.url().split("#")[1], "o:album:coast@albums;b", "only applied actions survive in the URL");
+});
+
+test("a scenario button that every frame refuses leaves the URL untouched", async () => {
+	await openDemo();
+	await page.click("[data-scenarios] .scenario:has-text(\"Lab: one pixel over\")");
+	await page.waitForFunction(() => document.querySelector('.frame[data-frame="a"] + .readout .readout-rejection')?.textContent.includes("Gallery"));
+	assert.equal(page.url().includes("#"), false);
+	assert.deepEqual(await groups("a"), []);
+});
+
+test("a row tab works by keyboard and does not steal the protected row on mousedown", async () => {
+	await openDemo(THREE_ROWS);
+	await page.focus(inFrame("a", `[data-occurrence="${coast.photo("thumbnails", "a")}"] .caption`));
+	await resize([[960, 400], [420, 640]]);
+	assert.deepEqual(await collapsedRows("a"), [false, true, true]);
+	const tab = inFrame("a", `.supermax-row[data-row="${coast.row("people")}"] .supermax-row-tab`);
+	await page.hover(tab);
+	await page.mouse.down();
+	assert.deepEqual(await collapsedRows("a"), [false, true, true], "pressing the mouse on a tab moves nothing");
+	await page.mouse.up();
+	await settle();
+	assert.deepEqual(await collapsedRows("a"), [true, true, false], "the click opens the row");
+	assert.equal(await activeOccurrence(), coast.row("people"), "focus lands on the row's first visible cell");
+	await page.focus(inFrame("a", `.supermax-row[data-row="${coast.row("map")}"] .supermax-row-tab`));
+	await page.keyboard.press("Enter");
+	await settle();
+	assert.deepEqual(await collapsedRows("a"), [true, false, true], "Enter on a focused tab opens its row");
+	assert.equal(await activeOccurrence(), coast.row("map"), "focus lands in the opened row");
+});
+
+test("history restore that removes the focused cell hands focus to visible content", async () => {
+	await openDemo([open("album:coast", "albums")]);
+	await page.click(inFrame("b", `[data-occurrence="${coast.row("map")}"] .pin[data-destination="coast:photo:b"]`));
+	await page.focus(inFrame("b", `[data-occurrence="${coast.photo("map", "b")}"] .caption`));
+	await page.goBack();
+	await page.waitForFunction(() => !location.hash.includes("photo:b"));
+	assert.equal(await activeOccurrence(), coast.row("map"), "focus moved to the selector that remains");
+});
+
+test("rows inside a split hidden by a reveal are not painted", async () => {
+	await openDemo([open("album:coast", "albums")]);
+	await page.click(inFrame("b", ".supermax-navbar .supermax-reveal.is-left"));
+	await settle();
+	const visibility = await page.locator(inFrame("b", `[data-occurrence="${coast.album}"] .supermax-row-chain`)).evaluateAll((elements) => elements.map((element) => getComputedStyle(element).visibility));
+	assert.deepEqual(visibility, ["hidden", "hidden", "hidden"]);
 });
 
 test("motion: an opening animates, an immediate Back leaves nothing behind, reduced motion animates nothing", async () => {
@@ -326,13 +379,17 @@ test("each frame resizes through its own handle and the readout follows", async 
 	assert.deepEqual(await page.locator(frame("a")).boundingBox(), otherBefore, "resizing one frame leaves the other untouched");
 });
 
-test("destroy removes the shell and disposes content", async () => {
+test("destroy removes the shell, its listener and its properties", async () => {
 	await openDemo([open("album:coast", "albums")]);
 	const result = await page.evaluate(() => {
 		const workspace = window.supermaxDemo.frames[0].workspace;
 		const element = workspace.element;
+		const before = workspace.navigator.focused;
 		workspace.destroy();
-		return { children: element.childElementCount, classes: element.className, cells: workspace.cells.size };
+		const probe = document.createElement("button");
+		element.append(probe);
+		probe.focus();
+		return { children: element.childElementCount - 1, classes: element.className, cells: workspace.cells.size, navbarProperty: element.style.getPropertyValue("--supermax-navbar"), focusUnchanged: workspace.navigator.focused === before };
 	});
-	assert.deepEqual(result, { children: 0, classes: "frame-workspace", cells: 0 });
+	assert.deepEqual(result, { children: 0, classes: "frame-workspace", cells: 0, navbarProperty: "", focusUnchanged: true });
 });

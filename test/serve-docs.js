@@ -1,16 +1,27 @@
 import { readFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import { extname, normalize, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 
-const docsRoot = resolve(new URL("../docs/", import.meta.url).pathname);
+const repoRoot = fileURLToPath(new URL("../", import.meta.url));
+const docsRoot = resolve(repoRoot, "docs");
 const types = { ".html": "text/html", ".js": "text/javascript", ".css": "text/css", ".png": "image/png" };
+const extraRoots = { "/src/": resolve(repoRoot, "src"), "/test/fixtures/": resolve(repoRoot, "test/fixtures") };
+const blankPage = "<!doctype html><html><head><meta charset=\"utf-8\"><title>Supermax test page</title></head><body></body></html>";
 
 export async function serveDocs() {
 	const server = createServer(async (request, response) => {
 		const pathname = new URL(request.url, "http://localhost").pathname;
-		const relative = normalize(pathname === "/" ? "/index.html" : pathname).replace(/^(\.\.[/\\])+/, "");
-		const file = resolve(docsRoot, `.${relative}`);
-		if (!file.startsWith(docsRoot)) {
+		if (pathname === "/blank") {
+			response.setHeader("Content-Type", "text/html");
+			response.end(blankPage);
+			return;
+		}
+		const extra = Object.keys(extraRoots).find((prefix) => pathname.startsWith(prefix));
+		const root = extra ? extraRoots[extra] : docsRoot;
+		const relative = normalize(extra ? pathname.slice(extra.length - 1) : (pathname === "/" ? "/index.html" : pathname)).replace(/^(\.\.[/\\])+/, "");
+		const file = resolve(root, `.${relative}`);
+		if (!file.startsWith(root)) {
 			response.writeHead(403).end();
 			return;
 		}

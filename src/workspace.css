@@ -1,3 +1,6 @@
+.supermax-workspace,
+.supermax-workspace * { box-sizing: border-box; }
+
 .supermax-workspace {
 	display: flex;
 	flex-direction: column;

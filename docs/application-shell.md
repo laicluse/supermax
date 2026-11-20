@@ -95,7 +95,7 @@ Do not copy these numbers mechanically. A dense data table may need more width t
 - Open create and edit flows as child cells when they are part of the hierarchy.
 - Use one scroll owner per cell. Headers and task toolbars remain stable while the body scrolls.
 
-When cells no longer fit, hide ancestors from the left. Do not squeeze them into narrow columns and do not add horizontal page scrolling. The first visible header provides a reveal control for the rightmost hidden ancestor; revealing changes what is visible, never what is open. For the workspace's own root chain, whose first visible cell is usually a split without a header, that control sits in the navigation bar next to Back. Selecting new content returns focus to the rightmost active cells.
+When cells no longer fit, hide ancestors from the left. Do not squeeze them into narrow columns and do not add horizontal page scrolling. The first visible header provides a reveal control for the rightmost hidden ancestor; revealing changes what is visible, never what is open. When the first visible cell of a chain is a split, which has no header of its own, that control sits in the navigation bar next to Back. Selecting new content returns focus to the rightmost active cells.
 
 ## Rows
 
@@ -126,7 +126,7 @@ Hiding, resizing, focusing a row, and revealing an ancestor never create or rewr
 
 ### Deep links and browser history
 
-The library ships no router: the host owns the log of actions and how it travels. The demo shows one shape. Its URL carries the ordered log of applied manual actions, including Backs; an action every frame refused stays out. A cold load replays that log from the start, and every viewport computes its own defaults while replaying, so a reload at the same size reproduces what that viewport showed; after a resize the replay follows the new size, because room is decided when something opens and a resize never rewrites what is open. Within a session each action pushes a history entry that also stores a snapshot of every frame, so browser back and forward restore the exact earlier state, drafts included, instead of replaying. An action whose source is no longer open in a viewport is rejected there and reported; the demo never invents hidden steps to make the viewports match.
+The library ships no router: the host owns the log of actions and how it travels. The demo shows one shape. Its URL carries the ordered log of applied manual actions, including Backs; an action every frame refused stays out. A fresh navigation to such a link replays the log from the start, and every viewport computes its own defaults while replaying, so the result depends on the size each viewport has at that moment, because room is decided when something opens and a resize never rewrites what is open. Within a session each action pushes a history entry that also stores a snapshot of what every frame has open, so browser back, forward and reload restore that earlier state instead of replaying; content that stayed open through such a step keeps its drafts, content that closed was disposed and comes back fresh. Focus and reveal are not part of the snapshot. An action whose source is no longer open in a viewport is rejected there and reported; the demo never invents hidden steps to make the viewports match.
 
 ## Cold start
 

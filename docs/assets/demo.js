@@ -161,7 +161,9 @@ function renderPhoto(occurrence, data, workspace) {
 	const link = element("button", "metadata-link", "Metadata");
 	link.type = "button";
 	link.addEventListener("click", () => workspace.navigate(key.metadata(photo), { from: occurrence.id }));
-	host.append(picture, caption, link);
+	const actions = element("div", "photo-actions");
+	actions.append(caption, link);
+	host.append(picture, actions);
 	return {
 		element: host,
 		update(current) {
@@ -211,11 +213,11 @@ class Session {
 		readout.append(element("strong", null, frame.name), size, limit, rejection);
 		wrapper.append(box, readout);
 		document.querySelector("[data-frames]").append(wrapper);
-		const navigator = new Navigator({ destinations: definitions, root: "albums", minViewportHeight });
-		const workspace = new Workspace(root, { navigator, content: renderContent, onIntent: (action, origin) => this.dispatch(action, origin) });
+		const model = new Navigator({ destinations: definitions, root: "albums", minViewportHeight });
+		const workspace = new Workspace(root, { navigator: model, content: renderContent, onIntent: (action, origin) => this.dispatch(action, origin) });
 		workspace.addEventListener("rejected", (event) => {
 			rejection.hidden = false;
-			rejection.textContent = describeRejection(event.detail);
+			rejection.textContent = describeRejection(event.detail, model);
 		});
 		workspace.addEventListener("change", (event) => {
 			if (event.detail.result.ok) rejection.hidden = true;
@@ -229,9 +231,8 @@ class Session {
 	}
 
 	dispatch(action, origin) {
-		const results = this.frames.map((frame) => frame.workspace.apply(action));
+		const results = this.frames.map((frame) => frame.workspace.apply(action, { focus: frame.workspace === origin }));
 		const originResult = results[this.frames.findIndex((frame) => frame.workspace === origin)];
-		origin.focusAfter(action, originResult);
 		if (results.some((result) => result.ok && !result.noop)) {
 			this.log.push(action);
 			this.record("push");
@@ -246,17 +247,16 @@ class Session {
 	}
 
 	arrive(state) {
-		if (state?.snapshots) {
+		if (state?.snapshots && this.frames.every((frame, index) => frame.workspace.restore(state.snapshots[index]))) {
 			this.log = state.log;
-			this.frames.forEach((frame, index) => frame.workspace.restore(state.snapshots[index]));
 			return;
 		}
 		this.replay(decodeLog(location.hash), { mode: "replace" });
 	}
 
 	replay(log, { mode = "push" } = {}) {
-		this.log = [...log];
-		for (const frame of this.frames) frame.workspace.replay(this.log);
+		const results = this.frames.map((frame) => frame.workspace.replay(log));
+		this.log = log.filter((action, index) => results.some((frameResults) => frameResults[index].ok && !frameResults[index].noop));
 		this.record(mode);
 	}
 
@@ -272,7 +272,11 @@ class Session {
 	}
 }
 
-function describeRejection({ action, result }) {
+function describeRejection({ action, result }, model) {
+	const titleOf = (path) => {
+		const id = (path ?? "").split("/").pop();
+		return model.destination(id)?.title ?? id;
+	};
 	switch (result.reason) {
 		case "source-closed": return `Rejected here: ${titleOf(action.from)} is closed in this frame.`;
 		case "split-source": return `Rejected: ${titleOf(action.from)} owns its rows; nothing opens next to them.`;
@@ -285,11 +289,6 @@ function describeRejection({ action, result }) {
 		case "history-empty": return "Nothing left to close.";
 		default: return `Rejected: ${result.reason}`;
 	}
-}
-
-function titleOf(path) {
-	const id = (path ?? "").split("/").pop();
-	return Object.hasOwn(definitions, id) ? definitions[id].title : id;
 }
 
 const session = new Session();
