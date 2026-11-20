@@ -6,7 +6,7 @@ export class NoticeBoard {
 		this.serial = 0;
 		this.region = workspace.create("div", "supermax-notices");
 		this.region.setAttribute("aria-live", "polite");
-		this.region.setAttribute("aria-label", "Notices");
+		this.region.setAttribute("aria-label", workspace.strings.notices());
 	}
 
 	notify({ id = null, scope = "cell", source = null, sourceTitle = null, kind = "success", message, action = null, duration } = {}) {
@@ -93,15 +93,15 @@ export class NoticeBoard {
 		if (notice.kind === "error") element.setAttribute("role", "alert");
 		const text = workspace.create("div", "supermax-notice-text");
 		if (named) {
-			const title = sourceOccurrence?.title ?? notice.sourceTitle ?? "A closed cell";
-			const label = workspace.create("span", "supermax-notice-source", sourceOccurrence ? `${title}:` : `${title} (not open):`);
+			const title = sourceOccurrence?.title ?? notice.sourceTitle ?? workspace.strings.closedCell();
+			const label = workspace.create("span", "supermax-notice-source", sourceOccurrence ? workspace.strings.noticeSource(title) : workspace.strings.noticeSourceClosed(title));
 			text.append(label, workspace.document.createTextNode(` ${notice.message}`));
 		} else {
 			text.textContent = notice.message;
 		}
 		const controls = workspace.create("div", "supermax-notice-controls");
 		if (named && reachable) {
-			const go = workspace.create("button", "supermax-notice-go", `Show ${sourceOccurrence.title}`);
+			const go = workspace.create("button", "supermax-notice-go", workspace.strings.noticeShow(sourceOccurrence.title));
 			go.type = "button";
 			go.addEventListener("click", () => { if (workspace.goTo(notice.source)) this.dismiss(notice.id, "acted"); });
 			controls.append(go);
@@ -114,7 +114,7 @@ export class NoticeBoard {
 		}
 		const close = workspace.create("button", "supermax-notice-dismiss", "×");
 		close.type = "button";
-		close.setAttribute("aria-label", `Dismiss: ${notice.message}`);
+		close.setAttribute("aria-label", workspace.strings.dismissNotice(notice.message));
 		close.addEventListener("click", () => this.dismiss(notice.id));
 		controls.append(close);
 		element.append(text, controls);

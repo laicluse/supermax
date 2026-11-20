@@ -59,7 +59,7 @@ export class ContentSlot {
 		const box = this.workspace.create("div", "supermax-loading");
 		box.setAttribute("role", "status");
 		box.setAttribute("aria-live", "polite");
-		box.append(this.workspace.create("span", "supermax-loading-mark"), this.workspace.document.createTextNode(`Loading ${title}`));
+		box.append(this.workspace.create("span", "supermax-loading-mark"), this.workspace.document.createTextNode(this.workspace.strings.loading(title)));
 		this.body.replaceChildren(box);
 		this.workspace.dispatchEvent(new CustomEvent("content", { detail: { occurrence: this.id, state: "loading" } }));
 	}
@@ -69,12 +69,12 @@ export class ContentSlot {
 		this.element.classList.remove("is-loading");
 		const box = this.workspace.create("div", "supermax-error");
 		box.setAttribute("role", "alert");
-		box.append(this.workspace.create("strong", null, `${title} could not load.`));
+		box.append(this.workspace.create("strong", null, this.workspace.strings.loadFailed(title)));
 		const detail = this.workspace.create("p", "supermax-error-detail");
 		detail.textContent = error?.message ?? String(error);
 		const retry = this.workspace.create("button", "supermax-retry");
 		retry.type = "button";
-		retry.textContent = "Retry";
+		retry.textContent = this.workspace.strings.retry();
 		retry.addEventListener("click", () => this.retry?.());
 		box.append(detail, retry);
 		this.body.replaceChildren(box);

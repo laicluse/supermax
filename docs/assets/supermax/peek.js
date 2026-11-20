@@ -27,12 +27,12 @@ export class PeekController {
 		const overlay = workspace.create("div", "supermax-peek");
 		overlay.setAttribute("role", "dialog");
 		overlay.tabIndex = -1;
-		overlay.setAttribute("aria-label", `${occurrence.title}, peek`);
+		overlay.setAttribute("aria-label", workspace.strings.peekDialog(occurrence.title));
 		const header = workspace.create("header", "supermax-peek-title");
 		header.append(workspace.document.createTextNode(occurrence.title));
 		const close = workspace.create("button", "supermax-peek-close");
 		close.type = "button";
-		close.setAttribute("aria-label", "Close peek");
+		close.setAttribute("aria-label", workspace.strings.closePeek());
 		close.textContent = "×";
 		close.addEventListener("click", () => { this.close(); this.focusRail(entry); });
 		header.append(close);
@@ -122,7 +122,7 @@ export class PeekController {
 		const rail = workspace.create("button", "supermax-rail");
 		rail.type = "button";
 		rail.inert = true;
-		rail.setAttribute("aria-label", `Peek ${occurrence.title}`);
+		rail.setAttribute("aria-label", workspace.strings.peek(occurrence.title));
 		rail.setAttribute("aria-haspopup", "dialog");
 		rail.setAttribute("aria-expanded", "false");
 		rail.append(workspace.document.createTextNode(occurrence.title));

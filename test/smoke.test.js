@@ -10,6 +10,7 @@ assert.equal(typeof packageApi.Workspace, "function");
 assert.equal(typeof packageApi.validateSplit, "function");
 assert.equal(typeof packageApi.validateDestinations, "function");
 assert.equal(typeof packageApi.SupermaxConfigurationError, "function");
+assert.equal(typeof packageApi.DEFAULT_STRINGS.up, "function");
 assert.equal(globalThis.Supermax, undefined, "the package leaves no global behind");
 
 const configs = [

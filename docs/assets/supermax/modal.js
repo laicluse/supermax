@@ -26,11 +26,11 @@ export class ModalHost {
 		const title = workspace.create("strong", "supermax-modal-title", definition.title);
 		title.id = `supermax-modal-title-${(this.serial += 1)}`;
 		dialog.setAttribute("aria-labelledby", title.id);
-		const context = workspace.create("span", "supermax-modal-context", source ? `From ${source.title}` : "");
+		const context = workspace.create("span", "supermax-modal-context", source ? workspace.strings.modalFrom(source.title) : "");
 		titles.append(title, context);
 		const close = workspace.create("button", "supermax-modal-close", "×");
 		close.type = "button";
-		close.setAttribute("aria-label", `Close ${definition.title}`);
+		close.setAttribute("aria-label", workspace.strings.closeModal(definition.title));
 		close.addEventListener("click", () => this.close("close"));
 		header.append(titles, close);
 		const body = workspace.create("div", "supermax-modal-body");
@@ -65,7 +65,7 @@ export class ModalHost {
 		const modal = this.current;
 		if (!modal) return;
 		const source = modal.source ? this.workspace.navigator.get(modal.source) : null;
-		modal.context.textContent = modal.source ? (source ? `From ${source.title}` : "Its source has closed") : "";
+		modal.context.textContent = modal.source ? (source ? this.workspace.strings.modalFrom(source.title) : this.workspace.strings.modalSourceClosed()) : "";
 		modal.dialog.classList.toggle("is-orphaned", !!modal.source && !source);
 		this.place();
 	}

@@ -68,3 +68,32 @@ test("the workspace composes its overlays behind one surface", async () => {
 	});
 	assert.deepEqual(result, { regionLast: true, id: "notice-1", shown: 1, afterDismiss: 0, modal: null, peek: null });
 });
+
+test("library text is opt-in: defaults stay English, a host replaces what it names, and a typo fails loudly", async () => {
+	const result = await page.evaluate(async () => {
+		const { Navigator, Workspace, DEFAULT_STRINGS } = await import("/src/index.js");
+		const host = document.createElement("div");
+		host.style.cssText = "width:600px;height:400px";
+		document.body.append(host);
+		const navigator = new Navigator({ destinations: window.fixture.destinations, root: "root", minViewportHeight: window.fixture.minViewportHeight, chrome: window.fixture.chrome });
+		const dutch = new Workspace(host, { navigator, content: () => ({ element: document.createElement("div") }), strings: { navigation: () => "Werkruimtenavigatie", notices: () => "Meldingen" } });
+		const labels = {
+			defaults: [window.workspace.element.querySelector(".supermax-navbar").getAttribute("aria-label"), window.workspace.notices.region.getAttribute("aria-label")],
+			replaced: [host.querySelector(".supermax-navbar").getAttribute("aria-label"), dutch.notices.region.getAttribute("aria-label")],
+			untouched: dutch.strings.retry(),
+			table: Object.isFrozen(DEFAULT_STRINGS),
+		};
+		const failures = [];
+		for (const strings of [{ navigaton: () => "x" }, { retry: "Opnieuw" }]) {
+			try { new Workspace(document.createElement("div"), { navigator, content: () => ({}), strings }); } catch (error) { failures.push(error.constructor.name + ": " + error.message.split(";")[0]); }
+		}
+		dutch.destroy();
+		host.remove();
+		return { ...labels, failures };
+	});
+	assert.deepEqual(result.defaults, ["Workspace navigation", "Notices"], "a host that passes nothing gets the English defaults");
+	assert.deepEqual(result.replaced, ["Werkruimtenavigatie", "Meldingen"], "a host replaces exactly the strings it names");
+	assert.equal(result.untouched, "Retry", "every other string keeps its default");
+	assert.equal(result.table, true);
+	assert.deepEqual(result.failures, ['TypeError: Unknown Supermax string "navigaton"', 'TypeError: Supermax string "retry" must be a function that returns text']);
+});

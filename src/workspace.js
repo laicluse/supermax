@@ -5,6 +5,7 @@ import { chainRootOf, isSplit } from "./layout.js";
 import { ModalHost } from "./modal.js";
 import { NoticeBoard } from "./notices.js";
 import { PeekController } from "./peek.js";
+import { resolveStrings } from "./strings.js";
 
 export const SLIDE_PRESENTATION = Object.freeze({ name: "slide", motion: null, createStrip: null });
 
@@ -18,8 +19,9 @@ function normalizePresentation(presentation) {
 }
 
 export class Workspace extends EventTarget {
-	constructor(element, { navigator, content, onIntent = null, presentation = SLIDE_PRESENTATION }) {
+	constructor(element, { navigator, content, onIntent = null, presentation = SLIDE_PRESENTATION, strings = {} }) {
 		super();
+		this.strings = resolveStrings(strings);
 		this.element = element;
 		this.navigator = navigator;
 		this.content = content;
@@ -64,7 +66,7 @@ export class Workspace extends EventTarget {
 		this.element.classList.add("supermax-workspace");
 		this.element.style.setProperty("--supermax-navbar", `${navbar}px`);
 		this.navbar = this.create("nav", "supermax-navbar");
-		this.navbar.setAttribute("aria-label", "Workspace navigation");
+		this.navbar.setAttribute("aria-label", this.strings.navigation());
 		this.upButton = this.create("button", "supermax-up");
 		this.upButton.type = "button";
 		this.upLabel = this.create("span", "supermax-up-label");
@@ -247,7 +249,7 @@ export class Workspace extends EventTarget {
 		if (entry.titleNode) entry.titleNode.textContent = title;
 		entry.element.setAttribute("aria-label", title);
 		if (entry.rail) {
-			entry.rail.setAttribute("aria-label", `Peek ${title}`);
+			entry.rail.setAttribute("aria-label", this.strings.peek(title));
 			entry.rail.firstChild.textContent = title;
 		}
 	}
@@ -405,13 +407,14 @@ export class Workspace extends EventTarget {
 		const next = this.upDestination;
 		this.upButton.hidden = !next;
 		this.upName.textContent = next ? next.title : "";
-		this.upButton.setAttribute("aria-label", next ? `Show ${next.title}` : "Show");
+		if (next) this.upButton.setAttribute("aria-label", this.strings.up(next.title));
+		else this.upButton.removeAttribute("aria-label");
 		const info = this.navigator.locationInfo();
 		this.titleText.textContent = info.title;
 		this.titleContext.replaceChildren(...info.trail.flatMap((step, index) => {
 			const crumb = this.create("button", "supermax-crumb", step.title);
 			crumb.type = "button";
-			crumb.setAttribute("aria-label", `Go to ${step.title}`);
+			crumb.setAttribute("aria-label", this.strings.crumb(step.title));
 			crumb.addEventListener("click", () => this.goTo(step.occurrence));
 			return index === 0 ? [crumb] : [this.create("span", "supermax-crumb-separator", "›"), crumb];
 		}));

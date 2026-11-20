@@ -85,7 +85,7 @@ const painted = (selector) => page.locator(selector).evaluate((element) => getCo
 
 test("the start state names the end of history and both frames receive a click", async () => {
 	await openDemo();
-	assert.deepEqual(await backButton("a"), { hidden: true, label: "Show", text: "‹" }, "with nothing out of view there is no Show control");
+	assert.deepEqual(await backButton("a"), { hidden: true, label: null, text: "‹" }, "with nothing out of view there is no Show control");
 	await page.click(inFrame("a", '.album-item[data-destination="album:coast"]'));
 	await settle();
 	assert.ok((await state("a")).occurrences.includes(coast.metadata("thumbnails", "a")), "the wide frame auto-opens metadata once its layout metadata has arrived");

@@ -54,10 +54,10 @@ export class DividerLayer {
 		handle.type = "button";
 		handle.setAttribute("role", "separator");
 		handle.setAttribute("aria-orientation", orientation);
-		handle.setAttribute("aria-label", `Resize ${title}`);
+		handle.setAttribute("aria-label", this.workspace.strings.resize(title));
 		const reset = workspace.create("button", "supermax-divider-reset");
 		reset.type = "button";
-		reset.setAttribute("aria-label", `Reset size of ${title}`);
+		reset.setAttribute("aria-label", this.workspace.strings.resetSize(title));
 		reset.textContent = "⟲";
 		reset.hidden = true;
 		const axis = orientation === "vertical" ? "width" : "height";
