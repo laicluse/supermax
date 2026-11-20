@@ -137,9 +137,10 @@ Keep cell IDs stable when replacing content. Removed cells become inert immediat
 Supermax is package-manager agnostic. The package is developed with pnpm as the primary lockfile owner; the model tests also run under Bun, and the browser scenarios use Playwright with Chrome (`pnpm exec playwright install chrome` if Chrome is missing):
 
 ```sh
+corepack pnpm run serve
 corepack pnpm run build:docs
 corepack pnpm run check
 corepack pnpm run test:browser:fold
 ```
 
-The last line runs the browser suite under the fold presentation; `check` runs it under the default presentation only.
+`serve` builds the docs and serves the demo at `http://127.0.0.1:8260` (`PORT` overrides it) with `Cache-Control: no-store`, so a reload always runs the current build; a plain static server lets the browser keep the previous modules. The last line runs the browser suite under the fold presentation; `check` runs it under the default presentation only.

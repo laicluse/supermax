@@ -26,6 +26,7 @@
   "scripts": {
     "build:docs": "node scripts/build-docs.mjs",
     "check:docs": "node scripts/build-docs.mjs --check",
+    "serve": "node scripts/serve-demo.mjs",
     "test:node": "node test/smoke.test.js && node test/navigation.test.js",
     "test:bun": "bun test/smoke.test.js && bun test/navigation.test.js",
     "test:browser": "node test/cell-strip.test.js && node --test --test-concurrency=1 test/workspace.test.js test/workspace-package.test.js",
