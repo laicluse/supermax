@@ -1,5 +1,5 @@
 export { CellCollection, CellProxy } from "./cell-collection.js";
-export { CellStrip, STRIP_TIMING } from "./cell-strip.js";
+export { CellStrip } from "./cell-strip.js";
 export { Navigator } from "./navigation.js";
 export { Workspace, SLIDE_PRESENTATION } from "./workspace.js";
 export { validateSplit } from "./layout.js";

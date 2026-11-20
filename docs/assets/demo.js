@@ -7,7 +7,7 @@ import { fetchFromCatalog } from "./api.js";
 const presentations = { slide: SLIDE_PRESENTATION, fold: foldPresentation };
 
 const coast = paths(albums[0]);
-const open = (destination, from, hint = null) => (hint ? { type: "open", destination, from, hint } : { type: "open", destination, from });
+const open = (destination, from, hint = null) => ({ type: "open", destination, from, hint });
 const depthPath = (n) => ["albums", ...Array.from({ length: n }, (_, index) => depthId(index + 1))].join("/");
 const twentyDeep = Array.from({ length: depthCount }, (_, index) => open(depthId(index + 1), depthPath(index)));
 const longChain = [
@@ -110,7 +110,7 @@ const renderers = {
 };
 
 function renderAlbumIcons(occurrence, workspace) {
-	const rail = element("div", "supermax-compact-icons album-icons");
+	const rail = element("div", "album-icons");
 	for (const album of albums) {
 		const button = element("button", "album-icon", album.title.slice(0, 1));
 		button.type = "button";
@@ -329,7 +329,7 @@ function renderMetadata(occurrence, data, workspace, content) {
 	const exportButton = element("button", "metadata-link album-export", "Export album");
 	exportButton.type = "button";
 	exportButton.addEventListener("click", () => session.exportAlbum(occurrence, album));
-	host.append(element("div", "metadata-actions"), link, exportButton);
+	host.append(link, exportButton);
 	const notes = element("ol", "history");
 	for (let index = 1; index <= 24; index += 1) notes.append(element("li", null, `Note ${index}: adjusted exposure by ${(index % 5) - 2} stops`));
 	host.append(element("h4", null, "Notes"), notes);

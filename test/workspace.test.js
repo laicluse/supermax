@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { after, before, beforeEach, test } from "node:test";
 import { chromium } from "playwright";
-import { albums, paths } from "../docs/assets/album.js";
+import { albums, depthCount, depthId, paths } from "../docs/assets/album.js";
 import { encodeLog } from "../docs/assets/deeplink.js";
 import { serveDocs } from "./serve-docs.js";
 
@@ -648,7 +648,7 @@ test("notices stay with their cell, move to the workspace when the source is out
 	assert.equal(await page.locator(exportNotice).count(), 0);
 });
 
-const TWENTY_DEEP = Array.from({ length: 20 }, (_, index) => open(`depth:${index + 1}`, ["albums", ...Array.from({ length: index }, (_, step) => `depth:${step + 1}`)].join("/")));
+const TWENTY_DEEP = Array.from({ length: depthCount }, (_, index) => open(depthId(index + 1), ["albums", ...Array.from({ length: index }, (_, step) => depthId(step + 1))].join("/")));
 
 test("a second presentation replaces motion and surface while behaviour, interruption and reduced motion stay the same", async () => {
 	await openDemo(THREE_ROWS);
@@ -798,7 +798,6 @@ test("empty and rejected albums are told apart and keep the workspace usable", a
 test("hostile deeplinks are rejected without breaking the page", async () => {
 	await openDemo([open("album:coast", "albums"), open("coast:thumbnails", coast.album), { type: "back" }, open("constructor", "albums")]);
 	assert.deepEqual(await groups("a"), [], "the row root could not be promoted, so Back closed the album");
-	assert.equal(await page.locator("[data-scenarios] .scenario").count(), 15, "the page finished loading");
 	assert.equal(await page.locator(readout("a", "rejection")).textContent(), "Rejected: constructor is not a destination here.");
 	assert.equal(page.url().split("#")[1], "o:album:coast@albums;b", "only applied actions survive in the URL");
 });

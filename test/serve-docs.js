@@ -10,8 +10,7 @@ const extraRoots = { "/src/": resolve(repoRoot, "src"), "/test/fixtures/": resol
 const blankPage = "<!doctype html><html><head><meta charset=\"utf-8\"><title>Supermax test page</title></head><body></body></html>";
 export async function serveDocs() {
 	const server = createServer(async (request, response) => {
-		const url = new URL(request.url, "http://localhost");
-		const pathname = url.pathname;
+		const pathname = new URL(request.url, "http://localhost").pathname;
 		if (pathname === "/blank") {
 			response.setHeader("Content-Type", "text/html");
 			response.end(blankPage);

@@ -7,10 +7,9 @@ const DEFAULT_CHROME = { navbar: 44, rowTab: 32, maxRows: 4, maxCompact: 2 };
 const GENERIC_CELL = { min: 200, max: 320 };
 
 export class Navigator {
-	constructor({ destinations, root, minViewportHeight, chrome = {}, lazy = false }) {
+	constructor({ destinations, root, minViewportHeight, chrome = {} }) {
 		if (!Number.isFinite(minViewportHeight)) throw new TypeError("minViewportHeight must be a finite number of pixels");
 		this.destinations = Object.assign(Object.create(null), destinations);
-		this.lazy = lazy;
 		this.rootDestination = root;
 		this.minViewportHeight = minViewportHeight;
 		this.chrome = { ...DEFAULT_CHROME, ...chrome };
@@ -74,7 +73,7 @@ export class Navigator {
 			this.openDefaults(occurrence, group);
 			if (occurrence.children.length > before) completed.push(occurrence.children[0]);
 		}
-		return { previous, completed, rejected };
+		return { completed, rejected };
 	}
 
 	provisional(id, hint) {
@@ -156,7 +155,7 @@ export class Navigator {
 		const parent = this.get(from ?? this.root.id);
 		if (!parent) return { ok: false, reason: "source-closed", source: from };
 		let definition = this.definitionOf(destinationId);
-		const canProvision = !definition && typeof destinationId === "string" && destinationId.length > 0 && (hint || this.lazy);
+		const canProvision = !definition && typeof destinationId === "string" && destinationId.length > 0 && !!hint;
 		if (!definition && !canProvision) return { ok: false, reason: "unknown-destination", destination: destinationId };
 		if (isSplit(this.definitionOf(parent.destination))) return { ok: false, reason: "split-source", source: parent.id };
 		if (canProvision) definition = this.provisional(destinationId, hint);
@@ -326,7 +325,7 @@ export class Navigator {
 			trail.unshift({ occurrence: current.id, title: current.title });
 			current = current.parent ? this.get(current.parent) : null;
 		}
-		return { occurrence: occurrence.id, title: occurrence.title, context: trail.map((step) => step.title), trail };
+		return { occurrence: occurrence.id, title: occurrence.title, trail };
 	}
 
 	layout() {

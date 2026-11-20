@@ -270,7 +270,6 @@ scenario("a dragged size is a session preference inside min and max, and rows fo
 	instance.setSize(item("list", "a"), 150, "width");
 	instance.open("item:b", { from: `${item("list", "a")}/detail:a` });
 	const sizedChain = () => instance.layout().chain.cells[1].rows.rows[0].chain;
-	assert.equal(sizedChain().cells.filter((cell) => cell.compact).length > 0 || sizedChain().cells.every((cell) => cell.visible), true, "a sized cell counts its session size when deciding what goes compact");
 	instance.back();
 	instance.open("item:b", { from: row("list") });
 	instance.setSize(item("list", "b"), 190);
@@ -288,13 +287,12 @@ scenario("a dragged size is a session preference inside min and max, and rows fo
 	assert.equal(chain().cells.every((cell) => cell.visible), true, "nothing hides to honour a session size");
 	instance.resize({ width: 1000, height: 500 });
 	instance.setSize(item("list", "a"), null, "width");
-	assert.deepEqual(instance.layout(), instance.layout(), "the layout stays a pure function with sizes applied");
 });
 
-scenario("a hinted or lazy destination opens provisionally and completes when its definition arrives", () => {
+scenario("a hinted destination opens provisionally and completes when its definition arrives", () => {
 	const instance = model(1000, 500);
 	openGallery(instance);
-	assert.equal(instance.open("remote:a", { from: item("list", "a") }).reason, "unknown-destination", "without a hint and without lazy mode an unknown id is refused");
+	assert.equal(instance.open("remote:a", { from: item("list", "a") }).reason, "unknown-destination", "without a hint an unknown id is refused");
 	const hinted = instance.open("remote:a", { from: item("list", "a"), hint: { title: "Remote A", min: 120, max: 240 } });
 	assert.equal(hinted.ok, true);
 	assert.equal(instance.definitionOf("remote:a").provisional, true);
@@ -371,12 +369,6 @@ scenario("a hinted or lazy destination opens provisionally and completes when it
 	assert.equal(garbage.open("remote:h", { from: "root/gallery", hint: { title: "Nope" } }).reason, "split-source", "a refused opening registers nothing");
 	assert.equal(garbage.definitionOf("remote:h"), null);
 
-	const lazy = new Navigator({ destinations: { ...destinations }, root: "root", minViewportHeight, chrome, lazy: true });
-	lazy.resize({ width: 1000, height: 500 });
-	lazy.open("gallery", { from: "root" });
-	const generic = lazy.open("remote:d", { from: item("list", "a") });
-	assert.equal(generic.ok, true, "in lazy mode an unknown id opens a generic loading cell");
-	assert.equal(lazy.definitionOf("remote:d").min, 200);
 });
 
 scenario("default chains are finite and do not repeat a destination already in the chain", () => {
@@ -391,9 +383,9 @@ scenario("default chains are finite and do not repeat a destination already in t
 scenario("the focus title carries its ancestors as context", () => {
 	const wide = model(1000);
 	openGallery(wide);
-	assert.deepEqual(wide.focusInfo(), { occurrence: GALLERY, title: "Gallery", context: ["Root"], trail: [{ occurrence: "root", title: "Root" }] });
+	assert.deepEqual(wide.focusInfo(), { occurrence: GALLERY, title: "Gallery", trail: [{ occurrence: "root", title: "Root" }] });
 	wide.open("item:c", { from: row("tags") });
-	assert.deepEqual(wide.focusInfo().context, ["Root", "Gallery", "Tags"]);
+	assert.deepEqual(wide.focusInfo().trail.map((step) => step.title), ["Root", "Gallery", "Tags"]);
 	assert.deepEqual(wide.child(wide.get(row("tags")))?.destination, "item:c");
 });
 

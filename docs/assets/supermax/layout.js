@@ -62,7 +62,7 @@ export function chainCells(model, chainRoot) {
 	return cells;
 }
 
-export function compactWidth(definition) {
+function compactWidth(definition) {
 	return definition.compact ? definition.compact.min : null;
 }
 
@@ -89,7 +89,7 @@ export function chainFits(model, cells, width) {
 	return compactPass(model, cells, width, { automatic: false }).required <= width;
 }
 
-export function sessionBounds(base, session, hard) {
+function sessionBounds(base, session, hard) {
 	if (session === null) return { min: base.min, max: base.max, preferred: base.preferred ?? null };
 	const size = Math.min(base.max, Math.max(base.min, session));
 	return { min: hard ? size : base.min, max: size, preferred: size };
@@ -99,7 +99,7 @@ function sessionsHold(bounds, budget) {
 	return bounds.reduce((sum, bound) => sum + (bound.session === null ? bound.min : Math.min(bound.max, Math.max(bound.min, bound.session))), 0) <= budget;
 }
 
-export function allocateChain(model, cells, width) {
+function allocateChain(model, cells, width) {
 	const { compact } = compactPass(model, cells, width);
 	const bounds = cells.map((occurrence) => {
 		const definition = model.definitionOf(occurrence.destination);

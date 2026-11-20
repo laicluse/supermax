@@ -92,7 +92,7 @@ export class Workspace extends EventTarget {
 	}
 
 	navigate(destination, { from, hint } = {}) {
-		return this.intent(hint ? { type: "open", destination, from, hint } : { type: "open", destination, from });
+		return this.intent({ type: "open", destination, from, hint: hint ?? null });
 	}
 
 	requestBack() {
@@ -103,7 +103,7 @@ export class Workspace extends EventTarget {
 		this.closePeek();
 		if (this.modal && action.type === "back") {
 			this.closeModal("back");
-			return { ok: true, noop: true, modal: true };
+			return { ok: true, noop: true };
 		}
 		if (this.modal) this.closeModal("navigation");
 		if (this.onIntent) return this.onIntent(action, this);
@@ -133,12 +133,6 @@ export class Workspace extends EventTarget {
 		this.dispatchEvent(new CustomEvent("presentation", { detail: { name: next.name } }));
 	}
 
-
-
-
-
-
-
 	get modal() {
 		return this.modalHost.current;
 	}
@@ -167,20 +161,8 @@ export class Workspace extends EventTarget {
 		this.modalHost.close(reason);
 	}
 
-	focusModal() {
-		this.modalHost.focus();
-	}
-
-	openPeek(occurrenceId) {
-		this.peeks.open(occurrenceId);
-	}
-
 	closePeek() {
 		this.peeks.close();
-	}
-
-	focusPeek() {
-		this.peeks.focus();
 	}
 
 	reload(predicate = () => true) {
@@ -226,19 +208,6 @@ export class Workspace extends EventTarget {
 		return this.findCell(occurrenceId)?.inView ?? false;
 	}
 
-
-
-
-
-
-
-
-
-
-
-
-
-
 	collapsedRowFor(occurrenceId) {
 		let current = this.navigator.get(occurrenceId);
 		while (current) {
@@ -260,11 +229,6 @@ export class Workspace extends EventTarget {
 		this.render({ animate: false });
 		this.dispatchEvent(new CustomEvent("size", { detail: { occurrence: occurrenceId, size, axis } }));
 	}
-
-
-
-
-
 
 	run(action) {
 		return action.type === "back"
@@ -329,10 +293,6 @@ export class Workspace extends EventTarget {
 		}
 		entry.slot.mount(occurrence.title, () => this.content(occurrence, definition, this), () => this.cells.get(occurrence.id) === entry);
 	}
-
-
-
-
 
 	apply(action, { animate = true, focus = false } = {}) {
 		const result = this.run(action);
@@ -405,15 +365,6 @@ export class Workspace extends EventTarget {
 			current = current.parent ? this.navigator.get(current.parent) : null;
 		}
 		return null;
-	}
-
-	inCollapsedRow(occurrenceId) {
-		let current = this.navigator.get(occurrenceId);
-		while (current) {
-			if (this.findRow(current.id)?.collapsed) return true;
-			current = current.parent ? this.navigator.get(current.parent) : null;
-		}
-		return false;
 	}
 
 	findChain(chainRootId) {
@@ -539,14 +490,6 @@ export class Workspace extends EventTarget {
 		return items;
 	}
 
-
-
-
-
-
-
-
-
 	protectFocus(elements, target = this.navigator.focused) {
 		const active = this.activeAtRender;
 		if (!active || this.pendingFocus || !elements.some((element) => element.contains(active))) return;
@@ -601,7 +544,6 @@ export class Workspace extends EventTarget {
 		if (!isSplit(definition)) this.mountContent(entry, occurrence);
 		return element;
 	}
-
 
 	renderRows(cell, animating) {
 		const host = this.cells.get(cell.occurrence).body.firstElementChild;

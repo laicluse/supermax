@@ -5,7 +5,6 @@ export class DividerLayer {
 	constructor(workspace) {
 		this.workspace = workspace;
 		this.dividers = new Map();
-		this.drag = null;
 	}
 
 	sync(host, orientation, items) {
@@ -43,7 +42,6 @@ export class DividerLayer {
 	clear() {
 		for (const divider of this.dividers.values()) divider.element.remove();
 		this.dividers.clear();
-		this.drag = null;
 	}
 
 	divider(key, host, orientation, occurrenceId, title) {
@@ -94,8 +92,7 @@ export class DividerLayer {
 		event.preventDefault();
 		divider.handle.setPointerCapture(event.pointerId);
 		const vertical = divider.orientation === "vertical";
-		const drag = { divider, pointerId: event.pointerId, origin: vertical ? event.clientX : event.clientY, start: divider.size };
-		this.drag = drag;
+		const drag = { pointerId: event.pointerId, origin: vertical ? event.clientX : event.clientY, start: divider.size };
 		const controller = new AbortController();
 		const move = (moveEvent) => {
 			if (moveEvent.pointerId !== drag.pointerId) return;
@@ -104,7 +101,6 @@ export class DividerLayer {
 		const stop = (upEvent) => {
 			if (upEvent.pointerId !== drag.pointerId) return;
 			controller.abort();
-			if (this.drag === drag) this.drag = null;
 		};
 		divider.handle.addEventListener("pointermove", move, { signal: controller.signal });
 		divider.handle.addEventListener("pointerup", stop, { signal: controller.signal });

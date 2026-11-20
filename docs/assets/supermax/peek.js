@@ -65,7 +65,6 @@ export class PeekController {
 		});
 		workspace.element.append(overlay);
 		this.current = { occurrence: occurrenceId, overlay, entry };
-		entry.element.classList.add("is-peeked");
 		entry.rail.setAttribute("aria-expanded", "true");
 		workspace.dispatchEvent(new CustomEvent("peek", { detail: { occurrence: occurrenceId, open: true } }));
 	}
@@ -76,7 +75,6 @@ export class PeekController {
 		const { occurrence, overlay, entry } = this.current;
 		this.current = null;
 		entry.element.append(entry.body);
-		entry.element.classList.remove("is-peeked");
 		entry.rail.setAttribute("aria-expanded", "false");
 		overlay.remove();
 		this.workspace.dispatchEvent(new CustomEvent("peek", { detail: { occurrence, open: false } }));

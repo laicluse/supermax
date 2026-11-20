@@ -9,10 +9,6 @@ export class NoticeBoard {
 		this.region.setAttribute("aria-label", "Notices");
 	}
 
-	get size() {
-		return this.notices.size;
-	}
-
 	notify({ id = null, scope = "cell", source = null, sourceTitle = null, kind = "success", message, action = null, duration } = {}) {
 		if (id !== null) {
 			if (this.ids.has(id)) return null;
@@ -60,7 +56,7 @@ export class NoticeBoard {
 
 	focusAfter(notice) {
 		const workspace = this.workspace;
-		if (workspace.modal) { workspace.focusModal(); return; }
+		if (workspace.modal) { workspace.modalHost.focus(); return; }
 		const target = notice.source && workspace.navigator.get(notice.source) ? workspace.visibleCellFor(notice.source) : null;
 		if (target) { workspace.focusCell(target); return; }
 		const next = this.region.querySelector(".supermax-notice-dismiss");
