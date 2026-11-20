@@ -394,10 +394,7 @@
 	padding: 12px 12px 8px 16px;
 	background: var(--supermax-muted-surface);
 }
-.supermax-modal-titles { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
-.supermax-modal-title { font-size: 15px; color: var(--supermax-ink); }
-.supermax-modal-context { font-size: 12px; color: var(--supermax-muted); }
-.supermax-modal.is-orphaned .supermax-modal-context { color: var(--supermax-warn); }
+.supermax-modal-title { min-width: 0; font-size: 15px; color: var(--supermax-ink); }
 .supermax-modal-close {
 	flex: none;
 	width: 28px;

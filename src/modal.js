@@ -23,18 +23,15 @@ export class ModalHost {
 		const dialog = workspace.create("section", "supermax-modal");
 		dialog.setAttribute("role", "dialog");
 		const header = workspace.create("header", "supermax-modal-header");
-		const titles = workspace.create("div", "supermax-modal-titles");
 		const title = workspace.create("strong", "supermax-modal-title", definition.title);
 		title.id = `supermax-modal-title-${(this.serial += 1)}`;
 		dialog.setAttribute("aria-labelledby", title.id);
-		const context = workspace.create("span", "supermax-modal-context", source ? workspace.strings.modalFrom(source.title) : "");
-		titles.append(title, context);
 		const close = workspace.create("button", "supermax-modal-close", "×");
 		close.type = "button";
 		close.setAttribute("aria-label", workspace.strings.closeModal(definition.title));
 		close.addEventListener("click", () => this.close("close"));
 		const controls = workspace.create("div", "supermax-modal-controls");
-		header.append(titles, controls, close);
+		header.append(title, controls, close);
 		const body = workspace.create("div", "supermax-modal-body");
 		dialog.append(header, body);
 		dialog.supermaxBounds = { ...MODAL_BOUNDS, ...Object.fromEntries(Object.keys(MODAL_BOUNDS).filter((key) => definition[key] !== undefined).map((key) => [key, definition[key]])) };
@@ -46,10 +43,11 @@ export class ModalHost {
 		const originLayer = workspace.origin ? workspace.originLayer("supermax-origin is-modal") : null;
 		element.append(...(originLayer ? [originLayer] : []), dialog);
 		element.addEventListener("pointerdown", (event) => { if (event.target === element) this.close("backdrop"); });
-		const modal = { element, dialog, body, context, title: definition.title, source: source?.id ?? null, originLayer, slot: null, retry: null };
+		const modal = { element, dialog, body, title: definition.title, source: source?.id ?? null, originLayer, slot: null, retry: null };
 		modal.slot = new ContentSlot(workspace, { element, body, header: controls, onSettled: () => this.settled(modal) });
 		modal.retry = () => modal.slot.mount(definition.title, () => definition.content(modal, workspace), () => this.current === modal);
 		this.current = modal;
+		this.describe(modal);
 		workspace.body.inert = true;
 		workspace.notices.render();
 		workspace.element.append(element);
@@ -188,10 +186,15 @@ export class ModalHost {
 	render() {
 		const modal = this.current;
 		if (!modal) return;
-		const source = modal.source ? this.workspace.navigator.get(modal.source) : null;
-		modal.context.textContent = modal.source ? (source ? this.workspace.strings.modalFrom(source.title) : this.workspace.strings.modalSourceClosed()) : "";
-		modal.dialog.classList.toggle("is-orphaned", !!modal.source && !source);
+		this.describe(modal);
 		this.place();
+	}
+
+	// allow-comment: the frustum shows the source to sighted users; this names it, or its closing, for everyone else.
+	describe(modal) {
+		if (!modal.source) return;
+		const source = this.workspace.navigator.get(modal.source);
+		modal.dialog.setAttribute("aria-description", source ? this.workspace.strings.modalFrom(source.title) : this.workspace.strings.modalSourceClosed());
 	}
 
 	place() {

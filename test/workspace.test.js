@@ -1535,7 +1535,8 @@ test("a modal knows its source, makes the cells behind it inert and closes befor
 	await page.selectOption("[data-delay]", "400");
 	await page.click(`${photoCell("thumbnails")} .caption-edit`);
 	assert.equal(await page.locator(`${modal} .supermax-modal-title`).textContent(), "Caption for Photo A");
-	assert.equal(await page.locator(`${modal} .supermax-modal-context`).textContent(), "From Photo A", "the modal names its source");
+	assert.equal(await page.locator(modal).getAttribute("aria-description"), "From Photo A", "the modal names its source to assistive technology");
+	assert.equal(await page.locator(`${modal} .supermax-modal-context`).count(), 0, "while the frustum shows it, without a label under the title");
 	assert.equal(await page.locator(`${modal} .supermax-loading`).textContent(), "Loading Caption for Photo A", "delayed modal content uses the loading state");
 	await settle();
 	assert.equal(await page.locator(`${modal} .viewer-line`).textContent(), "Editing as Ana");
@@ -1567,7 +1568,8 @@ test("a modal knows its source, makes the cells behind it inert and closes befor
 	await settle();
 	await closeNewest("b");
 	await settle();
-	assert.equal(await page.locator(`${modal} .supermax-modal-context`).textContent(), "Its source has closed", "a source closed from elsewhere is named as such");
+	assert.equal(await page.locator(modal).getAttribute("aria-description"), "Its source has closed", "a source closed from elsewhere is described as such");
+	assert.equal(await page.locator(`${modal} .supermax-modal-context, ${modal}.is-orphaned`).count(), 0, "and shows only by the frustum that is gone");
 	await page.click(`${modal} .supermax-modal-close`);
 	assert.equal(await page.locator(modal).count(), 0);
 	await page.click(`${photoCell("people")} .caption-edit`);
