@@ -32,9 +32,10 @@ const ALIGN = Object.freeze({ start: 0, center: 0.5, end: 1 });
 const JUSTIFY = Object.freeze({ start: "flex-start", center: "center", end: "flex-end" });
 
 export class Workspace extends EventTarget {
-	constructor(element, { navigator, content, onIntent = null, presentation = ORIGAMI_PRESENTATION, strings = {}, origin = frustumOrigin, overlayRoot = element.ownerDocument.body, noticePlacement = "source", noticeIcon = defaultNoticeIcon, time = new TimeScale() }) {
+	constructor(element, { navigator, content, compactContent = null, onIntent = null, presentation = ORIGAMI_PRESENTATION, strings = {}, origin = frustumOrigin, overlayRoot = element.ownerDocument.body, noticePlacement = "source", noticeIcon = defaultNoticeIcon, time = new TimeScale() }) {
 		super();
 		this.time = time;
+		this.compactContent = compactContent;
 		this.onTimeScale = () => this.paintTime();
 		if (noticeIcon !== null && typeof noticeIcon !== "function") throw new TypeError("noticeIcon must be a function that returns an element, or null for no icon");
 		this.noticeIcon = noticeIcon;

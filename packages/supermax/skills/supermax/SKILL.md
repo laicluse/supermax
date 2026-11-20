@@ -42,7 +42,7 @@ The workspace warns once per kind in the console when a host leaves out an `orig
 - **`zoom(occurrence)`**: a cell that should take the width of the cells before it, for a destination declared `zoomable: true`. Draw the toggle in the content's `header`.
 - **`openModal`**: a short task about what one cell shows, opened with `from` set to that cell, such as a confirmation or a quick contextual edit of a few fields; see "Where an edit lives" below. The size and content of the task decide, not whether the app had a dialog before. Never use it for content that reads as a cell, such as a list, a detail or a longer process: that is a destination opening as a cell.
 - **`notify`**: feedback with a scope: `scope: "cell"` with a `source` for something a cell did, `scope: "workspace"` for the whole app.
-- **Peek**: a menu that must stay reachable when space runs out. Declare `keep: true` with `compact: { min, content? }`.
+- **Peek and a compact rail**: a menu that must stay reachable when space runs out. Declare `keep: true` with `compact: { min }`, and give the rail its icons through the workspace's `compactContent(occurrence, workspace)` option, also when the declaration comes from the server. A menu as an icon rail is what lets a phone show it next to the first content.
 - **`TimeScale`**: one scale for every millisecond. Pass one `time` to every workspace, scale the host's own waits with `time.ms(milliseconds)`, and write the host's own CSS durations with `time.paint(element, { times, easings, prefix })`.
 - **`layout.chains.get(root).spare`** (from the `render` event or `findChain`): the width a chain leaves unused, for a host that fills free space with something other than a cell.
 

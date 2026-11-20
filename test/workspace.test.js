@@ -1450,6 +1450,8 @@ test("a long chain hides old cells entirely while the kept albums menu stays as 
 	assert.ok(cells.some((cell) => !cell.visible) && cells[cells.length - 1].visible, "old cells hide entirely and the newest stays");
 	assert.equal(await page.locator(inFrame("a", ".supermax-rail")).count(), 1, "only the kept menu has a rail");
 	assert.equal(await page.locator(inFrame("b", '[data-occurrence="albums"]')).evaluate((element) => element.classList.contains("is-compact")), true, "the narrow frame shows the albums menu as a rail");
+	assert.equal(await page.evaluate(() => typeof window.supermaxDemo.frames[1].workspace.navigator.definitionOf("albums").compact.content), "undefined", "the menu is declared as a server would declare it, without a function in it");
+	assert.ok((await page.locator(inFrame("b", '[data-occurrence="albums"] .supermax-compact .album-icon')).count()) > 0, "and the rail still shows the icons the workspace's compactContent gives it");
 	await page.click(inFrame("b", '.album-icon[data-destination="album:empty"]'));
 	assert.deepEqual(await groups("b"), ["Empty album"], "an icon in the rail navigates");
 	assert.deepEqual(await groups("a"), ["Empty album"], "and the other frame follows");

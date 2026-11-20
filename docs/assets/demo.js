@@ -576,8 +576,7 @@ class Session {
 		readout.append(element("strong", null, frame.name), size, limit, rejection);
 		wrapper.append(box, readout);
 		document.querySelector("[data-frames]").append(wrapper);
-		const definitions = { ...this.embedded, albums: { ...this.embedded.albums, compact: { min: 48, content: renderAlbumIcons } } };
-		const model = new Navigator({ destinations: definitions, root: "albums", minViewportHeight, spareSpace: this.controls.spare.value, context: this.context });
+		const model = new Navigator({ destinations: this.embedded, root: "albums", minViewportHeight, spareSpace: this.controls.spare.value, context: this.context });
 		for (const set of this.declarations) model.register(set);
 		let hover = null;
 		const wanted = (id) => id && !this.declares(id) && !this.failed.has(id);
@@ -587,7 +586,7 @@ class Session {
 			if (wanted(id)) hover = setTimeout(() => { if (wanted(id)) this.prepare(id).catch(() => null); }, this.time.ms(DEMO_TIMING.hover));
 		});
 		root.addEventListener("pointerdown", () => clearTimeout(hover));
-		const workspace = new Workspace(root, { navigator: model, content: renderContent, overlayRoot: box, time: this.time, onIntent: (action, origin) => this.dispatch(action, origin) });
+		const workspace = new Workspace(root, { navigator: model, content: renderContent, compactContent: renderAlbumIcons, overlayRoot: box, time: this.time, onIntent: (action, origin) => this.dispatch(action, origin) });
 		workspace.addEventListener("up", () => this.record("push"));
 		workspace.addEventListener("rejected", (event) => {
 			rejection.hidden = false;
