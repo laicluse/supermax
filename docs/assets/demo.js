@@ -204,8 +204,17 @@ function renderPhoto(occurrence, data, workspace) {
 	link.type = "button";
 	link.addEventListener("click", () => workspace.navigate(key.metadata(photo), { from: occurrence.id, hint: hintFor(key.metadata(photo)) }));
 	prefetchOnHover(link, key.metadata(photo));
+	const editCaption = element("button", "metadata-link caption-edit", "Edit caption");
+	editCaption.type = "button";
+	editCaption.addEventListener("click", () => workspace.openModal({
+		title: `Caption for ${photo.title}`,
+		content: (modal, host) => ({ pending: session.fetchContent(key.photo(photo)).then((content) => renderCaptionEditor(modal, host, { photo, caption, content })) }),
+	}, { from: occurrence.id }));
+	const save = element("button", "metadata-link caption-save", "Save");
+	save.type = "button";
+	save.addEventListener("click", () => session.saveCaption(occurrence, photo, key.photo(photo)));
 	const actions = element("div", "photo-actions");
-	actions.append(caption, link);
+	actions.append(caption, link, editCaption, save);
 	host.append(picture, actions);
 	return {
 		element: host,
@@ -217,6 +226,29 @@ function renderPhoto(occurrence, data, workspace) {
 			link.textContent = auto ? "Metadata (auto)" : "Metadata";
 		},
 	};
+}
+
+function renderCaptionEditor(modal, workspace, { photo, caption, content }) {
+	const host = element("form", "caption-editor");
+	host.append(element("p", "viewer-line", `Editing as ${content.viewer}`));
+	const field = element("textarea", "caption caption-editor-field");
+	field.rows = 4;
+	field.value = caption.value;
+	field.setAttribute("aria-label", `Caption for ${photo.title}`);
+	const actions = element("div", "caption-editor-actions");
+	const save = element("button", "metadata-link is-primary", "Save caption");
+	save.type = "submit";
+	const cancel = element("button", "metadata-link", "Cancel");
+	cancel.type = "button";
+	cancel.addEventListener("click", () => workspace.closeModal("cancel"));
+	actions.append(save, cancel);
+	host.append(field, actions);
+	host.addEventListener("submit", (event) => {
+		event.preventDefault();
+		caption.value = field.value;
+		workspace.closeModal("saved");
+	});
+	return { element: host };
 }
 
 function renderMetadata(occurrence, data, workspace, content) {
@@ -232,7 +264,10 @@ function renderMetadata(occurrence, data, workspace, content) {
 	const link = element("button", "metadata-link", "Edit history");
 	link.type = "button";
 	link.addEventListener("click", () => workspace.navigate(key.history(photo), { from: occurrence.id, hint: { title: `History ${photo.id.toUpperCase()}` } }));
-	host.append(link);
+	const exportButton = element("button", "metadata-link album-export", "Export album");
+	exportButton.type = "button";
+	exportButton.addEventListener("click", () => session.exportAlbum(occurrence, album));
+	host.append(element("div", "metadata-actions"), link, exportButton);
 	const notes = element("ol", "history");
 	for (let index = 1; index <= 24; index += 1) notes.append(element("li", null, `Note ${index}: adjusted exposure by ${(index % 5) - 2} stops`));
 	host.append(element("h4", null, "Notes"), notes);
@@ -286,6 +321,7 @@ class Session {
 		this.requests = [];
 		this.inflight = new Map();
 		this.replaying = null;
+		this.serial = 0;
 		this.controls = {
 			delay: document.querySelector("[data-delay]"),
 			fail: document.querySelector("[data-fail]"),
@@ -344,6 +380,34 @@ class Session {
 
 	fetchContent(id) {
 		return this.request("content", id);
+	}
+
+	notifyAll(notice) {
+		for (const frame of this.frames) frame.workspace.notify(notice);
+	}
+
+	async saveCaption(occurrence, photo, photoId, serial = (this.serial += 1)) {
+		const base = { id: `save:${occurrence.id}:${serial}`, scope: "cell", source: occurrence.id, sourceTitle: photo.title };
+		try {
+			const response = await fetch(`${this.apiUrl("content", photoId)}&save=${serial}`);
+			if (!response.ok) throw new Error(`answered ${response.status}`);
+			this.notifyAll({ ...base, kind: "success", message: "Caption saved" });
+		} catch (error) {
+			this.notifyAll({ ...base, kind: "error", message: `Saving the caption failed (${error.message})`, action: { label: "Retry", run: () => this.saveCaption(occurrence, photo, photoId) } });
+		}
+	}
+
+	exportAlbum(occurrence, album) {
+		const serial = (this.serial += 1);
+		this.notifyAll({
+			id: `export:${album.id}:${serial}`,
+			scope: "workspace",
+			source: occurrence.id,
+			sourceTitle: occurrence.title,
+			kind: "action",
+			message: `Export of ${album.title} is ready`,
+			action: { label: "Download", run: (workspace) => workspace.notify({ scope: "workspace", kind: "success", message: `Downloaded ${album.title}.zip` }) },
+		});
 	}
 
 	completeDefaults() {

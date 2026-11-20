@@ -16,6 +16,10 @@ export class Workspace extends EventTarget {
 		this.pendingFocus = null;
 		this.peek = null;
 		this.peekTimer = null;
+		this.modal = null;
+		this.notices = new Map();
+		this.noticeIds = new Set();
+		this.noticeSerial = 0;
 		this.dividers = new Map();
 		this.drag = null;
 		this.reducedMotion = this.document.defaultView.matchMedia("(prefers-reduced-motion: reduce)");
@@ -56,7 +60,10 @@ export class Workspace extends EventTarget {
 		this.titleBox.append(this.titleContext, this.titleText);
 		this.navbar.append(this.navbarLeft, this.titleBox);
 		this.body = this.create("div", "supermax-body");
-		this.element.replaceChildren(this.navbar, this.body);
+		this.noticeRegion = this.create("div", "supermax-notices");
+		this.noticeRegion.setAttribute("aria-live", "polite");
+		this.noticeRegion.setAttribute("aria-label", "Notices");
+		this.element.replaceChildren(this.navbar, this.body, this.noticeRegion);
 	}
 
 	measure() {
@@ -77,8 +84,290 @@ export class Workspace extends EventTarget {
 
 	intent(action) {
 		this.closePeek();
+		if (this.modal && action.type === "back") {
+			this.closeModal("back");
+			return { ok: true, noop: true, modal: true };
+		}
+		if (this.modal) this.closeModal("navigation");
 		if (this.onIntent) return this.onIntent(action, this);
 		return this.apply(action, { focus: true });
+	}
+
+	notify({ id = null, scope = "cell", source = null, sourceTitle = null, kind = "success", message, action = null, duration } = {}) {
+		if (id !== null) {
+			if (this.noticeIds.has(id)) return null;
+			this.noticeIds.add(id);
+		}
+		const notice = { id: id ?? `notice-${(this.noticeSerial += 1)}`, scope, source, sourceTitle, kind, message, action, element: null, host: null, timer: null, remaining: duration ?? (kind === "success" ? 4000 : null), startedAt: null };
+		this.notices.set(notice.id, notice);
+		this.placeNotice(notice);
+		this.resumeNotice(notice);
+		this.dispatchEvent(new CustomEvent("notice", { detail: { id: notice.id, state: "shown", scope: notice.host === this.noticeRegion ? "workspace" : "cell" } }));
+		return notice.id;
+	}
+
+	dismiss(noticeId, state = "dismissed") {
+		const notice = this.notices.get(noticeId);
+		if (!notice) return false;
+		this.notices.delete(noticeId);
+		this.pauseNotice(notice);
+		const hadFocus = notice.element.contains(this.document.activeElement);
+		const container = notice.element.parentElement;
+		notice.element.remove();
+		if (container && container !== this.noticeRegion && container.childElementCount === 0) container.remove();
+		if (hadFocus) this.focusAfterNotice(notice);
+		this.dispatchEvent(new CustomEvent("notice", { detail: { id: noticeId, state } }));
+		return true;
+	}
+
+	focusAfterNotice(notice) {
+		if (this.modal) { this.focusModal(); return; }
+		const target = notice.source && this.navigator.get(notice.source) ? this.visibleCellFor(notice.source) : null;
+		if (target) { this.focusCell(target); return; }
+		const next = this.noticeRegion.querySelector(".supermax-notice-dismiss");
+		if (next) { next.focus({ preventScroll: true }); return; }
+		this.backButton.focus({ preventScroll: true });
+	}
+
+	noticeHostFor(notice) {
+		if (notice.scope !== "cell" || !notice.source) return this.noticeRegion;
+		const entry = this.cells.get(notice.source);
+		const cell = this.findCell(notice.source);
+		if (!entry || !cell?.visible || cell.compact || this.inCollapsedRow(notice.source)) return this.noticeRegion;
+		let container = entry.element.querySelector(":scope > .supermax-cell-notices");
+		if (!container) {
+			container = this.create("div", "supermax-cell-notices");
+			entry.element.append(container);
+		}
+		return container;
+	}
+
+	placeNotice(notice) {
+		const host = this.noticeHostFor(notice);
+		const sourceOccurrence = notice.source ? this.navigator.get(notice.source) : null;
+		const named = host === this.noticeRegion && notice.source;
+		const sourceCell = sourceOccurrence ? this.findCell(notice.source) : null;
+		const reachable = !!sourceOccurrence && !(sourceCell?.visible && !sourceCell.compact && !this.inCollapsedRow(notice.source));
+		if (notice.element && notice.host === host && notice.named === named && notice.sourceOpen === !!sourceOccurrence && notice.reachable === reachable) return;
+		const previous = notice.element;
+		const element = this.create("div", `supermax-notice is-${notice.kind}`);
+		element.dataset.notice = notice.id;
+		if (notice.kind === "error") element.setAttribute("role", "alert");
+		const text = this.create("div", "supermax-notice-text");
+		if (named) {
+			const title = sourceOccurrence?.title ?? notice.sourceTitle ?? "A closed cell";
+			const label = this.create("span", "supermax-notice-source", sourceOccurrence ? `${title}:` : `${title} (not open):`);
+			text.append(label, this.document.createTextNode(` ${notice.message}`));
+		} else {
+			text.textContent = notice.message;
+		}
+		const controls = this.create("div", "supermax-notice-controls");
+		if (named && reachable) {
+			const go = this.create("button", "supermax-notice-go", `Show ${sourceOccurrence.title}`);
+			go.type = "button";
+			go.addEventListener("click", () => { this.goTo(notice.source); this.dismiss(notice.id, "acted"); });
+			controls.append(go);
+		}
+		if (notice.action) {
+			const act = this.create("button", "supermax-notice-action", notice.action.label);
+			act.type = "button";
+			act.addEventListener("click", () => { this.dismiss(notice.id, "acted"); notice.action.run?.(this); });
+			controls.append(act);
+		}
+		const close = this.create("button", "supermax-notice-dismiss", "×");
+		close.type = "button";
+		close.setAttribute("aria-label", `Dismiss: ${notice.message}`);
+		close.addEventListener("click", () => this.dismiss(notice.id));
+		controls.append(close);
+		element.append(text, controls);
+		element.addEventListener("keydown", (event) => { if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); this.dismiss(notice.id); } });
+		element.addEventListener("pointerenter", () => this.pauseNotice(notice));
+		element.addEventListener("pointerleave", () => this.resumeNotice(notice));
+		element.addEventListener("focusin", () => this.pauseNotice(notice));
+		element.addEventListener("focusout", (event) => { if (!element.contains(event.relatedTarget)) this.resumeNotice(notice); });
+		if (sourceOccurrence) notice.sourceTitle = sourceOccurrence.title;
+		notice.element = element;
+		notice.host = host;
+		notice.named = named;
+		notice.sourceOpen = !!sourceOccurrence;
+		notice.reachable = reachable;
+		host.append(element);
+		if (previous) {
+			const hadFocus = previous.contains(this.document.activeElement);
+			const container = previous.parentElement;
+			previous.remove();
+			if (container && container !== this.noticeRegion && container.childElementCount === 0) container.remove();
+			if (hadFocus) close.focus({ preventScroll: true });
+		}
+	}
+
+	goTo(occurrenceId) {
+		let current = this.navigator.get(occurrenceId);
+		while (current) {
+			const row = this.rows.get(current.id);
+			if (row?.element.classList.contains("is-collapsed")) { this.focusRow(current.id); break; }
+			current = current.parent ? this.navigator.get(current.parent) : null;
+		}
+		const chainRoot = chainRootOf(this.navigator, this.navigator.get(occurrenceId));
+		const chain = this.findChain(chainRoot.id);
+		const cell = chain?.cells.find((candidate) => candidate.occurrence === occurrenceId);
+		if (cell && !cell.visible) {
+			const index = chain.cells.indexOf(cell);
+			const firstVisible = chain.cells.findIndex((candidate) => candidate.visible);
+			this.reveal(chainRoot.id, index - firstVisible);
+		}
+		this.focusCell(occurrenceId);
+	}
+
+	pauseNotice(notice) {
+		if (notice.timer === null) return;
+		clearTimeout(notice.timer);
+		notice.timer = null;
+		notice.remaining = Math.max(0, notice.remaining - (Date.now() - notice.startedAt));
+	}
+
+	resumeNotice(notice) {
+		if (notice.remaining === null || notice.timer !== null || !this.notices.has(notice.id)) return;
+		notice.startedAt = Date.now();
+		notice.timer = setTimeout(() => { notice.timer = null; this.dismiss(notice.id, "expired"); }, notice.remaining);
+	}
+
+	renderNotices() {
+		for (const notice of this.notices.values()) this.placeNotice(notice);
+	}
+
+	openModal(definition, { from } = {}) {
+		this.closePeek();
+		if (this.modal) this.closeModal("replaced");
+		const source = this.navigator.get(from) ?? null;
+		const element = this.create("div", "supermax-modal-layer");
+		const dialog = this.create("section", "supermax-modal");
+		dialog.setAttribute("role", "dialog");
+		dialog.setAttribute("aria-modal", "true");
+		dialog.tabIndex = -1;
+		const header = this.create("header", "supermax-modal-header");
+		const titles = this.create("div", "supermax-modal-titles");
+		const title = this.create("strong", "supermax-modal-title", definition.title);
+		title.id = `supermax-modal-title-${Date.now().toString(36)}`;
+		dialog.setAttribute("aria-labelledby", title.id);
+		const context = this.create("span", "supermax-modal-context", source ? `From ${source.title}` : "");
+		titles.append(title, context);
+		const close = this.create("button", "supermax-modal-close", "×");
+		close.type = "button";
+		close.setAttribute("aria-label", `Close ${definition.title}`);
+		close.addEventListener("click", () => this.closeModal("close"));
+		header.append(titles, close);
+		const body = this.create("div", "supermax-modal-body");
+		dialog.append(header, body);
+		element.append(dialog);
+		element.addEventListener("pointerdown", (event) => { if (event.target === element) this.closeModal("backdrop"); });
+		dialog.addEventListener("keydown", (event) => this.modalKeydown(event));
+		const returnFocus = this.document.activeElement;
+		this.modal = { element, dialog, body, title: definition.title, source: source?.id ?? null, returnFocus, handle: {}, generation: 0, id: null, retry: null };
+		this.modal.retry = () => this.mountInto(this.modal, definition.title, () => definition.content(this.modal, this), () => this.modal === modalEntry);
+		const modalEntry = this.modal;
+		this.body.inert = true;
+		this.element.append(element);
+		this.element.classList.add("has-modal");
+		this.placeModal();
+		this.modal.retry();
+		this.focusModal();
+		this.dispatchEvent(new CustomEvent("modal", { detail: { state: "open", title: definition.title, source: this.modal.source } }));
+		return this.modal;
+	}
+
+	renderModal() {
+		if (!this.modal) return;
+		const source = this.modal.source ? this.navigator.get(this.modal.source) : null;
+		const context = this.modal.dialog.querySelector(".supermax-modal-context");
+		context.textContent = this.modal.source ? (source ? `From ${source.title}` : "Its source has closed") : "";
+		this.modal.dialog.classList.toggle("is-orphaned", !!this.modal.source && !source);
+		this.placeModal();
+	}
+
+	placeModal() {
+		if (!this.modal) return;
+		const { dialog } = this.modal;
+		dialog.style.removeProperty("left");
+		dialog.style.removeProperty("top");
+		dialog.classList.remove("is-anchored");
+		const sourceEntry = this.modal.source ? this.cells.get(this.modal.source) : null;
+		const visible = sourceEntry && this.findCell(this.modal.source)?.visible && !this.inCollapsedRow(this.modal.source) && !sourceEntry.element.classList.contains("is-compact");
+		if (!visible) return;
+		const host = this.modal.element.getBoundingClientRect();
+		const cell = sourceEntry.element.getBoundingClientRect();
+		const width = dialog.offsetWidth;
+		const height = dialog.offsetHeight;
+		const left = Math.max(8, Math.min(cell.left - host.left + 12, host.width - width - 8));
+		const top = Math.max(8, Math.min(cell.top - host.top + 12, host.height - height - 8));
+		dialog.classList.add("is-anchored");
+		dialog.style.left = `${Math.round(left)}px`;
+		dialog.style.top = `${Math.round(top)}px`;
+	}
+
+	focusModal() {
+		const { dialog } = this.modal;
+		const target = this.focusables(dialog).find((candidate) => !candidate.classList.contains("supermax-modal-close")) ?? dialog;
+		target.focus({ preventScroll: true });
+	}
+
+	focusables(root) {
+		return [...root.querySelectorAll("a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex='-1'])")].filter((candidate) => candidate.offsetParent !== null || candidate === root);
+	}
+
+	modalKeydown(event) {
+		if (event.key === "Escape") {
+			event.preventDefault();
+			event.stopPropagation();
+			this.closeModal("escape");
+			return;
+		}
+		if (event.key !== "Tab") return;
+		const items = [...this.focusables(this.modal.dialog), ...this.focusables(this.noticeRegion)];
+		if (items.length === 0) { event.preventDefault(); this.modal.dialog.focus(); return; }
+		const index = items.indexOf(this.document.activeElement);
+		const next = event.shiftKey ? (index <= 0 ? items.length - 1 : index - 1) : (index === items.length - 1 || index === -1 ? 0 : index + 1);
+		event.preventDefault();
+		items[next].focus();
+	}
+
+	closeModal(reason = "close") {
+		const modal = this.modal;
+		if (!modal) return;
+		this.modal = null;
+		modal.generation += 1;
+		modal.handle.dispose?.();
+		modal.element.remove();
+		this.body.inert = false;
+		this.element.classList.remove("has-modal");
+		this.returnFromModal(modal);
+		this.dispatchEvent(new CustomEvent("modal", { detail: { state: "closed", reason, title: modal.title, source: modal.source } }));
+	}
+
+	returnFromModal(modal) {
+		if (modal.source && this.navigator.get(modal.source)) {
+			const row = this.collapsedRowFor(modal.source);
+			if (row) { row.focus({ preventScroll: true }); return; }
+			const target = this.visibleCellFor(modal.source);
+			if (target === modal.source && modal.returnFocus && this.element.contains(modal.returnFocus) && modal.returnFocus.offsetParent !== null) {
+				modal.returnFocus.focus({ preventScroll: true });
+				return;
+			}
+			if (target) { this.focusCell(target); return; }
+		}
+		const first = this.visibleCellFor(this.navigator.focused) ?? this.visibleCellFor(this.navigator.root.id);
+		if (first) { this.focusCell(first); return; }
+		this.backButton.focus({ preventScroll: true });
+	}
+
+	collapsedRowFor(occurrenceId) {
+		let current = this.navigator.get(occurrenceId);
+		while (current) {
+			const row = this.rows.get(current.id);
+			if (row?.element.classList.contains("is-collapsed")) return row.tab ?? row.element.querySelector("button");
+			current = current.parent ? this.navigator.get(current.parent) : null;
+		}
+		return null;
 	}
 
 	collapse(occurrenceId, collapsed = !this.navigator.collapsed.has(occurrenceId)) {
@@ -184,21 +473,30 @@ export class Workspace extends EventTarget {
 
 	mountContent(entry, occurrence) {
 		const definition = this.navigator.destination(occurrence.destination);
+		entry.id = occurrence.id;
+		entry.provisional = !!definition.provisional;
+		entry.element.classList.toggle("is-provisional", entry.provisional);
+		entry.retry = () => this.mountContent(entry, this.navigator.get(occurrence.id));
+		if (entry.provisional) {
+			entry.generation += 1;
+			entry.handle.dispose?.();
+			entry.handle = {};
+			this.showLoading(entry, occurrence.title);
+			return;
+		}
+		this.mountInto(entry, occurrence.title, () => this.content(occurrence, definition, this), () => this.cells.get(occurrence.id) === entry);
+	}
+
+	mountInto(entry, title, produce, isCurrent) {
 		entry.generation += 1;
 		const generation = entry.generation;
 		entry.handle.dispose?.();
 		entry.handle = {};
-		entry.provisional = !!definition.provisional;
-		entry.element.classList.toggle("is-provisional", entry.provisional);
-		if (entry.provisional) {
-			this.showLoading(entry, occurrence.title);
-			return;
-		}
 		let outcome;
 		try {
-			outcome = this.content(occurrence, definition, this) ?? {};
+			outcome = produce() ?? {};
 		} catch (error) {
-			this.showError(entry, occurrence, error);
+			this.showError(entry, title, error);
 			return;
 		}
 		const pending = typeof outcome?.then === "function" ? outcome : outcome.pending;
@@ -206,10 +504,10 @@ export class Workspace extends EventTarget {
 			this.settleContent(entry, outcome);
 			return;
 		}
-		this.showLoading(entry, occurrence.title);
+		this.showLoading(entry, title);
 		pending.then(
-			(handle) => { if (entry.generation === generation && this.cells.get(occurrence.id) === entry) this.settleContent(entry, handle ?? {}); },
-			(error) => { if (entry.generation === generation && this.cells.get(occurrence.id) === entry) this.showError(entry, occurrence, error); },
+			(handle) => { if (entry.generation === generation && isCurrent()) this.settleContent(entry, handle ?? {}); },
+			(error) => { if (entry.generation === generation && isCurrent()) this.showError(entry, title, error); },
 		);
 	}
 
@@ -217,8 +515,9 @@ export class Workspace extends EventTarget {
 		entry.handle = handle;
 		entry.element.classList.remove("is-loading", "is-error");
 		entry.body.replaceChildren(...(handle.element ? [handle.element] : []));
-		handle.update?.(this.navigator.get(entry.element.dataset.occurrence), this);
-		this.dispatchEvent(new CustomEvent("content", { detail: { occurrence: entry.element.dataset.occurrence, state: "loaded" } }));
+		handle.update?.(entry.id ? this.navigator.get(entry.id) : null, this);
+		if (entry === this.modal) { this.placeModal(); this.focusModal(); }
+		this.dispatchEvent(new CustomEvent("content", { detail: { occurrence: entry.id, state: "loaded" } }));
 	}
 
 	showLoading(entry, title) {
@@ -229,25 +528,24 @@ export class Workspace extends EventTarget {
 		box.setAttribute("aria-live", "polite");
 		box.append(this.create("span", "supermax-loading-mark"), this.document.createTextNode(`Loading ${title}`));
 		entry.body.replaceChildren(box);
-		this.dispatchEvent(new CustomEvent("content", { detail: { occurrence: entry.element.dataset.occurrence, state: "loading" } }));
+		this.dispatchEvent(new CustomEvent("content", { detail: { occurrence: entry.id, state: "loading" } }));
 	}
 
-	showError(entry, occurrence, error) {
+	showError(entry, title, error) {
 		entry.element.classList.add("is-error");
 		entry.element.classList.remove("is-loading");
 		const box = this.create("div", "supermax-error");
 		box.setAttribute("role", "alert");
-		box.append(this.create("strong", null, ""), this.document.createTextNode(""));
-		box.firstChild.textContent = `${occurrence.title} could not load.`;
+		box.append(this.create("strong", null, `${title} could not load.`));
 		const detail = this.create("p", "supermax-error-detail");
 		detail.textContent = error?.message ?? String(error);
 		const retry = this.create("button", "supermax-retry");
 		retry.type = "button";
 		retry.textContent = "Retry";
-		retry.addEventListener("click", () => this.mountContent(entry, this.navigator.get(occurrence.id)));
+		retry.addEventListener("click", () => entry.retry());
 		box.append(detail, retry);
 		entry.body.replaceChildren(box);
-		this.dispatchEvent(new CustomEvent("content", { detail: { occurrence: occurrence.id, state: "error", error } }));
+		this.dispatchEvent(new CustomEvent("content", { detail: { occurrence: entry.id, state: "error", error } }));
 	}
 
 	apply(action, { animate = true, focus = false } = {}) {
@@ -391,6 +689,8 @@ export class Workspace extends EventTarget {
 			this.pruneClosed();
 			this.refreshContent();
 			this.renderNavbar();
+			this.renderModal();
+			this.renderNotices();
 		} finally {
 			this.rendering = false;
 		}
@@ -619,7 +919,7 @@ export class Workspace extends EventTarget {
 			element.append(header);
 		}
 		element.append(body);
-		entry = { element, body, header, handle: {}, parent: occurrence.parent, rail: null, collapseButton: null, generation: 0, provisional: false };
+		entry = { element, body, header, handle: {}, parent: occurrence.parent, rail: null, collapseButton: null, generation: 0, provisional: false, id: occurrenceId, retry: null };
 		if (!isSplit(definition) && definition.compact) this.mountCompact(entry, occurrence, definition);
 		this.cells.set(occurrenceId, entry);
 		if (!isSplit(definition)) this.mountContent(entry, occurrence);
@@ -763,6 +1063,9 @@ export class Workspace extends EventTarget {
 
 	destroy() {
 		this.closePeek();
+		if (this.modal) { this.modal.handle.dispose?.(); this.modal.element.remove(); this.modal = null; }
+		for (const notice of this.notices.values()) this.pauseNotice(notice);
+		this.notices.clear();
 		this.observer.disconnect();
 		this.element.removeEventListener("focusin", this.onFocusIn);
 		for (const entry of this.cells.values()) entry.handle.dispose?.();

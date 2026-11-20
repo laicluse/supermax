@@ -63,7 +63,7 @@ The workspace element needs a height of its own; the workspace fills it, observe
 
 A destination may also declare `compact: { min, content? }` (a narrow rail with a peek, see the guide), `preferred` (its share when the chain has room beyond every minimum; dividers between cells let the user override it for the session), and an action may carry a `hint` so a destination opens before its definition has loaded; `workspace.define(id, definition)` completes it in place. The `content` callback may return `{ pending }` with a promise for a cell that loads, with built-in loading and error states and a Retry control.
 
-The navigation contract (groups, Back, auto-opening, validation, deep links, compact cells, sizes, loading) is written down in the [application-shell guide](docs/application-shell.md).
+`openModal({ title, content }, { from })` opens one dialog that names its source cell, traps the keyboard, closes on Escape or Back before any navigation, and returns focus to a usable place. `notify({ scope, source, kind, message, action })` shows feedback inside the source cell or, when that cell is out of view, in the workspace with the source named and reachable. The navigation contract (groups, Back, auto-opening, validation, deep links, compact cells, sizes, loading, modals, notices) is written down in the [application-shell guide](docs/application-shell.md).
 
 ## Demo
 
