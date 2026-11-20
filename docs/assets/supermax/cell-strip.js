@@ -165,12 +165,15 @@ export class CellStrip {
 		const leaving = this.entries.filter((entry) => !ids.has(entry.id)).map((entry) => ({ ...entry, visible: false }));
 		const newlyLeaving = leaving.filter((entry) => !entry.departing);
 		const returning = next.filter((entry) => previous.get(entry.id)?.departing);
-		const arriving = next.filter((entry) => entry.visible && !previous.has(entry.id));
+		const arriving = next.filter((entry) => {
+			const old = previous.get(entry.id);
+			return entry.visible && (!old || (this.motion && !old.visible && old.currentWidth + old.currentMargin < STILL));
+		});
 		arriving.forEach((entry, index) => { entry.order = (entry.row ?? 0) + index; });
 
 		const partners = new Map();
 		for (const entry of arriving) {
-			const partner = newlyLeaving.find((candidate) => depthOf(candidate.id) === depthOf(entry.id) && ![...partners.values()].includes(candidate));
+			const partner = newlyLeaving.find((candidate) => ![...partners.values()].includes(candidate) && (depthOf(candidate.id) === depthOf(entry.id) || (this.motion && previous.has(entry.id) && candidate.id.startsWith(`${entry.id}/`) && depthOf(candidate.id) === depthOf(entry.id) + 1)));
 			if (partner) partners.set(entry.id, partner);
 		}
 		for (const entry of arriving) entry.replaces = partners.has(entry.id);
@@ -258,7 +261,7 @@ export class CellStrip {
 			if (entry.overlay || this.driven.has(entry.id)) continue;
 			const old = previous.get(entry.id);
 			const room = (record) => record.currentWidth + record.currentMargin;
-			const from = old && !old.overlay ? room(old) : partners.has(entry.id) ? room(previous.get(partners.get(entry.id).id)) : 0;
+			const from = partners.has(entry.id) ? room(previous.get(partners.get(entry.id).id)) : old && !old.overlay ? room(old) : 0;
 			const to = entry.displayWidth;
 			if (Math.abs(from - to) < STILL) continue;
 			moves.push({ distance: Math.abs(from - to), run: () => {

@@ -1953,6 +1953,27 @@ test("veil replaces a cell without turning it, keeps its surface and lifts the n
 	await page.selectOption("[data-presentation]", PRESENTATION);
 });
 
+test("a narrow Back gives its departing child's room directly to the returning parent", async () => {
+	await page.goto(`${server.url}/?delay=0&presentation=veil&speed=10`);
+	await page.waitForFunction(() => window.supermaxDemo?.frames.length === 2);
+	await page.getByRole("button", { name: "Twenty cells deep", exact: true }).click();
+	await page.evaluate(() => window.supermaxDemo.resize([[960, 640], [277, 633]]));
+	await settle();
+	const outgoing = inFrame("b", '[data-occurrence$="/depth:20"]');
+	await page.click(inFrame("b", ".supermax-up"));
+	const trade = await page.evaluate(() => {
+		const strip = window.supermaxDemo.frames[1].workspace.chains.get("albums").strip;
+		const parent = strip.entries.find((entry) => entry.id.endsWith("/depth:19"));
+		const child = strip.entries.find((entry) => entry.id.endsWith("/depth:20"));
+		return { parentWidth: strip.boxOf(parent).getBoundingClientRect().width, childOverlay: child.overlay };
+	});
+	assert.ok(trade.parentWidth >= 179 && trade.childOverlay, `the old cell veils a full-size returning parent instead of leaving a canvas-sized hole: ${JSON.stringify(trade)}`);
+	await page.waitForSelector(outgoing, { state: "detached", timeout: 4000 });
+	assert.equal(await page.locator(inFrame("b", '[data-occurrence$="/depth:19"] .depth-number')).textContent(), "19");
+	await settle();
+	assert.equal(await page.locator(inFrame("b", '[data-occurrence$="/depth:19"]')).evaluate((cell) => getComputedStyle(cell).visibility), "visible");
+});
+
 test("a split that another split replaces leaves with the presentation's exit instead of vanishing in a frame", async () => {
 	await openDemo([open("album:coast", "albums"), open("coast:photo:a", coast.row("thumbnails"))]);
 	await page.selectOption("[data-speed]", "10");
