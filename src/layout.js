@@ -138,10 +138,6 @@ export function validateSplit(model, definitionId, parentOccurrence) {
 	const chrome = headerOf(model, definition);
 	const base = { ok: false, rows: [], chrome: null, supported: model.minViewportHeight };
 	if (parentOccurrence && chainRootOf(model, parentOccurrence).parent) return { ...base, reason: "nested-split" };
-	if (parentOccurrence) {
-		const cells = chainCells(model, chainRootOf(model, parentOccurrence));
-		if (cells.slice(0, cells.indexOf(parentOccurrence)).some((cell) => isSplit(definitionFor(model, cell)))) return { ...base, reason: "second-split" };
-	}
 	if (rows.length === 0) return { ...base, reason: "no-rows" };
 	if (rows.length > maxRows) return { ...base, reason: "too-many-rows", count: rows.length, maxRows };
 	const seen = new Set();

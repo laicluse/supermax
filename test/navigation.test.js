@@ -700,7 +700,7 @@ const mail = ({ defaults = false, width = 1600 } = {}) => {
 			"attachment:1": { title: "Attachment 1", min: 300, max: 500, placement: "beside-split", defaultChild: "info:1" },
 			"attachment:2": { title: "Attachment 2", min: 300, max: 500, placement: "beside-split" },
 			"info:1": { title: "Info 1", min: 150, max: 200 },
-			note: { title: "Note", min: 150, max: 200 },
+			note: { title: "Note", min: 150, max: 200, zoomable: true },
 			"second:conversation": { title: "Second", rows: [{ destination: "note", minHeight: 100, maxHeight: "*", preferredHeight: 200 }] },
 		},
 		root: "inbox",
@@ -788,7 +788,7 @@ scenario("a breakout survives a snapshot, follows the window and zoom rules of t
 	assert.deepEqual(rootTitles(zoom), [["Inbox", false], ["Conversation", false], ["Attachment 2", true]], "a zoom on the breakout hides the split");
 });
 
-scenario("full height is a declaration: refused on a split, as a row, and as a second split beside a split, and an ordinary cell outside a row", () => {
+scenario("beside-split placement excludes rows and splits while independent splits follow full-height cells", () => {
 	const full = { title: "Full", min: 100, max: 200, placement: "beside-split" };
 	assert.deepEqual(validateDestinations({ ...destinations, full, bad: { ...destinations.inner, placement: "beside-split" } }, { minViewportHeight, chrome }).problems, [{ destination: "bad", reason: "invalid-placement" }], "a split cannot declare beside-split placement");
 	assert.deepEqual(validateDestinations({ ...destinations, full, tall: { ...destinations.gallery, rows: [{ destination: "full", minHeight: 100, maxHeight: "*", preferredHeight: 200 }] } }, { minViewportHeight, chrome }).problems[0].validation.rows[0].problems, ["beside-split-on-row"], "a full-height cell cannot be a row");
@@ -796,7 +796,17 @@ scenario("full height is a declaration: refused on a split, as a row, and as a s
 	const instance = mail();
 	instance.open("attachment:2", { from: ATTACHMENTS, origin: null });
 	const second = instance.open("second:conversation", { from: `${ATTACHMENTS}/attachment:2` });
-	assert.deepEqual({ reason: second.reason, detail: second.validation.reason }, { reason: "invalid-rows", detail: "second-split" }, "a split cannot open beside a split");
+	assert.equal(second.ok, true, "a second split opens after a full-height cell in the root chain");
+	assert.deepEqual(rootTitles(instance).map(([title]) => title), ["Inbox", "Conversation", "Attachment 2", "Second"]);
+	assert.deepEqual(rowTitles(instance, `${ATTACHMENTS}/attachment:2/second:conversation/note`), ["Note"]);
+	const path = ["inbox", "conversation", "attachments", "attachment:2", "second:conversation", "note"];
+	const synced = instance.sync(path, { zoom: "note" });
+	assert.equal(synced.ok, true);
+	assert.deepEqual(synced.opened, [], "sync keeps the breakout already on its path");
+	assert.equal(instance.zoomed, `${ATTACHMENTS}/attachment:2/second:conversation/note`, "zoom reaches the second split's row root");
+	assert.equal(instance.layout().cells.get(CONVERSATION).visible, false, "zoom hides earlier root-chain splits");
+	instance.sync(path, { zoom: null });
+	assert.equal(instance.open("second:conversation", { from: path.join("/") }).validation.reason, "nested-split", "a row in a later split still cannot contain a split");
 	const inRow = instance.open("note", { from: ATTACHMENTS, origin: null });
 	assert.equal(inRow.ok, true);
 	assert.deepEqual(rowTitles(instance, ATTACHMENTS), ["Attachments", "Note"], "a cell without the declaration opens inside the row, closing the breakout the origin had");

@@ -266,6 +266,67 @@ async function boxes(selector) {
 const hiddenRows = (key) => page.locator(inFrame(key, ".supermax-row")).evaluateAll((elements) => elements.map((element) => element.classList.contains("is-hidden")));
 const painted = (selector) => page.locator(selector).evaluate((element) => getComputedStyle(element).visibility === "visible" && element.getBoundingClientRect().width > 0);
 
+test("two independent splits stand beside a full-height cell", async () => {
+	await openDemo();
+	const result = await page.evaluate(async () => {
+		const { Navigator, Workspace } = await import("/src/index.js");
+		const host = document.createElement("div");
+		host.style.cssText = "position: fixed; inset: 0; width: 1440px; height: 900px; z-index: 100;";
+		document.body.append(host);
+		const navigator = new Navigator({
+			root: "app",
+			minViewportHeight: 320,
+			destinations: {
+				app: { title: "App", min: 1, max: 1 },
+				vaultSplit: { title: "Vault", rows: [
+					{ destination: "vault", minHeight: 170, maxHeight: "*", preferredHeight: 700 },
+					{ destination: "agents", minHeight: 120, maxHeight: 220 },
+				] },
+				vault: { title: "Vault", min: 192, max: 256 },
+				agents: { title: "Agents", min: 192, max: 256 },
+				epics: { title: "Epics", min: 256, max: 384, placement: "beside-split" },
+				boardSplit: { title: "Board", rows: [
+					{ destination: "board", minHeight: 170, maxHeight: "*", preferredHeight: 700 },
+					{ destination: "workflow", minHeight: 120, maxHeight: 220 },
+				] },
+				board: { title: "Board", min: 320, max: "*", preferred: 1024 },
+				workflow: { title: "Workflow", min: 320, max: "*", preferred: 1024 },
+				idea: { title: "Idea", min: 320, max: 1024, placement: "beside-split" },
+			},
+		});
+		const workspace = new Workspace(host, { navigator, content: (occurrence, definition) => {
+			if (definition.rows) return {};
+			const element = document.createElement("section");
+			element.textContent = occurrence.title;
+			return { element };
+		} });
+		window.twoSplits = { workspace, host };
+		return workspace.sync(["app", "vaultSplit", "vault", "epics", "boardSplit", "board"], { animate: false });
+	});
+	assert.equal(result.ok, true);
+	const rects = await page.evaluate(() => {
+		const rect = (id) => {
+			const box = document.querySelector(`[data-occurrence="${id}"]`).getBoundingClientRect();
+			return { left: box.left, top: box.top, right: box.right, bottom: box.bottom };
+		};
+		return {
+			vaultSplit: rect("app/vaultSplit"), vault: rect("app/vaultSplit/vault"), agents: rect("app/vaultSplit/agents"),
+			epics: rect("app/vaultSplit/vault/epics"), boardSplit: rect("app/vaultSplit/vault/epics/boardSplit"),
+			board: rect("app/vaultSplit/vault/epics/boardSplit/board"), workflow: rect("app/vaultSplit/vault/epics/boardSplit/workflow"),
+		};
+	});
+	assert.ok(rects.vaultSplit.right <= rects.epics.left + 1 && rects.epics.right <= rects.boardSplit.left + 1, JSON.stringify(rects));
+	assert.ok(rects.vault.top < rects.agents.top && rects.board.top < rects.workflow.top);
+	assert.equal(rects.epics.bottom, rects.boardSplit.bottom, "Epics spans the complete height beside the Board split");
+	const detail = await page.evaluate(() => {
+		const result = window.twoSplits.workspace.sync(["app", "vaultSplit", "vault", "epics", "boardSplit", "board", "idea"], { animate: false });
+		const split = document.querySelector('[data-occurrence="app/vaultSplit/vault/epics/boardSplit"]').getBoundingClientRect();
+		const idea = document.querySelector('[data-occurrence="app/vaultSplit/vault/epics/boardSplit/board/idea"]').getBoundingClientRect();
+		return { ok: result.ok, beside: idea.left >= split.right - 1, fullHeight: idea.bottom === split.bottom };
+	});
+	assert.deepEqual(detail, { ok: true, beside: true, fullHeight: true });
+});
+
 test("the start state names the end of history and both frames receive a click", async () => {
 	await openDemo();
 	assert.deepEqual(await backButton("a"), { hidden: true, label: null, text: "" }, "with nothing out of view there is no Show control");

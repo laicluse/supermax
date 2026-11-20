@@ -352,8 +352,7 @@ export class Navigator {
 				next = current.children.map((childId) => this.get(childId)).find((row) => row?.destination === id) ?? null;
 				if (!next) return { ok: false, reason: "not-a-row", destination: id, source: current.id };
 			} else {
-				const candidate = this.next(current);
-				next = candidate?.destination === id ? candidate : null;
+				next = [this.next(current), this.child(current)].find((candidate) => candidate?.destination === id) ?? null;
 			}
 			if (!next) break;
 			path.push(next);
@@ -364,9 +363,10 @@ export class Navigator {
 		let changed = false;
 		const opened = [];
 		// allow-comment: a manual cell that follows a member of the path in its own chain without being the next member lies beside the path and closes: the cell after the tip, and the breakout beside a split the path goes into.
-		path.forEach((member, index) => {
+		const requested = new Set(destinationIds.map((_, index) => destinationIds.slice(0, index + 1).join("/")));
+		path.forEach((member) => {
 			const beside = this.next(member);
-			if (beside && beside !== path[index + 1] && !this.isAuto(beside)) {
+			if (beside && !requested.has(beside.id) && !this.isAuto(beside)) {
 				this.closeSubtree(beside);
 				changed = true;
 			}
@@ -395,8 +395,7 @@ export class Navigator {
 			changed = true;
 		}
 		if (zoom !== undefined) {
-			let target = null;
-			for (const current of [...path, ...opened.map((id) => this.get(id))]) if (zoom !== null && current.destination === zoom) target = current.id;
+			const target = zoom === null ? null : this.get(destinationIds.slice(0, destinationIds.lastIndexOf(zoom) + 1).join("/"))?.id ?? null;
 			if ((this.zoomed ?? null) !== target) {
 				this.zoomed = target;
 				changed = true;

@@ -4,6 +4,10 @@
 
 Start with [Migrating from v1 to v2](docs/migrating-to-v2.md). A dependency version bump alone does not migrate the host's behavior, and adopting the new Workspace is a separate choice.
 
+### Workspace composition
+
+- Independent splits can follow full-height cells along the root chain, retaining their own row windows and correct path sync and zoom. The guides document `Navigator.startRows()` for the initial task row.
+
 ### Breaking changes
 
 - Workspace cells and rows declare one `overflow` policy: `{ mode: "fold", size? }`, `{ mode: "hide" }` or `{ mode: "keep" }`. Omitting it permits zero-space folds. Destination placement uses `placement: "beside-split"`; `keep`, `fold` and `height` are rejected on Workspace destinations.
