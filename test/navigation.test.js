@@ -463,3 +463,36 @@ scenario("a title can change after a cell opened, in its occurrence, its group a
 	assert.equal(JSON.parse(JSON.stringify(instance.snapshot())).occurrences.find((occurrence) => occurrence.id === result.occurrence.id).title, "Item C, renamed", "and a snapshot keeps the new one");
 	assert.equal(instance.setTitle("nowhere", "x"), false);
 });
+
+scenario("zoom hides the cells before a zoomable cell, which shares the width with what follows it, like v1", () => {
+	const chain = new Navigator({
+		destinations: {
+			elsewhere,
+			inbox: { title: "Inbox", min: 200, max: 300 },
+			list: { title: "List", min: 200, max: "*", preferred: 300, defaultChild: "messages" },
+			messages: { title: "Messages", min: 300, max: 600, zoomable: true, defaultChild: "attachments" },
+			attachments: { title: "Attachments", min: 150, max: 200 },
+			plain: { title: "Plain", min: 200, max: 300 },
+		},
+		root: "inbox",
+		minViewportHeight,
+		chrome,
+	});
+	chain.resize({ width: 1400, height: 500 });
+	chain.sync(["inbox", "list"]);
+	const visible = () => chain.layout().chain.cells.filter((cell) => cell.visible).map((cell) => [cell.title, Math.round(cell.width)]);
+	const messages = chain.child(chain.child(chain.root));
+	assert.deepEqual(visible().map(([title]) => title), ["Inbox", "List", "Messages", "Attachments"], "everything fits before the zoom");
+	assert.equal(chain.zoom(messages.id), true);
+	const zoomed = visible();
+	assert.deepEqual(zoomed.map(([title]) => title), ["Messages", "Attachments"], "the zoom hides the cells before Messages, and what follows it stays");
+	assert.equal(zoomed.reduce((sum, [, width]) => sum + width, 0), 1400, "together they take the whole width");
+	assert.ok(zoomed[0][1] > 600, "Messages grows past its own maximum, as the last cell did in v1, since no elastic cell follows it");
+	assert.equal(JSON.parse(JSON.stringify(chain.snapshot())).zoomed, messages.id, "a snapshot keeps the zoom");
+	assert.equal(chain.zoom(chain.root.id), false, "a cell that is not zoomable cannot zoom");
+	assert.equal(chain.zoomed, messages.id);
+	chain.sync(["inbox", "list"]);
+	chain.closeSubtree(chain.child(chain.child(chain.root)));
+	assert.equal(chain.zoomed, null, "the zoom ends when its cell closes");
+	assert.deepEqual(visible().map(([title]) => title), ["Inbox", "List"]);
+});

@@ -110,8 +110,28 @@ export class Workspace extends EventTarget {
 		return this.intent({ type: "open", destination, from });
 	}
 
+	zoom(occurrenceId, { animate = true } = {}) {
+		const previous = this.navigator.zoomed;
+		if (!this.navigator.zoom(occurrenceId)) return false;
+		if (previous === this.navigator.zoomed) return true;
+		this.closePeek();
+		this.render({ animate });
+		this.dispatchEvent(new CustomEvent("zoom", { detail: { occurrence: this.navigator.zoomed } }));
+		return true;
+	}
+
+	zoomedFrom(layout) {
+		let current = this.navigator.get(this.navigator.get(this.navigator.zoomed)?.parent);
+		while (current && layout.cells.get(current.id)?.visible) current = this.navigator.get(current.parent);
+		return current ? { id: current.id, title: current.title } : null;
+	}
+
 	requestUp() {
 		this.closePeek();
+		if (this.navigator.zoomed) {
+			this.zoom(null);
+			return { ok: true, unzoomed: true };
+		}
 		const target = this.navigator.upTarget(this.layout ?? undefined);
 		if (!target) return { ok: false, reason: "nothing-hidden" };
 		const before = this.navigator.snapshot();
@@ -310,7 +330,7 @@ export class Workspace extends EventTarget {
 		this.rendered = true;
 		const layout = this.navigator.layout();
 		this.layout = layout;
-		this.upDestination = this.navigator.upTarget(layout);
+		this.upDestination = this.navigator.zoomed ? this.zoomedFrom(layout) : this.navigator.upTarget(layout);
 		const animating = animate && !this.reducedMotion.matches;
 		this.animating = animating;
 		const rootViewport = this.renderChain(layout.chain, this.body, animating);

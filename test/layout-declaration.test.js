@@ -38,4 +38,10 @@ for (const context of ["ana", "ben"]) {
 	assert.deepEqual(closureOf(Object.keys(embedded), context).filter((id) => !Object.hasOwn(embedded, id)), [], `the page embeds every default its own destinations name, for ${context}`);
 }
 
+{
+	const plain = layoutOf({ title: "Plain", min: 200, max: 300 });
+	assert.equal(Object.hasOwn(plain, "zoomable"), false, "a declaration that cannot zoom carries no zoomable field, so existing hashes stay the same");
+	assert.equal(layoutOf({ title: "Zoomable", min: 200, max: 300, zoomable: true }).zoomable, true, "one that can zoom says so");
+}
+
 console.log("Layout declaration scenarios passed");

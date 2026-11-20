@@ -221,6 +221,8 @@ body {
 }
 .metadata-link:hover { background: var(--chosen); }
 .metadata-link[aria-current="true"] { background: var(--chosen); color: var(--accent); }
+.zoom-toggle { border: 0; background: none; padding: 0 4px; font: inherit; font-size: 14px; line-height: 1; color: var(--muted); cursor: pointer; }
+.zoom-toggle:hover, .zoom-toggle[aria-pressed="true"] { color: var(--accent); }
 
 .metadata { padding: 10px; font-size: 13px; }
 .metadata dl { margin: 0 0 12px; display: grid; grid-template-columns: auto 1fr; gap: 4px 10px; }

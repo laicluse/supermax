@@ -987,6 +987,34 @@ test("Show asks first, so a host can keep it from closing a cell, and names the 
 	assert.deepEqual(done, ["depth:20"], "without a refusal it closes them and names them the same way");
 });
 
+test("zooming a cell hides the cells before it, keeps what follows, and Show zooms out, like v1", async () => {
+	await openDemo([open("album:coast", "albums"), open("coast:photo:c", coast.row("thumbnails"))]);
+	await resize([[1400, 640], [420, 640]]);
+	const photo = coast.photo("thumbnails", "c");
+	const shown = () => page.evaluate(() => [...document.querySelectorAll('.frame[data-frame="a"] .supermax-cell')].filter((cell) => cell.closest(".supermax-row")?.matches('[data-row$="coast:thumbnails"]') && getComputedStyle(cell).visibility !== "hidden" && cell.getBoundingClientRect().width > 0).map((cell) => cell.dataset.occurrence.split("/").pop()));
+	const before = await shown();
+	assert.deepEqual(before.slice(0, 3), ["coast:thumbnails", "coast:photo:c", "coast:metadata:c"]);
+	const events = await page.evaluate((photo) => {
+		const workspace = window.supermaxDemo.frames[0].workspace;
+		window.zoomEvents = [];
+		workspace.addEventListener("zoom", (event) => window.zoomEvents.push(event.detail.occurrence?.split("/").pop() ?? null));
+		document.querySelector(`.frame[data-frame="a"] [data-occurrence="${photo}"] .supermax-cell-title .zoom-toggle`).click();
+		return window.zoomEvents;
+	}, photo);
+	await settle();
+	await page.evaluate(() => document.getAnimations().forEach((animation) => animation.finish()));
+	assert.deepEqual(events, ["coast:photo:c"], "the header's zoom control zooms Photo C");
+	const zoomed = await shown();
+	assert.deepEqual(zoomed.slice(0, 2), ["coast:photo:c", "coast:metadata:c"], `Thumbnails hides, and Photo C keeps what follows it: ${zoomed}`);
+	const navbar = await page.locator(inFrame("a", ".supermax-up")).evaluate((button) => ({ hidden: button.hidden, text: button.textContent }));
+	assert.deepEqual(navbar, { hidden: false, text: "‹Thumbnails" }, "the Show control offers the way back to the zoomed cell's hidden parent");
+	await page.click(inFrame("a", ".supermax-up"));
+	await settle();
+	await page.evaluate(() => document.getAnimations().forEach((animation) => animation.finish()));
+	assert.deepEqual(await page.evaluate(() => window.zoomEvents), ["coast:photo:c", null], "and Show zooms out first");
+	assert.deepEqual(await shown(), before, "bringing everything back, with nothing closed");
+});
+
 test("clicks faster than a stroke tear the earlier cells off from where they are, and nothing jumps", { skip: PRESENTATION !== "origami" }, async () => {
 	await openDemo([open("album:coast", "albums")]);
 	await page.evaluate(() => Promise.all(["b", "c", "d"].map((id) => window.supermaxDemo.prepare(`coast:photo:${id}`))));

@@ -56,6 +56,7 @@ export class Navigator {
 		this.occurrences = new Map();
 		this.groups = [];
 		this.groupSequence = 0;
+		this.zoomed = null;
 		this.windowStarts = new Map();
 		this.rowStarts = new Map();
 		this.sizes = { width: new Map(), height: new Map() };
@@ -219,6 +220,7 @@ export class Navigator {
 		}
 		const parent = occurrence.parent ? this.get(occurrence.parent) : null;
 		if (parent && parent.children[occurrence.slot] === occurrence.id) parent.children[occurrence.slot] = undefined;
+		if (this.zoomed === occurrence.id) this.zoomed = null;
 		this.occurrences.delete(occurrence.id);
 		this.windowStarts.delete(occurrence.id);
 		this.rowStarts.delete(occurrence.id);
@@ -236,6 +238,17 @@ export class Navigator {
 	newestGroup() {
 		const group = this.groups[this.groups.length - 1];
 		return group ? { id: group.id, title: group.title } : null;
+	}
+
+	zoom(occurrenceId) {
+		if (occurrenceId === null) {
+			this.zoomed = null;
+			return true;
+		}
+		const occurrence = this.get(occurrenceId);
+		if (!occurrence || !this.definitionOf(occurrence.destination).zoomable) return false;
+		this.zoomed = occurrence.id;
+		return true;
 	}
 
 	setTitle(occurrenceId, title) {
@@ -413,6 +426,7 @@ export class Navigator {
 			occurrences: [...this.occurrences.values()].map((occurrence) => ({ ...occurrence, children: [...occurrence.children] })),
 			groups: this.groups.map((group) => ({ ...group })),
 			groupSequence: this.groupSequence,
+			zoomed: this.zoomed,
 			windowStarts: [...this.windowStarts],
 			rowStarts: [...this.rowStarts],
 			sizes: { width: [...this.sizes.width], height: [...this.sizes.height] },
@@ -424,6 +438,7 @@ export class Navigator {
 		this.occurrences = new Map(snapshot.occurrences.map((occurrence) => [occurrence.id, { ...occurrence, children: [...occurrence.children] }]));
 		this.groups = snapshot.groups.map((group) => ({ ...group }));
 		this.groupSequence = snapshot.groupSequence;
+		this.zoomed = snapshot.zoomed ?? null;
 		this.windowStarts = new Map(snapshot.windowStarts ?? []);
 		this.rowStarts = new Map(snapshot.rowStarts ?? []);
 		this.sizes = { width: new Map(snapshot.sizes?.width ?? []), height: new Map(snapshot.sizes?.height ?? []) };

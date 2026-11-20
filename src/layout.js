@@ -107,6 +107,17 @@ function sessionsHold(bounds, budget) {
 	return bounds.reduce((sum, bound) => sum + (bound.session === null ? bound.min : Math.min(bound.reach ?? bound.max, Math.max(bound.min, bound.session))), 0) <= budget;
 }
 
+function zoomAnchors(model) {
+	const anchors = new Set();
+	let current = model.zoomed ? model.get(model.zoomed) : null;
+	while (current) {
+		anchors.add(current.id);
+		const root = chainRootOf(model, current);
+		current = root.parent ? model.get(root.parent) : null;
+	}
+	return anchors;
+}
+
 function allocateChain(model, cells, width) {
 	const { compact } = compactPass(model, cells, width);
 	const bounds = cells.map((occurrence) => {
@@ -118,8 +129,13 @@ function allocateChain(model, cells, width) {
 		return { ...widthBounds(definition), session: model.sizeOf(occurrence.id, "width") };
 	});
 	const hard = sessionsHold(bounds, width);
-	const configs = cells.map((occurrence, index) => ({ id: occurrence.id, title: occurrence.title, keep: !!model.definitionOf(occurrence.destination).keep, ...sessionBounds(bounds[index], bounds[index].session, hard) }));
-	const allocation = new CellCollection(configs).distribute(width, null);
+	const anchors = zoomAnchors(model);
+	const anchor = cells.find((occurrence) => anchors.has(occurrence.id))?.id ?? null;
+	const configs = cells.map((occurrence, index) => {
+		const config = { id: occurrence.id, title: occurrence.title, keep: !!model.definitionOf(occurrence.destination).keep, ...sessionBounds(bounds[index], bounds[index].session, hard) };
+		return occurrence.id === anchor ? { ...config, zoomable: true, elastic: true } : config;
+	});
+	const allocation = new CellCollection(configs).distribute(width, anchor);
 	return { allocation, compact };
 }
 

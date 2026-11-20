@@ -2,7 +2,7 @@ export const LAYOUT_HEADER = "Supermax-Layout";
 export const LAYOUT_SCHEMA = 1;
 
 const REQUIRED = ["title", "min", "max", "preferred", "defaultChild"];
-const FIELDS = new Set([...REQUIRED, "keep", "compact", "rows"]);
+const FIELDS = new Set([...REQUIRED, "keep", "compact", "rows", "zoomable"]);
 const ROW_FIELDS = new Set(["destination", "minHeight", "maxHeight", "preferredHeight", "keep"]);
 
 export class SupermaxLayoutError extends Error {
@@ -26,6 +26,7 @@ export function layoutOf(definition) {
 		compact: definition.compact ? { min: definition.compact.min } : null,
 		rows: definition.rows ? definition.rows.map((row) => ({ destination: row.destination, minHeight: row.minHeight, maxHeight: row.maxHeight, preferredHeight: row.preferredHeight ?? null, keep: !!row.keep })) : null,
 		defaultChild: definition.defaultChild ?? null,
+		...(definition.zoomable ? { zoomable: true } : {}),
 	};
 }
 
