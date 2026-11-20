@@ -159,3 +159,42 @@ test("a strip that keeps running leaves cells that moved to another strip where 
 	});
 	assert.deepEqual(result, { inArriving: true, scrollTop: 240, afterDestroy: true }, "the old strip leaves the moved cell and its scroll position alone, also when it closes it or is destroyed");
 });
+
+test("content inside a closing split stays in the document until the host has it back", async () => {
+	const lost = await page.evaluate(async () => {
+		window.retention?.workspace.destroy();
+		document.body.replaceChildren();
+		const { Navigator, Workspace } = await import("/src/index.js");
+		const host = document.createElement("div");
+		host.style.cssText = "position:relative;width:1200px;height:600px";
+		document.body.append(host);
+		const navigator = new Navigator({ root: "menu", minViewportHeight: 400, destinations: {
+			menu: { title: "Menu", min: 200, max: 200, overflow: { mode: "keep" } },
+			board: { title: "Board", header: "title", rows: [{ destination: "lanes", minHeight: 200, maxHeight: "*", preferredHeight: 400 }, { destination: "summary", minHeight: 80, maxHeight: 120 }] },
+			lanes: { title: "Lanes", min: 300, max: "*", preferred: 600 },
+			summary: { title: "Summary", min: 300, max: "*", preferred: 600 },
+			editor: { title: "Editor", header: "title", min: 300, max: 600 },
+		} });
+		const elements = new Map();
+		const returned = new Set();
+		const workspace = new Workspace(host, { navigator, content: (occurrence) => {
+			const element = document.createElement("div");
+			elements.set(occurrence.id, element);
+			return { element, dispose: () => returned.add(occurrence.id) };
+		} });
+		workspace.sync(["menu", "board"], { origin: null, animate: false });
+		const lost = new Set();
+		const watch = new MutationObserver(() => {
+			for (const [id, element] of elements) if (id !== "menu/board" && !element.isConnected && !returned.has(id)) lost.add(id);
+		});
+		watch.observe(document, { childList: true, subtree: true });
+		workspace.sync(["menu", "editor"], { origin: null });
+		const until = performance.now() + 3000;
+		while (performance.now() < until && !["menu/board/lanes", "menu/board/summary"].every((id) => returned.has(id))) await new Promise((resolve) => requestAnimationFrame(resolve));
+		watch.disconnect();
+		window.retention = { workspace };
+		return { lost: [...lost], returned: [...returned].sort() };
+	});
+	assert.deepEqual(lost.returned.filter((id) => id !== "menu/board"), ["menu/board/lanes", "menu/board/summary"], "the host gets the content of both rows back");
+	assert.deepEqual(lost.lost, [], "no content left the document before its dispose ran");
+});

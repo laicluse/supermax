@@ -91,8 +91,9 @@ function poseMatrix(element, pose) {
 }
 
 export class CellStrip {
-	constructor(viewport, { duration = STRIP_TIMING.duration, easing = STRIP_TIMING.easing, settle = STRIP_TIMING.settle, time = new TimeScale(), motion = null, horizon = null, toward = null } = {}) {
+	constructor(viewport, { duration = STRIP_TIMING.duration, easing = STRIP_TIMING.easing, settle = STRIP_TIMING.settle, time = new TimeScale(), motion = null, horizon = null, toward = null, handBack = null } = {}) {
 		this.time = time;
+		this.handBack = handBack;
 		this.settling = settle;
 		this.departures = new Map();
 		this.roomDelay = 0;
@@ -646,6 +647,7 @@ export class CellStrip {
 		entry.element.style.removeProperty("margin-left");
 		this.clearFoldPaper(entry);
 		const box = this.boxOf(entry);
+		this.handBack?.(entry.element);
 		box.remove();
 		for (const property of ["position", "top", "left", "margin-right"]) box.style.removeProperty(property);
 		entry.element.style.removeProperty("transform-origin");

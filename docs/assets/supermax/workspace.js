@@ -22,7 +22,7 @@ function normalizePresentation(presentation) {
 	if (!/^[a-z][a-z0-9-]*$/.test(presentation.name)) throw new TypeError("presentation name must be a lowercase identifier");
 	const motion = presentation.motion ?? null;
 	const source = presentation.createStrip ?? null;
-	const createStrip = source ?? ((viewport, workspace) => new CellStrip(viewport, { motion, time: workspace.time, horizon: () => workspace.horizon(), toward: (leaving, arriving) => workspace.towardOf(leaving, arriving) }));
+	const createStrip = source ?? ((viewport, workspace) => new CellStrip(viewport, { motion, time: workspace.time, handBack: (element) => workspace.retireWithin(element), horizon: () => workspace.horizon(), toward: (leaving, arriving) => workspace.towardOf(leaving, arriving) }));
 	return Object.freeze({ name: presentation.name, motion, source, createStrip });
 }
 
@@ -871,19 +871,20 @@ export class Workspace extends EventTarget {
 			this.leavingCells.set(occurrenceId, entry);
 			entry.slot.leave();
 			if (entry.element.classList.contains("is-split")) this.dividers.dispose(entry.body.firstElementChild);
-			this.afterExit(entry.element, () => {
+			entry.retire = () => {
 				if (this.leavingCells.get(occurrenceId) !== entry) return;
 				this.leavingCells.delete(occurrenceId);
 				this.origins.delete(occurrenceId);
 				entry.slot.dispose();
 				entry.chromePart.dispose(); entry.materialPart.dispose(); entry.veilPart.dispose();
-			});
+			};
+			this.afterExit(entry.element, entry.retire);
 		}
 		for (const [rowId, entry] of this.rows) {
 			if (this.navigator.get(rowId)) continue;
 			this.rows.delete(rowId);
 			const strip = this.chains.get(rowId)?.strip;
-			this.afterExit(entry.element, () => entry.element.remove());
+			this.afterExit(entry.element, () => this.discard(entry.element));
 			this.closingRows.push({ entry, rowId, strip });
 		}
 		for (const [chainRootId, entry] of this.chains) {
@@ -891,11 +892,22 @@ export class Workspace extends EventTarget {
 			this.chains.delete(chainRootId);
 			this.dividers.dispose(entry.viewport);
 			entry.strip.update([], { animate: this.animating }).then(() => this.afterExit(entry.viewport, () => {
+				this.retireWithin(entry.viewport);
 				entry.strip.destroy();
 				entry.viewport.remove();
 			}));
 		}
 		for (const { entry, rowId, strip } of this.closingRows.splice(0)) this.followRow(entry, rowId, strip);
+	}
+
+	// allow-comment: a row or chain can finish leaving before the cells inside it have; the host gets their content back first, so it never finds its own elements outside the document without having been told.
+	retireWithin(container) {
+		for (const entry of [...this.leavingCells.values()]) if (container.contains(entry.element)) entry.retire();
+	}
+
+	discard(element) {
+		this.retireWithin(element);
+		element.remove();
 	}
 
 	afterExit(element, dispose) {
