@@ -1,4 +1,4 @@
-import { chainCells, chainFits, chainRootOf, chainWidth, isSplit, layoutWorkspace, validateSplit } from "./layout.js";
+import { ELASTIC, chainCells, chainFits, chainRootOf, chainWidth, isSplit, layoutWorkspace, validateSplit } from "./layout.js";
 import { sameLayout, validateDeclarationSet } from "./layout-declaration.js";
 
 const DEFAULT_CHROME = { navbar: 44, maxRows: 4 };
@@ -24,12 +24,17 @@ export function validateDestinations(destinations, { minViewportHeight, chrome =
 		.filter((id) => isSplit(destinations[id]))
 		.map((id) => ({ destination: id, validation: validateSplit(model, id, null) }))
 		.filter((problem) => !problem.validation.ok);
+	const elastic = Object.keys(destinations).filter((id) => destinations[id].max === ELASTIC);
+	for (const id of elastic) {
+		if (!(destinations[id].preferred >= destinations[id].min)) problems.push({ destination: id, reason: "elastic-without-preferred" });
+	}
+	if (elastic.length === 0) problems.push({ destination: "(destinations)", reason: "no-elastic-destination" });
 	return { ok: problems.length === 0, problems };
 }
-const SPARE_SPACE = Object.freeze(["stretch", "start", "center", "end"]);
+const SPARE_SPACE = Object.freeze(["start", "center", "end"]);
 
 export class Navigator {
-	constructor({ destinations, root, minViewportHeight, chrome = {}, spareSpace = "stretch", context = null }) {
+	constructor({ destinations, root, minViewportHeight, chrome = {}, spareSpace = "start", context = null }) {
 		if (!Number.isFinite(minViewportHeight)) throw new TypeError("minViewportHeight must be a finite number of pixels");
 		if (!SPARE_SPACE.includes(spareSpace)) throw new TypeError(`spareSpace must be one of ${SPARE_SPACE.join(", ")}`);
 		this.spareSpace = spareSpace;

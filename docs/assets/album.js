@@ -3,11 +3,11 @@ import { LAYOUT_SCHEMA, layoutOf } from "./supermax/layout-declaration.js";
 export const minViewportHeight = 360;
 
 const widths = {
-	albums: { min: 200, max: 320, keep: true, compact: { min: 48 } },
-	album: { min: 300, max: 1600 },
+	albums: { min: 200, max: 320, preferred: 200, keep: true, compact: { min: 48 } },
+	album: { min: 300, max: "*", preferred: 1600 },
 	selector: { min: 200, max: 360 },
 	map: { min: 220, max: 480 },
-	photo: { min: 240, max: 520, preferred: 360 },
+	photo: { min: 240, max: "*", preferred: 360 },
 	metadata: { min: 200, max: 320, preferred: 220 },
 	history: { min: 200, max: 320 },
 	edit: { min: 200, max: 320 },
@@ -28,7 +28,7 @@ export const albums = [
 		id: "coast",
 		title: "Coast",
 		rows: [
-			{ key: "thumbnails", title: "Thumbnails", minHeight: 180, maxHeight: 520, preferredHeight: 240 },
+			{ key: "thumbnails", title: "Thumbnails", minHeight: 180, maxHeight: "*", preferredHeight: 240 },
 			{ key: "map", title: "Map", minHeight: 180, maxHeight: 520, preferredHeight: 200 },
 			{ key: "people", title: "People", minHeight: 180, maxHeight: 520, preferredHeight: 200 },
 		],
@@ -43,7 +43,7 @@ export const albums = [
 		id: "empty",
 		title: "Empty album",
 		rows: [
-			{ key: "thumbnails", title: "Thumbnails", minHeight: 180, maxHeight: 520 },
+			{ key: "thumbnails", title: "Thumbnails", minHeight: 180, maxHeight: "*", preferredHeight: 240 },
 			{ key: "map", title: "Map", minHeight: 180, maxHeight: 520 },
 		],
 		photos: [],
@@ -52,7 +52,7 @@ export const albums = [
 		id: "lab-fit",
 		title: "Lab: exact fit",
 		rows: [
-			{ key: "thumbnails", title: "Gallery", minHeight: 316, maxHeight: 600 },
+			{ key: "thumbnails", title: "Gallery", minHeight: 316, maxHeight: "*", preferredHeight: 400 },
 			{ key: "map", title: "Notes", minHeight: 180, maxHeight: 520 },
 		],
 		photos: [{ id: "x", title: "Photo X", date: "Jan 1, 2024", place: "Lab", tags: "fixture", hue: 300 }],

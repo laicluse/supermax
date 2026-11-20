@@ -15,7 +15,7 @@ const model = new Navigator({
   minViewportHeight: 360,
   destinations: {
     inbox: { title: "Inbox", min: 240, max: 360, compact: { min: 48 }, data: { kind: "list" } },
-    "message:1": { title: "Weekly report", min: 320, max: 640, preferred: 420, defaultChild: "attachments:1", data: { kind: "message" } },
+    "message:1": { title: "Weekly report", min: 320, max: "*", preferred: 420, defaultChild: "attachments:1", data: { kind: "message" } },
     "attachments:1": { title: "Attachments", min: 200, max: 320, data: { kind: "attachments" } },
   },
 });
@@ -43,7 +43,7 @@ const cells = new CellCollection([
 const layout = cells.distribute(16);
 ```
 
-`distribute(budget, anchorId, { spare })` resets every cell to its minimum, hides cells from the left until the chain fits, and shares the remaining budget by `preferred` size when cells declare one, otherwise by `max` weight. When every visible cell reaches its `max` and budget remains, `spare: "stretch"` (the default) gives the rest to the cell with the largest `max`, past that max; any other value leaves the rest unallocated. The unit is whatever the caller measures in: columns or pixels. The last cell survives a shortage. `anchorId` names a `zoomable` cell that hides everything to its left. The module has no global side effects.
+`distribute(budget, anchorId)` resets every cell to its minimum, hides cells from the left until the chain fits, and shares the remaining budget by `preferred` size when cells declare one, otherwise by `max` weight. When every visible cell reaches its `max` and budget remains, the newest visible cell marked `elastic: true` takes the rest; without one the rest stays unallocated. The unit is whatever the caller measures in: columns or pixels. The last cell survives a shortage. `anchorId` names a `zoomable` cell that hides everything to its left. The module has no global side effects.
 
 ## Navigating branching rows
 
@@ -57,15 +57,15 @@ const model = new Navigator({
   destinations: {
     albums: { title: "Albums", min: 200, max: 320, data: { kind: "albums" } },
     "album:coast": {
-      title: "Coast", min: 320, max: 1600,
+      title: "Coast", min: 320, max: "*", preferred: 1600,
       rows: [
-        { destination: "thumbnails", minHeight: 180, maxHeight: 520 },
+        { destination: "thumbnails", minHeight: 180, maxHeight: "*", preferredHeight: 240 },
         { destination: "map", minHeight: 180, maxHeight: 520 },
       ],
     },
     thumbnails: { title: "Thumbnails", min: 200, max: 360, defaultChild: "photo:a", data: { kind: "selector" } },
     map: { title: "Map", min: 220, max: 480, data: { kind: "selector" } },
-    "photo:a": { title: "Photo A", min: 240, max: 520, defaultChild: "metadata:a", data: { kind: "photo" } },
+    "photo:a": { title: "Photo A", min: 240, max: "*", preferred: 360, defaultChild: "metadata:a", data: { kind: "photo" } },
     "metadata:a": { title: "Metadata A", min: 200, max: 320, data: { kind: "metadata" } },
   },
 });
@@ -81,7 +81,7 @@ workspace.requestUp();
 
 A destination is a cell definition: a title, `min` and `max` width in pixels, optionally a `defaultChild` that opens automatically when the row has room, or `rows` that split the cell into vertically stacked rows. Each row runs its own horizontal chain starting from the row's destination. `data` is the host's own payload and comes back untouched in the `content` callback. An opened destination is an occurrence whose id is the path of destination ids from the root, so the same photo opened from two rows is two occurrences with their own state.
 
-`minViewportHeight` is the smallest window height the application supports. The navigator checks every split against it when it is created and throws a `SupermaxConfigurationError` for one that cannot fit; `validateDestinations` runs that check on its own, and a split that arrives later is checked before it opens. `spareSpace` says what happens when the cells in view have all reached their `max` and the viewport is still larger: `"stretch"` (the default) draws the largest cell past its max, and `"start"`, `"center"` or `"end"` keep every cell at its max and show the canvas beside them, with the cells aligned that way. The optional `chrome` option names the sizes that validation counts with: `navbar` (default 44) and `maxRows` per split (default 4). The workspace writes `navbar` onto its element as `--supermax-navbar`, so the stylesheet draws what the model computed. Colours come from `--supermax-ink`, `--supermax-muted`, `--supermax-line`, `--supermax-surface`, `--supermax-muted-surface`, `--supermax-canvas`, `--supermax-accent` and `--supermax-warn`, each with a fallback. Supermax writes as few words as it can, most of them only in accessible names, and they are English by default. A host that wants them in another language passes `strings` to the workspace with only the entries it replaces, each a function so every language picks its own word order. `DEFAULT_STRINGS` lists every key; an unknown key or a value that is not a function throws, so a typo never falls back to English silently.
+`minViewportHeight` is the smallest window height the application supports. The navigator checks every split against it when it is created and throws a `SupermaxConfigurationError` for one that cannot fit; `validateDestinations` runs that check on its own, and a split that arrives later is checked before it opens. Every layout has an elastic cell: a destination declares `max: "*"` with a `preferred` width, and every split has exactly one row with `maxHeight: "*"` and a `preferredHeight`. An elastic cell or row shares space like the others, with its preference as its max, and takes whatever is left once the others in view have reached their `max`; when several elastic cells are in view, the newest one does. `validateDestinations` and `register()` refuse a configuration without an elastic destination, a split without exactly one elastic row, and an elastic cell or row without its preference. When no elastic cell is in view, `spareSpace` places the canvas that shows: `"start"` (the default), `"center"` or `"end"` align the cells that way. The optional `chrome` option names the sizes that validation counts with: `navbar` (default 44) and `maxRows` per split (default 4). The workspace writes `navbar` onto its element as `--supermax-navbar`, so the stylesheet draws what the model computed. Colours come from `--supermax-ink`, `--supermax-muted`, `--supermax-line`, `--supermax-surface`, `--supermax-muted-surface`, `--supermax-canvas`, `--supermax-accent` and `--supermax-warn`, each with a fallback. Supermax writes as few words as it can, most of them only in accessible names, and they are English by default. A host that wants them in another language passes `strings` to the workspace with only the entries it replaces, each a function so every language picks its own word order. `DEFAULT_STRINGS` lists every key; an unknown key or a value that is not a function throws, so a typo never falls back to English silently.
 
 ```js
 new Workspace(element, {

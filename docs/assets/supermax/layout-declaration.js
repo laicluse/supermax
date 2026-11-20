@@ -17,6 +17,7 @@ export class SupermaxLayoutError extends Error {
 }
 
 const size = (value) => Number.isFinite(value) && value > 0;
+const ELASTIC = "*";
 
 export function layoutOf(definition) {
 	return {
@@ -47,12 +48,15 @@ function problemsOf(id, declaration) {
 	if (Object.keys(declaration).some((key) => !FIELDS.has(key))) problems.push("unknown-field");
 	if (REQUIRED.some((key) => !Object.hasOwn(declaration, key))) problems.push("missing-field");
 	if (typeof declaration.title !== "string" || declaration.title.trim().length === 0) problems.push("invalid-title");
-	if (!size(declaration.min) || !size(declaration.max) || declaration.min > declaration.max) problems.push("invalid-size");
-	if (declaration.preferred != null && (!size(declaration.preferred) || declaration.preferred < declaration.min || declaration.preferred > declaration.max)) problems.push("invalid-preferred");
+	const elastic = declaration.max === ELASTIC;
+	if (!size(declaration.min) || (!elastic && (!size(declaration.max) || declaration.min > declaration.max))) problems.push("invalid-size");
+	if (elastic && !(size(declaration.preferred) && declaration.preferred >= declaration.min)) problems.push("elastic-without-preferred");
+	else if (declaration.preferred != null && (!size(declaration.preferred) || declaration.preferred < declaration.min || (!elastic && declaration.preferred > declaration.max))) problems.push("invalid-preferred");
 	if (declaration.compact != null && (!size(declaration.compact.min) || Object.keys(declaration.compact).some((key) => key !== "min"))) problems.push("invalid-compact");
 	if (declaration.rows != null) {
 		const rows = declaration.rows;
-		const badRow = (row) => !row || typeof row.destination !== "string" || Object.keys(row).some((key) => !ROW_FIELDS.has(key)) || !size(row.minHeight) || !size(row.maxHeight) || row.minHeight > row.maxHeight;
+		const badHeight = (row) => (row.maxHeight === ELASTIC ? !(size(row.preferredHeight) && row.preferredHeight >= row.minHeight) : !size(row.maxHeight) || row.minHeight > row.maxHeight);
+		const badRow = (row) => !row || typeof row.destination !== "string" || Object.keys(row).some((key) => !ROW_FIELDS.has(key)) || !size(row.minHeight) || badHeight(row);
 		if (!Array.isArray(rows) || rows.length === 0 || rows.some(badRow)) problems.push("invalid-row-shape");
 	}
 	if (declaration.defaultChild != null && (typeof declaration.defaultChild !== "string" || declaration.defaultChild.length === 0 || declaration.defaultChild === id)) problems.push("invalid-default");

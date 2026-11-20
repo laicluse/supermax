@@ -10,7 +10,6 @@ import { frustumOrigin } from "./origin.js";
 import { defaultNoticeIcon } from "./icons.js";
 import { HORIZON, ORIGAMI_PRESENTATION } from "./origami.js";
 
-
 function normalizePresentation(presentation) {
 	if (!presentation || typeof presentation.name !== "string" || presentation.name.length === 0) throw new TypeError("presentation needs a name");
 	if (!/^[a-z][a-z0-9-]*$/.test(presentation.name)) throw new TypeError("presentation name must be a lowercase identifier");
@@ -20,9 +19,9 @@ function normalizePresentation(presentation) {
 	return Object.freeze({ name: presentation.name, motion, source, createStrip });
 }
 
-// How far spare space pushes the cells in from the start; stretch leaves none.
-const ALIGN = Object.freeze({ stretch: 0, start: 0, center: 0.5, end: 1 });
-const JUSTIFY = Object.freeze({ stretch: "flex-start", start: "flex-start", center: "center", end: "flex-end" });
+// How far spare space pushes the cells in from the start when no elastic cell takes it.
+const ALIGN = Object.freeze({ start: 0, center: 0.5, end: 1 });
+const JUSTIFY = Object.freeze({ start: "flex-start", center: "center", end: "flex-end" });
 
 export class Workspace extends EventTarget {
 	constructor(element, { navigator, content, onIntent = null, presentation = ORIGAMI_PRESENTATION, strings = {}, origin = frustumOrigin, overlayRoot = element.ownerDocument.body, noticePlacement = "source", noticeIcon = defaultNoticeIcon }) {
@@ -33,7 +32,6 @@ export class Workspace extends EventTarget {
 		this.noticePlacement = noticePlacement;
 		if (origin !== null && typeof origin !== "function") throw new TypeError("origin must be a function that draws links, or null to draw none");
 		this.strings = resolveStrings(strings);
-		this.pastMaxWarned = new Set();
 		this.origin = origin;
 		this.overlayRoot = overlayRoot;
 		this.element = element;
@@ -344,7 +342,6 @@ export class Workspace extends EventTarget {
 		try {
 			layout = this.navigator.layout();
 			this.layout = layout;
-			this.warnPastMax(layout);
 			this.upDestination = this.navigator.upTarget(layout);
 			const animating = animate && !this.reducedMotion.matches;
 			this.animating = animating;
@@ -430,19 +427,6 @@ export class Workspace extends EventTarget {
 		}
 		this.origin({ kind: "notice", layer: this.noticeOrigin, links: this.localLinks(this.noticeOrigin, [...bubbles.values()]) });
 		this.notices.veil();
-	}
-
-	warnPastMax(layout) {
-		const past = [
-			...[...layout.cells.values()].filter((cell) => cell.visible && !cell.compact && cell.width > cell.max + 0.5).map((cell) => [cell, "wider", cell.width, cell.max]),
-			...[...layout.rows.values()].filter((row) => row.visible && row.height > row.maxHeight + 0.5).map((row) => [row, "taller", row.height, row.maxHeight]),
-		];
-		for (const [item, direction, size, max] of past) {
-			const key = `${direction}:${item.occurrence.split("/").pop()}`;
-			if (this.pastMaxWarned.has(key)) continue;
-			this.pastMaxWarned.add(key);
-			console.warn(`Supermax: "${item.title}" is drawn ${Math.round(size)}px ${direction === "wider" ? "wide" : "tall"}, past its max of ${max}px, because the cells beside it cannot fill the space. Raise a max to keep this configuration within its bounds.`);
-		}
 	}
 
 	renderNavbar() {

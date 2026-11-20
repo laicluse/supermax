@@ -34,11 +34,12 @@ assert.equal(result.hiddenCount, 2);
 assert.equal(result.rightmostHiddenTitle, "Epics");
 assert.equal(result.cells[2].actual + result.cells[3].actual, 20);
 
-result = new CellCollection(configs.slice(0, 2)).distribute(20);
-assert.deepEqual(result.cells.map((cell) => cell.actual), [4, 16], "with every cell at its max, the largest takes the rest");
 const roomy = [{ id: "list", title: "List", min: 4, max: 10 }, { id: "detail", title: "Detail", min: 4, max: 5 }];
-assert.deepEqual(new CellCollection(roomy).distribute(20).cells.map((cell) => cell.actual), [15, 5], "the largest cell stretches, wherever it stands in the chain");
-assert.deepEqual(new CellCollection(roomy).distribute(20, null, { spare: "center" }).cells.map((cell) => cell.actual), [10, 5], "showing the canvas keeps every cell at its max");
+assert.deepEqual(new CellCollection(roomy).distribute(20).cells.map((cell) => cell.actual), [10, 5], "without an elastic cell every cell stays at its max and the canvas shows");
+const elastic = [{ ...roomy[0], elastic: true }, { ...roomy[1], elastic: true }];
+assert.deepEqual(new CellCollection([roomy[0], elastic[1]]).distribute(20).cells.map((cell) => cell.actual), [10, 10], "an elastic cell takes what is left, also when it is the smaller one");
+assert.deepEqual(new CellCollection(elastic).distribute(20).cells.map((cell) => cell.actual), [10, 10], "of two elastic cells the newest in view takes it");
+assert.deepEqual(new CellCollection([elastic[0], roomy[1]]).distribute(12).cells.map((cell) => cell.actual), [8, 4], "below every max an elastic cell shares like any other, its max being its preference");
 
 const kept = configs.map((config) => (config.id === "vault" ? { ...config, keep: true } : config));
 result = new CellCollection(kept).distribute(19);

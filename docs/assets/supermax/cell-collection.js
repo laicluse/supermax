@@ -15,6 +15,7 @@ export class CellProxy {
 	get max() { return this.config.max; }
 	get preferred() { return this.config.preferred ?? null; }
 	get zoomable() { return !!this.config.zoomable; }
+	get elastic() { return !!this.config.elastic; }
 	get visible() { return this.actual > 0; }
 }
 
@@ -51,7 +52,7 @@ export class CellCollection {
 		}
 	}
 
-	distributeRemainingSpace(maxColumns, spare) {
+	distributeRemainingSpace(maxColumns) {
 		const visible = this.proxies.filter((proxy) => proxy.visible);
 		if (visible.length === 0) return;
 		const sumOfVisibleMins = visible.reduce((sum, proxy) => sum + proxy.min, 0);
@@ -59,10 +60,8 @@ export class CellCollection {
 		const sumOfVisibleMaxes = visible.reduce((sum, proxy) => sum + proxy.max, 0);
 		if (maxColumns >= sumOfVisibleMaxes) {
 			visible.forEach((proxy) => { proxy.actual = proxy.max; });
-			if (spare === "stretch") {
-				const largest = visible.reduce((best, proxy) => (proxy.max >= best.max ? proxy : best));
-				largest.actual += maxColumns - sumOfVisibleMaxes;
-			}
+			const elastic = visible.findLast((proxy) => proxy.elastic);
+			if (elastic) elastic.actual += maxColumns - sumOfVisibleMaxes;
 			return;
 		}
 		if (visible.some((proxy) => proxy.preferred !== null)) {
@@ -133,12 +132,12 @@ export class CellCollection {
 		return -1;
 	}
 
-	distribute(maxColumns, anchorId, { spare = "stretch" } = {}) {
+	distribute(maxColumns, anchorId) {
 		this.resetActualsToMins();
 		if (this.sumOfActuals() > maxColumns) this.hideCellsToFit(maxColumns);
 		const anchorIndex = this.findAnchorIndex(anchorId == null ? null : anchorId);
 		if (anchorIndex > 0) this.hideCellsBeforeAnchor(anchorIndex);
-		this.distributeRemainingSpace(maxColumns, spare);
+		this.distributeRemainingSpace(maxColumns);
 		return {
 			cells: this.proxies.map((proxy) => ({
 				config: proxy.config,

@@ -1,7 +1,19 @@
 import { CellCollection } from "./cell-collection.js";
 
+export const ELASTIC = "*";
+
 export function isSplit(definition) {
 	return Array.isArray(definition?.rows);
+}
+
+export function widthBounds(definition) {
+	const elastic = definition.max === ELASTIC;
+	return { min: definition.min, max: elastic ? definition.preferred : definition.max, reach: elastic ? Infinity : definition.max, preferred: definition.preferred ?? null, elastic };
+}
+
+export function heightBounds(row) {
+	const elastic = row.maxHeight === ELASTIC;
+	return { min: row.minHeight, max: elastic ? row.preferredHeight : row.maxHeight, reach: elastic ? Infinity : row.maxHeight, preferred: row.preferredHeight ?? null, elastic };
 }
 
 export function validateSplit(model, definitionId, parentOccurrence) {
@@ -21,8 +33,9 @@ export function validateSplit(model, definitionId, parentOccurrence) {
 		if (rowDefinition && isSplit(rowDefinition)) problems.push("split-row");
 		if (seen.has(row.destination)) problems.push("duplicate-row-destination");
 		seen.add(row.destination);
-		if (row.minHeight > row.maxHeight) problems.push("row-min-exceeds-max");
-		if (rowDefinition && rowDefinition.min > rowDefinition.max) problems.push("cell-min-exceeds-max");
+		if (row.minHeight > heightBounds(row).reach) problems.push("row-min-exceeds-max");
+		if (row.maxHeight === ELASTIC && !(row.preferredHeight >= row.minHeight)) problems.push("elastic-without-preferred");
+		if (rowDefinition && rowDefinition.min > widthBounds(rowDefinition).reach) problems.push("cell-min-exceeds-max");
 		const required = chrome + row.minHeight;
 		if (required > model.minViewportHeight) problems.push("exceeds-supported-height");
 		return {
@@ -35,8 +48,10 @@ export function validateSplit(model, definitionId, parentOccurrence) {
 			problems,
 		};
 	});
-	const ok = results.every((row) => row.ok);
-	return { ok, reason: ok ? null : "invalid-rows", rows: results, chrome, supported: model.minViewportHeight };
+	const elastic = rows.filter((row) => row.maxHeight === ELASTIC).length;
+	const rowsOk = results.every((row) => row.ok);
+	const reason = !rowsOk ? "invalid-rows" : elastic === 0 ? "no-elastic-row" : elastic > 1 ? "several-elastic-rows" : null;
+	return { ok: reason === null, reason, rows: results, chrome, supported: model.minViewportHeight };
 }
 
 export function chainRootOf(model, occurrence) {
@@ -83,13 +98,13 @@ export function chainFits(model, cells, width) {
 }
 
 function sessionBounds(base, session, hard) {
-	if (session === null) return { min: base.min, max: base.max, preferred: base.preferred ?? null };
-	const size = Math.min(base.max, Math.max(base.min, session));
-	return { min: hard ? size : base.min, max: size, preferred: size };
+	if (session === null) return { min: base.min, max: base.max, preferred: base.preferred ?? null, elastic: !!base.elastic };
+	const size = Math.min(base.reach ?? base.max, Math.max(base.min, session));
+	return { min: hard ? size : base.min, max: size, preferred: size, elastic: !!base.elastic };
 }
 
 function sessionsHold(bounds, budget) {
-	return bounds.reduce((sum, bound) => sum + (bound.session === null ? bound.min : Math.min(bound.max, Math.max(bound.min, bound.session))), 0) <= budget;
+	return bounds.reduce((sum, bound) => sum + (bound.session === null ? bound.min : Math.min(bound.reach ?? bound.max, Math.max(bound.min, bound.session))), 0) <= budget;
 }
 
 function allocateChain(model, cells, width) {
@@ -100,11 +115,11 @@ function allocateChain(model, cells, width) {
 			const size = compactWidth(definition);
 			return { min: size, max: size, preferred: null, session: null };
 		}
-		return { min: definition.min, max: definition.max, preferred: definition.preferred ?? null, session: model.sizeOf(occurrence.id, "width") };
+		return { ...widthBounds(definition), session: model.sizeOf(occurrence.id, "width") };
 	});
 	const hard = sessionsHold(bounds, width);
 	const configs = cells.map((occurrence, index) => ({ id: occurrence.id, title: occurrence.title, keep: !!model.definitionOf(occurrence.destination).keep, ...sessionBounds(bounds[index], bounds[index].session, hard) }));
-	const allocation = new CellCollection(configs).distribute(width, null, { spare: model.spareSpace });
+	const allocation = new CellCollection(configs).distribute(width, null);
 	return { allocation, compact };
 }
 
@@ -174,7 +189,7 @@ function layoutChain(model, chainRoot, width, height, containerInView) {
 		const cellWidth = visible ? allocated.actual : definition.min;
 		const isCompact = visible && compact.has(occurrence.id);
 		const inView = containerInView && visible;
-		const cell = { occurrence: occurrence.id, title: occurrence.title, width: cellWidth, visible, compact: isCompact, inView, full: inView && !isCompact, kept: !!definition.keep, sized: model.sizeOf(occurrence.id, "width") !== null, min: definition.min, max: definition.max };
+		const cell = { occurrence: occurrence.id, title: occurrence.title, width: cellWidth, visible, compact: isCompact, inView, full: inView && !isCompact, kept: !!definition.keep, sized: model.sizeOf(occurrence.id, "width") !== null, min: definition.min, max: widthBounds(definition).reach };
 		if (isSplit(definition)) {
 			cell.rows = layoutRows(model, occurrence, cellWidth, height, inView);
 			overflow = overflow || cell.rows.overflow;
@@ -202,9 +217,9 @@ function layoutRows(model, split, width, height, containerInView) {
 	const budget = Math.max(0, height);
 	const allocate = (hiddenAtEnd) => {
 		const shown = roots.map((root, index) => index).filter((index) => index < roots.length - hiddenAtEnd || definition[index].keep);
-		const bounds = shown.map((index) => ({ min: definition[index].minHeight, max: definition[index].maxHeight, preferred: definition[index].preferredHeight ?? null, session: model.sizeOf(roots[index].id, "height") }));
+		const bounds = shown.map((index) => ({ ...heightBounds(definition[index]), session: model.sizeOf(roots[index].id, "height") }));
 		const hard = sessionsHold(bounds, budget);
-		const allocation = new CellCollection(shown.map((index, position) => ({ id: roots[index].id, title: roots[index].title, keep: !!definition[index].keep, ...sessionBounds(bounds[position], bounds[position].session, hard) }))).distribute(budget, null, { spare: model.spareSpace });
+		const allocation = new CellCollection(shown.map((index, position) => ({ id: roots[index].id, title: roots[index].title, keep: !!definition[index].keep, ...sessionBounds(bounds[position], bounds[position].session, hard) }))).distribute(budget, null);
 		return new Map(allocation.cells.map((cell) => [cell.config.id, cell]));
 	};
 	const startIndex = roots.findIndex((root) => root.id === model.rowStarts.get(split.id));
@@ -228,7 +243,7 @@ function layoutRows(model, split, width, height, containerInView) {
 			sized: model.sizeOf(root.id, "height") !== null,
 			inView: containerInView && visible,
 			minHeight: definition[index].minHeight,
-			maxHeight: definition[index].maxHeight,
+			maxHeight: heightBounds(definition[index]).reach,
 			chain: visible ? layoutChain(model, root, width, rowHeight, containerInView) : null,
 		};
 	});

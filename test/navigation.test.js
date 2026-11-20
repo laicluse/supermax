@@ -11,6 +11,7 @@ function model(width = 1000, height = 500) {
 }
 
 const titles = (instance) => instance.groups.map((group) => group.title);
+const elsewhere = { title: "Elsewhere", min: 100, max: "*", preferred: 100 };
 const closedTitles = (result) => result.closed.map((entry) => entry.title);
 
 function openGallery(instance) {
@@ -126,7 +127,13 @@ scenario("an impossible split is a configuration error for the developer before 
 	assert.equal(validateSplit(instance, "fit", instance.root).ok, true, "40 + 260 = 300 passes");
 	const report = validateDestinations({ ...destinations, ...invalidSplits }, { minViewportHeight, chrome });
 	const verdict = Object.fromEntries(report.problems.map((problem) => [problem.destination, problem.validation]));
-	assert.deepEqual(Object.keys(verdict).sort(), ["conflict", "crowd", "empty", "outer", "over", "twins"]);
+	assert.deepEqual(Object.keys(verdict).sort(), ["conflict", "crowd", "doubled", "empty", "outer", "over", "rigid", "twins", "unpreferred"]);
+	assert.equal(verdict.rigid.reason, "no-elastic-row", "a split without a row whose maxHeight is \"*\" has nowhere to put spare height");
+	assert.equal(verdict.doubled.reason, "several-elastic-rows", "and a split with two cannot say which one stretches");
+	assert.ok(verdict.unpreferred.rows[0].problems.includes("elastic-without-preferred"), "an elastic row declares its preferred height");
+	const cellProblems = (extra) => validateDestinations({ ...destinations, ...extra }, { minViewportHeight, chrome }).problems.map((problem) => [problem.destination, problem.reason]);
+	assert.deepEqual(cellProblems({ loose: { title: "Loose", min: 100, max: "*" } }), [["loose", "elastic-without-preferred"]], "an elastic cell declares its preferred width");
+	assert.deepEqual(validateDestinations({ root: { title: "Root", min: 100, max: 200 } }, { minViewportHeight, chrome }).problems.map((problem) => problem.reason), ["no-elastic-destination"], "a configuration without any elastic cell is refused");
 	const failing = verdict.over.rows.find((candidate) => !candidate.ok);
 	assert.deepEqual({ title: failing.title, required: failing.required, chrome: failing.chrome, supported: failing.supported }, { title: "List", required: 301, chrome: 40, supported: 300 }, "one pixel over fails");
 	assert.deepEqual(verdict.conflict.rows[0].problems, ["row-min-exceeds-max", "cell-min-exceeds-max"]);
@@ -137,7 +144,7 @@ scenario("an impossible split is a configuration error for the developer before 
 	assert.ok(verdict.outer.rows[0].problems.includes("split-row"));
 	assert.throws(() => new Navigator({ destinations: { ...destinations, over: invalidSplits.over }, root: "root", minViewportHeight, chrome }), (error) => error instanceof SupermaxConfigurationError && /over, row 0 \(List\): exceeds-supported-height; needs 301px of 300px/.test(error.message), "the navigator refuses an impossible configuration when it is created and names the split, the row and the numbers");
 	assert.throws(() => new Navigator({ destinations, root: "root" }), TypeError, "a missing minimum height is a configuration error");
-	assert.throws(() => new Navigator({ destinations, root: "root", minViewportHeight, chrome, spareSpace: "middle" }), /spareSpace must be one of stretch, start, center, end/, "an unknown spare-space mode is a configuration error");
+	assert.throws(() => new Navigator({ destinations, root: "root", minViewportHeight, chrome, spareSpace: "middle" }), /spareSpace must be one of start, center, end/, "an unknown spare-space mode is a configuration error");
 });
 
 scenario("a split cannot open inside a row, and a row cannot be a split", () => {
@@ -213,7 +220,7 @@ scenario("Up reaches every cell hidden above the window, newest branch first, ne
 	assert.deepEqual(narrow.upTarget(), { id: row("grid"), title: "Grid" }, "the newest branch climbs first, wherever the focus is");
 	assert.deepEqual(titles(narrow), ["Gallery", "Item A", "Item B"], "finding a target closes nothing");
 
-	const chain = new Navigator({ destinations: { menu: { title: "Menu", min: 100, max: 100, keep: true, compact: { min: 20 } }, a: { title: "A", min: 100, max: 100, defaultChild: "b" }, b: { title: "B", min: 100, max: 100, defaultChild: "c" }, c: { title: "C", min: 100, max: 100 } }, root: "menu", minViewportHeight, chrome });
+	const chain = new Navigator({ destinations: { elsewhere, menu: { title: "Menu", min: 100, max: 100, keep: true, compact: { min: 20 } }, a: { title: "A", min: 100, max: 100, defaultChild: "b" }, b: { title: "B", min: 100, max: 100, defaultChild: "c" }, c: { title: "C", min: 100, max: 100 } }, root: "menu", minViewportHeight, chrome });
 	chain.resize({ width: 400, height: 500 });
 	chain.open("a", { from: "menu" });
 	chain.resize({ width: 120, height: 500 });
@@ -228,6 +235,7 @@ scenario("Up reaches every cell hidden above the window, newest branch first, ne
 
 scenario("showing a hidden parent closes as many cells from the end as it needs, and no more", () => {
 	const set = {
+		elsewhere,
 		menu: { title: "Menu", min: 100, max: 100 },
 		wide: { title: "Wide", min: 300, max: 300, defaultChild: "a" },
 		a: { title: "A", min: 50, max: 50, defaultChild: "b" },
@@ -272,6 +280,7 @@ scenario("a revealed outer chain does not change which defaults open", () => {
 
 scenario("only a kept cell stays, compact when space runs out; every other cell is in view or gone", () => {
 	const set = {
+		elsewhere,
 		menu: { title: "Menu", min: 100, max: 100, keep: true, compact: { min: 20 }, defaultChild: "a" },
 		a: { title: "A", min: 100, max: 100, compact: { min: 20 }, defaultChild: "b" },
 		b: { title: "B", min: 100, max: 100, defaultChild: "c" },
@@ -363,6 +372,8 @@ scenario("a destination opens only from its registered declaration, and a second
 	assert.throws(() => instance.register({ ...set, schemaVersion: 2 }), differs(["remote:a"], "schema-version"), "an unknown schema version is refused");
 	assert.throws(() => instance.register({ ...set, root: "remote:f", destinations: { "remote:f": { ...declared("Remote F"), data: { kind: "photo" } } } }), differs(["remote:f"], "unknown-field"), "a declaration carries layout only");
 	assert.throws(() => instance.register({ ...set, root: "remote:g", destinations: { "remote:g": declared("Remote G", { min: 300, max: 200 }) } }), differs(["remote:g"], "invalid-size"));
+	assert.throws(() => instance.register({ ...set, root: "remote:h", destinations: { "remote:h": declared("Remote H", { max: "*" }) } }), differs(["remote:h"], "elastic-without-preferred"), "an elastic declaration names its preferred width");
+	assert.deepEqual(instance.register({ ...set, root: "remote:i", destinations: { "remote:i": declared("Remote I", { max: "*", preferred: 180 }) } }), ["remote:i"], "and is accepted with it");
 	assert.throws(() => instance.register({ ...set, root: "remote:t", destinations: { "remote:t": declared("Remote T", { min: 300, max: 600, rows: [{ destination: "list", minHeight: 400, maxHeight: 500 }] }) } }), differs(["remote:t"], "invalid-rows"), "a split is validated against the minimum height when it is registered");
 	assert.equal(instance.definitionOf("remote:c"), null, "a refused set registers nothing");
 

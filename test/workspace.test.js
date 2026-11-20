@@ -457,21 +457,26 @@ test("cells stand one gutter apart over the canvas, and rows never run past thei
 	assert.equal(geometry.radius, "0px", "no rounded rectangles");
 });
 
-test("a chain whose cells all reach their maximum stretches its largest cell to the edge and warns once", async () => {
+test("an elastic cell in view takes the space the others leave, and without one the canvas shows", async () => {
 	const warnings = [];
 	const collect = (message) => { if (message.type() === "warning" && message.text().startsWith("Supermax:")) warnings.push(message.text()); };
 	page.on("console", collect);
 	await openDemo([open("album:coast", "albums")]);
+	await resize([[1600, 640], [420, 640]]);
 	page.off("console", collect);
-	const rows = await page.evaluate(() => [...document.querySelectorAll('.frame[data-frame="b"] .supermax-row .supermax-chain')].map((chain) => {
+	const rows = (key) => page.evaluate((frameKey) => [...document.querySelectorAll(`.frame[data-frame="${frameKey}"] .supermax-row .supermax-chain`)].map((chain) => {
 		const cells = [...chain.querySelectorAll(".supermax-cell")].filter((cell) => cell.getBoundingClientRect().width > 0 && getComputedStyle(cell).visibility !== "hidden");
-		return { gap: chain.getBoundingClientRect().right - cells.at(-1).getBoundingClientRect().right, last: cells.at(-1).dataset.occurrence.split("/").pop() };
-	}));
-	assert.deepEqual(rows.map((row) => row.last), ["coast:thumbnails", "coast:map", "coast:people"]);
-	for (const row of rows) assert.ok(Math.abs(row.gap) < 0.5, `${row.last} reaches the edge of its row`);
-	const thumbnails = warnings.filter((warning) => warning.includes('"Thumbnails"'));
-	assert.equal(thumbnails.length, 1, "one warning names the cell drawn past its max");
-	assert.match(thumbnails[0], /past its max of 360px/);
+		const photo = cells.find((cell) => cell.dataset.occurrence.includes("coast:photo:"));
+		return { gap: Math.round(chain.getBoundingClientRect().right - cells.at(-1).getBoundingClientRect().right), photo: photo ? Math.round(photo.getBoundingClientRect().width) : null };
+	}), key);
+	const wide = await rows("a");
+	assert.ok(wide.every((row) => row.gap === 0), `with the elastic photo in view every row reaches its edge: ${JSON.stringify(wide)}`);
+	assert.ok(wide.every((row) => row.photo > 360), "because the photo grows past its preferred width");
+	const narrow = await rows("b");
+	assert.ok(narrow.every((row) => row.photo === null), "the narrow frame shows no photo in its rows");
+	assert.ok(narrow[0].gap > 0 && narrow[2].gap > 0, `a selector narrower than its row, without an elastic cell beside it, leaves the canvas: ${JSON.stringify(narrow)}`);
+	assert.equal(narrow[1].gap, 0, "while the map, whose own max is wider than the row, fills it");
+	assert.deepEqual(warnings, [], "and nothing is drawn past a max, so nothing warns");
 });
 
 test("a host that shows the canvas keeps cells at their maximum and centres them", async () => {
