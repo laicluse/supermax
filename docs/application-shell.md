@@ -25,7 +25,7 @@ Write the complete product hierarchy before writing layout code, for example:
 workspace -> collection -> item -> task -> subdetail
 ```
 
-Each level is one cell with one data owner and one responsibility. Opening a child adds information to the right while preserving its ancestors on the left for as long as they fit. A modal, drawer, accordion, or page redirect is usually a sign that a true child has not been modeled as a cell.
+Each level is one cell with one data owner and one responsibility. Opening a child adds information to the right while preserving its ancestors on the left for as long as they fit. A modal, drawer, accordion, or page redirect that holds what reads as a cell is a sign that a true child has not been modeled as a cell; a modal stays right for a short task about one cell, as "A modal with an origin" describes.
 
 A cell whose children are independent of each other splits into rows instead of a chain:
 
@@ -148,6 +148,8 @@ Content loads through the same `content` callback: return a promise of `{ elemen
 The demo answers layout and content from the album catalog inside the page, with real `Response` objects and headers, a viewer, a delay and a failure switch as controls, so it also runs as a static site.
 
 ### A modal with an origin
+
+A modal where a modal belongs, a cell where one is needed, and a simple control or compact input stays where its task happens. A modal from its cell holds a short, infrequent task the user finishes and leaves; content or a process with its own weight opens as a cell and never goes in a modal; a new edit or create form never unfolds between a reading cell's content. The size and content of the task decide, not the pattern the application used before or the shape of its input, and feedback and confirmation follow the risk of the change. The `supermax:supermax` skill holds the full rule under "Control, modal or cell", with its sources from NN/g, Carbon and GOV.UK.
 
 `workspace.openModal({ title, content }, { from })` opens one dialog front and centre in the viewport, above a backdrop. The header carries the title and moves the dialog by pointer; the frustum shows where the modal comes from, and the dialog describes its source to assistive technology as `From <source title>` (`aria-description`, `strings.modalFrom`); the corner grip resizes it. The definition bounds it with the names cells and rows use: `min`, `max` and `preferred` for its width (defaults 280, 720 and 440 pixels), `minHeight`, `maxHeight` and `preferredHeight` for its height (defaults 160, the viewport, and the height of its content); moving and resizing never take it past the viewport inset. Without `preferredHeight` a modal whose content loads late opens at its minimum height and grows when the content arrives; a host that knows how tall that content will be declares it, as a destination declares its layout, so the modal opens at its final size. `content(modal, workspace)` follows the cell contract, including a promise with the loading and error states, so delayed modal content shows `Loading <title>` and a Retry. The cells behind the modal are inert, and the close control, the backdrop and `workspace.closeModal(reason)` close it. A second `openModal` replaces the open modal; there are no nested modals. A modal writes no history and is local to one workspace.
 
