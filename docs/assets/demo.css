@@ -85,6 +85,13 @@ body {
 .metadata-link.is-primary { background: var(--accent); color: #fff; border-color: var(--accent); }
 .field { display: flex; justify-content: space-between; align-items: center; gap: 8px; font-size: 13px; }
 .field select { font: inherit; font-size: 13px; padding: 4px 6px; border: 0; border-radius: 0; background: var(--card); }
+.field input[type="range"] { flex: 1; min-width: 0; accent-color: var(--accent); }
+.field output { min-width: 3ch; text-align: right; font-variant-numeric: tabular-nums; }
+.curve { display: block; width: 100%; max-width: 120px; aspect-ratio: 1; margin: 6px 0 0; border-left: 1px solid var(--muted); border-bottom: 1px solid var(--muted); }
+.curve path { fill: none; stroke-width: 2; vector-effect: non-scaling-stroke; }
+.curve-even { stroke: var(--muted); stroke-dasharray: 3 3; }
+.curve-line { stroke: var(--accent); }
+.curve-note { margin: 6px 0 0; font-size: 12px; color: var(--muted); }
 .requests { font-size: 12px; color: var(--muted); min-height: 1.2em; }
 .viewer-line { margin: 0 0 8px; font-size: 12px; color: var(--muted); }
 .reset { font-weight: 600; }

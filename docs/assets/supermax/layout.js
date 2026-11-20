@@ -3,7 +3,7 @@
 
 import { overflowMode, foldSize, overflowProblems } from "./overflow.js";
 import { definitionFor, resizeBounds, rowDefinitions, selectVariants } from "./variants.js";
-import { CellCollection } from "./cell-collection.js";
+import { CellCollection, DEFAULT_CURVE } from "./cell-collection.js";
 
 export const ELASTIC = "*";
 const foldAllocations = new WeakMap();
@@ -71,7 +71,7 @@ export function breakoutOf(model, split) {
 
 export function widthBounds(definition) {
 	const elastic = definition.max === ELASTIC;
-	return { min: definition.min, max: elastic ? definition.preferred : definition.max, reach: elastic ? Infinity : definition.max, preferred: definition.preferred ?? null, elastic };
+	return { min: definition.min, max: elastic ? definition.preferred : definition.max, reach: elastic ? Infinity : definition.max, preferred: definition.preferred ?? null, ask: definition.preferred ?? definition.min, elastic };
 }
 
 function widthDefinition(model, occurrence, resizing) {
@@ -82,11 +82,11 @@ function widthDefinition(model, occurrence, resizing) {
 	return { ...owner, min: bounds.min, max: bounds.max === Infinity ? ELASTIC : bounds.max, preferred: bounds.min };
 }
 
-// allow-comment: a split declares no width; its bounds are its widest row's. A row asks for the sum of its cells' minima and gives that up one cell at a time from its left (steps), down to its newest cell with the kept cells (min); it prefers the sum of its cells' preferences and reaches the sum of their maxima. Only what is open counts, never what is visible, so the demand cannot depend on its own outcome.
+// allow-comment: a split declares no width; its bounds are its widest row's. A row needs the sum of its cells' minima and gives that up one cell at a time from its left (steps), down to its newest cell with the kept cells (min); it asks for the sum of what its cells ask, preference or else minimum; it prefers the sum of its cells' preferences and reaches the sum of their maxima. Only what is open counts, never what is visible, so the demand cannot depend on its own outcome.
 export function boundsOf(model, occurrence, resizing = false) {
 	const definition = widthDefinition(model, occurrence, resizing);
 	if (!isSplit(definition)) return { ...widthBounds(definition), steps: [definition.min] };
-	const bounds = { min: 0, max: 0, reach: 0, preferred: 0, elastic: false };
+	const bounds = { min: 0, max: 0, reach: 0, preferred: 0, ask: 0, elastic: false };
 	const rowSteps = [];
 	rowDefinitions(model, occurrence).forEach((row, index) => {
 		const root = occurrence.children?.[index] ? model.get(occurrence.children[index]) : null;
@@ -104,10 +104,12 @@ export function boundsOf(model, occurrence, resizing = false) {
 		rowSteps.push(steps);
 		const min = steps[steps.length - 1];
 		const preferred = cells.reduce((sum, cell) => sum + (widthBounds(cell).preferred ?? widthBounds(cell).max), 0);
+		const ask = cells.reduce((sum, cell) => sum + widthBounds(cell).ask, 0);
 		const max = cells.reduce((sum, cell) => sum + widthBounds(cell).max, 0);
 		const elastic = cells.some((cell) => cell.max === ELASTIC);
 		bounds.min = Math.max(bounds.min, min);
 		bounds.preferred = Math.max(bounds.preferred, preferred);
+		bounds.ask = Math.max(bounds.ask, ask);
 		bounds.max = Math.max(bounds.max, max);
 		bounds.reach = Math.max(bounds.reach, elastic ? Infinity : max);
 		bounds.elastic ||= elastic;
@@ -207,14 +209,17 @@ export function chainCells(model, chainRoot) {
 	}
 }
 
-function foldPass(model, cells, width, focused) {
+const minDemand = (model, occurrence) => boundsOf(model, occurrence).steps[0];
+const askDemand = (model, occurrence) => boundsOf(model, occurrence).ask;
+
+function foldPass(model, cells, width, focused, demandOf = minDemand) {
 	const root = chainRootOf(model, cells[0]);
 	const focus = focused ?? model.foldFocuses.find((focus) => focus.axis === "horizontal" && focus.scope === root.id)?.occurrence ?? null;
 	const active = focused ?? activeCell(model, root, cells);
-	const required = cells.reduce((sum, occurrence) => sum + boundsOf(model, occurrence).steps[0], 0);
+	const required = cells.reduce((sum, occurrence) => sum + demandOf(model, occurrence), 0);
 	const chosen = chooseFolds(cells.length, cells.findIndex((cell) => cell.id === active), !!focus, required, width, (index) => {
 		const definition = definitionFor(model, cells[index]);
-		return isSplit(definition) || overflowMode(definition) !== "fold" ? null : boundsOf(model, cells[index]).steps[0] - foldSize(definition);
+		return isSplit(definition) || overflowMode(definition) !== "fold" ? null : demandOf(model, cells[index]) - foldSize(definition);
 	});
 	return new Map(chosen.map((index) => [cells[index].id, foldSize(definitionFor(model, cells[index]))]));
 }
@@ -240,9 +245,9 @@ export function chainFits(model, cells, width) {
 }
 
 function sessionBounds(base, session, hard) {
-	if (session === null) return { min: base.min, max: base.max, preferred: base.preferred ?? null, elastic: !!base.elastic };
+	if (session === null) return { min: base.min, max: base.max, preferred: base.preferred ?? null, ask: base.ask ?? base.preferred ?? base.min, elastic: !!base.elastic };
 	const size = Math.min(base.reach ?? base.max, Math.max(base.min, session));
-	return { min: hard ? size : base.min, max: size, preferred: size, elastic: !!base.elastic };
+	return { min: hard ? size : base.min, max: size, preferred: size, ask: hard ? size : base.ask ?? base.min, elastic: !!base.elastic };
 }
 
 function sessionsHold(bounds, budget) {
@@ -277,21 +282,17 @@ function activeRow(model, split, roots) {
 		?? roots.at(-1)?.id;
 }
 
-// allow-comment: room gives way in reading order, in one walk from the left: a cell before a split hides first, then the split gives its widest row up one cell at a time from the row's left, then the split itself hides; the newest cell always stays. What is left shares the width with the demand that walk settled on.
-function allocateChain(model, cells, width) {
-	const fold = foldPass(model, cells, width);
-	const anchors = zoomAnchors(model);
-	const anchor = cells.find((occurrence) => anchors.has(occurrence.id))?.id ?? null;
-	const active = activeCell(model, chainRootOf(model, cells[0]), cells);
-	const protectedIndex = Math.max(0, cells.findIndex((occurrence) => occurrence.id === active));
+// allow-comment: room gives way in reading order, in one walk from the left: a cell before a split hides first, then the split gives its widest row up one cell at a time from the row's left, then the split itself hides; the newest cell always stays. The walk first makes room for what every cell asks (its preference, or its minimum without one), folding and hiding by each cell's overflow mode; only when the cells that cannot give way ask more than there is does it settle for the minima instead. What is left shares the width with the demand that walk settled on.
+function settleChain(model, cells, width, protectedIndex, demandOf, laddered) {
+	const fold = foldPass(model, cells, width, undefined, demandOf);
 	const units = cells.map((occurrence, index) => {
 		const definition = definitionFor(model, occurrence);
 		const own = boundsOf(model, occurrence);
-		const steps = fold.has(occurrence.id) ? [fold.get(occurrence.id)] : own.steps;
+		const steps = fold.has(occurrence.id) ? [fold.get(occurrence.id)] : laddered ? own.steps : [demandOf(model, occurrence)];
 		return { occurrence, definition, own, steps, level: 0, hidden: false, keep: overflowMode(definition) === "keep" || fold.has(occurrence.id) || index >= protectedIndex };
 	});
-	const minOf = (unit) => unit.steps[unit.level];
-	let total = units.reduce((sum, unit) => sum + minOf(unit), 0);
+	const demand = (unit) => unit.steps[unit.level];
+	let total = units.reduce((sum, unit) => sum + demand(unit), 0);
 	for (let index = 0; index < units.length && total > width; ) {
 		const unit = units[index];
 		if (unit.hidden) {
@@ -299,9 +300,9 @@ function allocateChain(model, cells, width) {
 			continue;
 		}
 		if (unit.level < unit.steps.length - 1) {
-			total -= minOf(unit);
+			total -= demand(unit);
 			unit.level += 1;
-			total += minOf(unit);
+			total += demand(unit);
 			continue;
 		}
 		if (unit.keep || index === units.length - 1) {
@@ -309,20 +310,33 @@ function allocateChain(model, cells, width) {
 			continue;
 		}
 		unit.hidden = true;
-		total -= minOf(unit);
+		total -= demand(unit);
 		index += 1;
 	}
+	// allow-comment: a cell stands on its minimum and the curve decides the rest, but a split stands on what it asked for when the walk made room for it: its rows were promised that room, and below it they would start hiding cells of their own.
+	const floorOf = (unit) => fold.has(unit.occurrence.id) ? fold.get(unit.occurrence.id) : laddered ? unit.steps[unit.level] : isSplit(unit.definition) ? unit.steps[0] : unit.own.steps[0];
+	return { fold, units, total, floorOf };
+}
+
+function allocateChain(model, cells, width) {
+	const anchors = zoomAnchors(model);
+	const anchor = cells.find((occurrence) => anchors.has(occurrence.id))?.id ?? null;
+	const active = activeCell(model, chainRootOf(model, cells[0]), cells);
+	const protectedIndex = Math.max(0, cells.findIndex((occurrence) => occurrence.id === active));
+	let settled = settleChain(model, cells, width, protectedIndex, askDemand, false);
+	if (settled.total > width) settled = settleChain(model, cells, width, protectedIndex, minDemand, true);
+	const { fold, units, floorOf } = settled;
 	const members = units.filter((unit) => !unit.hidden);
 	const bounds = members.map((unit) => {
-		if (fold.has(unit.occurrence.id)) return { min: minOf(unit), max: minOf(unit), preferred: null, session: null };
-		return { ...unit.own, min: Math.min(minOf(unit), unit.own.max), session: model.sizeOf(unit.occurrence.id, "width") };
+		if (fold.has(unit.occurrence.id)) return { min: floorOf(unit), max: floorOf(unit), preferred: null, session: null };
+		return { ...unit.own, min: Math.min(floorOf(unit), unit.own.max), session: model.sizeOf(unit.occurrence.id, "width") };
 	});
 	const hard = sessionsHold(bounds, width);
 	const configs = members.map((unit, index) => {
 		const config = { id: unit.occurrence.id, title: unit.occurrence.title, keep: unit.keep, ...sessionBounds(bounds[index], bounds[index].session, hard) };
 		return unit.occurrence.id === anchor ? { ...config, zoomable: true, elastic: true } : config;
 	});
-	const sharing = snapAllocation(new CellCollection(configs).distribute(width, anchor));
+	const sharing = snapAllocation(new CellCollection(configs, model.curve ?? DEFAULT_CURVE, "min").distribute(width, anchor));
 	preserveFoldAllocation(model, cells, bounds, sharing, fold);
 	const byId = new Map(sharing.cells.map((cell) => [cell.config.id, cell]));
 	const allocation = { ...sharing, cells: cells.map((occurrence) => byId.get(occurrence.id) ?? { config: { id: occurrence.id, title: occurrence.title }, actual: 0, visible: false }) };
@@ -467,7 +481,7 @@ function layoutRows(model, split, width, height, containerInView) {
 		const folded = new Set(rowFolds(activeIndex, !!focus));
 		const bounds = shown.map((index) => folded.has(index) ? { min: foldSize(definition[index]), max: foldSize(definition[index]), preferred: null, session: null } : { ...heightBounds(definition[index]), session: model.sizeOf(roots[index].id, "height") });
 		const hard = sessionsHold(bounds, budget);
-		const allocation = snapAllocation(new CellCollection(shown.map((index, position) => ({ id: roots[index].id, title: roots[index].title, keep: overflowMode(definition[index]) === "keep" || folded.has(index) || index >= Math.max(0, activeIndex), ...sessionBounds(bounds[position], bounds[position].session, hard) }))).distribute(budget, null));
+		const allocation = snapAllocation(new CellCollection(shown.map((index, position) => ({ id: roots[index].id, title: roots[index].title, keep: overflowMode(definition[index]) === "keep" || folded.has(index) || index >= Math.max(0, activeIndex), ...sessionBounds(bounds[position], bounds[position].session, hard) })), model.curve ?? DEFAULT_CURVE, "min").distribute(budget, null));
 		return { byId: new Map(allocation.cells.map((cell) => [cell.config.id, cell])), folded };
 	};
 	const allocation = allocate();

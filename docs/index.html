@@ -38,6 +38,12 @@
 						<label class="field">Motion <select data-presentation><option value="origami">Origami</option><option value="veil" selected>Veil</option><option value="fold">Paper Fold</option></select></label>
 						<label class="field">Speed <select data-speed><option value="1">normal</option><option value="10">10× slower</option></select></label>
 						<label class="field">Spare space <select data-spare><option value="start">Canvas, cells left</option><option value="center">Canvas, cells centred</option><option value="end">Canvas, cells right</option></select></label>
+					</section>
+					<section class="control-group">
+						<div class="label">Room</div>
+						<label class="field">Steepness <input type="range" data-curve min="-1" max="1" step="0.05" value="1"> <output data-curve-value>1</output></label>
+						<svg class="curve" data-curve-graph viewBox="0 0 100 100" aria-hidden="true"><path class="curve-even" d="M0 100 L100 0"></path><path class="curve-line" d=""></path></svg>
+						<p class="curve-note">Room between minimum and maximum, by position: 0 shares by width, 1 gives the first pixel nothing, negative favours the start.</p>
 						<div class="requests" data-requests aria-live="polite"></div>
 					</section>
 					<section class="control-group">

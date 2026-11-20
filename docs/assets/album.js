@@ -4,13 +4,13 @@ export const minViewportHeight = 360;
 
 const widths = {
 	albums: { min: 48, max: 320, preferred: 240, overflow: { mode: "keep" }, header: "title", variants: [{ id: "labels", when: { minWidth: 161 } }, { id: "icons", min: 48, preferred: 48, max: 48 }] },
-	selector: { min: 200, max: "*", preferred: 360 },
-	map: { min: 220, max: "*", preferred: 480 },
-	photo: { min: 240, max: "*", preferred: 360, zoomable: true },
+	selector: { min: 200, max: "*", preferred: 240 },
+	map: { min: 220, max: "*", preferred: 320 },
+	photo: { min: 240, max: "*", preferred: 300, zoomable: true },
 	metadata: { min: 200, max: 320, preferred: 220 },
 	history: { min: 200, max: 320, header: "title" },
 	edit: { min: 200, max: 320, header: "title" },
-	depth: { min: 160, max: 240, header: "title" },
+	depth: { min: 128, preferred: 256, max: 512, header: "title" },
 	full: { min: 320, max: "*", preferred: 900, placement: "beside-split" },
 };
 

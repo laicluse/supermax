@@ -1,4 +1,4 @@
-export { CellCollection, CellProxy } from "./cell-collection.js";
+export { CellCollection, CellProxy, DEFAULT_CURVE, linearCurve } from "./cell-collection.js";
 export { CellStrip } from "./cell-strip.js";
 export { TIMING, TimeScale } from "./motion.js";
 export { Navigator, SupermaxConfigurationError, validateDestinations } from "./navigation.js";

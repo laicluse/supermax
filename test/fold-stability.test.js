@@ -42,7 +42,7 @@ test("a local fold preserves feasible outer widths without creating session size
 });
 
 test("new minimums and actual resizes may redistribute the outer chain", () => {
-	const model = gallery(350);
+	const model = gallery(340);
 	const before = widths(model);
 	assert.ok(before[1] < 300);
 	model.focusFold("menu/split/list", "horizontal");

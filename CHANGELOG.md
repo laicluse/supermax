@@ -29,6 +29,9 @@ Start with [Migrating from v1 to v2](docs/migrating-to-v2.md). A dependency vers
 
 ### Added
 
+- Room above the minimums is given out along a curve of position, so later cells and lower rows get more of it, the way the original Stacks allocator favoured the deepest cell; `DEFAULT_CURVE` is `linearCurve(1)`, the navigator takes a `curve` option and `setCurve()`, and the demo has a steepness slider with the curve drawn beside it.
+- A preference decides which cells show, not where they stand. A chain gives way from the left, folding or hiding by each cell's overflow mode, until every cell left can have its `preferred` (or its `min` without one), and settles for the minimums only when the cells that cannot give way ask more than there is; the cells that show then stand on their minimums and share the rest along the curve, so an earlier cell may stand under its preference. Split rows give way at their minimums only. The demo's cells declare their preferences accordingly.
+
 - Host renderers replace visual parts through one mount/update/dispose contract. Native action bindings retain shell semantics; cell material and foreground are separate, and frustum painters follow shell-owned geometry. The built-in renderer uses the same interface and its own paint namespace. Title-bar height comes from navigator chrome. The separate `foldContent`, `noticeIcon` and drawing `origin` options are replaced by renderer parts.
 
 

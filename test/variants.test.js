@@ -43,7 +43,7 @@ for (let width = 1000; width >= 0; width -= 1) {
 assert.equal(changes, 1, "one precise crossover, no alternating intervals");
 console.log(`Menu pixel sweep: ${Math.round(performance.now() - started)}ms`);
 model.resize({ width: 479, height: 616 });
-model.setVariants("menu", [{ id: "labels", when: { minWidth: 100 } }, variants[1]]);
+model.setVariants("menu", [{ id: "labels", when: { minWidth: 55 } }, variants[1]]);
 assert.equal(model.layout().cells.get("menu").variant, "labels", "explicit content changes can replace a variant declaration");
 assert.throws(() => model.setVariants("menu", [{ id: "invalid" }]), /variant/);
 assert.equal(model.layout().cells.get("menu").variant, "labels", "invalid updates leave the declaration intact");

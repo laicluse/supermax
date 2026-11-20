@@ -208,7 +208,7 @@ scenario("rows before the active row can hide, while later rows stay reachable t
 
 	instance.resize({ width: 1000, height: 300 });
 	const before = instance.state();
-	assert.deepEqual(rows().map((candidate) => [candidate.visible, candidate.height]), [[false, 0], [true, 136], [true, 136]], "the top row hides entirely, no tab is left");
+	assert.deepEqual(rows().map((candidate) => [candidate.visible, candidate.height]), [[false, 0], [true, 118], [true, 154]], "the top row hides entirely, no tab is left, and the lower row gets the larger share");
 	assert.deepEqual(instance.state(), before, "resize rewrites nothing");
 
 	instance.startRows(GALLERY, row("list"));
@@ -770,9 +770,9 @@ scenario("a breakout survives a snapshot, follows the window and zoom rules of t
 	const restored = mail();
 	assert.equal(restored.restore(instance.snapshot()), true);
 	assert.deepEqual(rootTitles(restored).map(([title]) => title), ["Inbox", "Conversation", "Attachment 2"], "a restored breakout stands beside its split again");
-	instance.resize({ width: 790, height: 500 });
+	instance.resize({ width: 1000, height: 500 });
 	assert.deepEqual(rootTitles(instance), [["Inbox", false], ["Conversation", true], ["Attachment 2", true]], "ancestors hide from the left, the inbox first");
-	instance.resize({ width: 580, height: 500 });
+	instance.resize({ width: 800, height: 500 });
 	assert.deepEqual(rootTitles(instance), [["Inbox", false], ["Conversation", false], ["Attachment 2", true]], "then the split itself, while the breakout survives");
 	assert.equal(instance.upTarget().id, ATTACHMENTS, "Show names the origin of the breakout, hidden with its split");
 	const closed = instance.showByClosing(ATTACHMENTS);
@@ -831,7 +831,7 @@ scenario("sync follows the root chain past a split: a split opens from ifRoom wi
 		root: "modes",
 		minViewportHeight: 320,
 	});
-	chain.resize({ width: 1920, height: 900 });
+	chain.resize({ width: 2200, height: 900 });
 	const result = chain.sync(["modes", "list"], { ifRoom: [["metadata:1", "conversation:1"]] });
 	assert.equal(result.ok, true, "a split in ifRoom opens like any optional cell");
 	assert.deepEqual(result.optional, ["modes/list/metadata:1", "modes/list/metadata:1/conversation:1"]);
@@ -850,7 +850,7 @@ scenario("sync follows the root chain past a split: a split opens from ifRoom wi
 });
 
 scenario("a split declares no width: it asks for what its widest row holds, grows as the row opens cells, and keeps its newest row cell before its neighbours hide", () => {
-	const instance = mail({ width: 1100 });
+	const instance = mail({ width: 1300 });
 	const widths = () => instance.layout().chain.cells.map((cell) => [cell.title, Math.round(cell.width)]);
 	instance.open("attachment:2", { from: ATTACHMENTS, origin: null });
 	const before = widths();
@@ -860,12 +860,13 @@ scenario("a split declares no width: it asks for what its widest row holds, grow
 	assert.ok(after[1][1] > before[1][1], `opening a cell in a row widens the split: ${JSON.stringify([before, after])}`);
 	assert.ok(after[2][1] < before[2][1], "and the breakout beside it gives room up");
 	assert.deepEqual(rowTitles(instance, MESSAGES), ["Messages", "Note"], "the row holds both cells");
-	instance.resize({ width: 690, height: 500 });
+	instance.resize({ width: 1100, height: 500 });
 	const tight = instance.layout();
-	assert.deepEqual(tight.chain.cells.map((cell) => [cell.title, cell.visible]), [["Inbox", false], ["Conversation", true], ["Attachment 2", true]], "when room runs out the inbox hides, the split keeps its minimum beside the breakout");
-	assert.deepEqual(tight.chains.get(MESSAGES).cells.map((cell) => [cell.title, cell.visible]), [["Messages", false], ["Note", true]], "and the row hides its own left cell, keeping its newest");
-	assert.ok(tight.chain.cells[1].width >= 200 && tight.chain.cells[2].width >= 300, "both keep at least their minimum: the split its widest row's newest cell, the breakout its own");
-	const narrow = mail({ defaults: true, width: 1000 });
+	assert.deepEqual(tight.chain.cells.map((cell) => [cell.title, cell.visible]), [["Inbox", false], ["Conversation", true], ["Attachment 2", true]], "when room for every preference runs out the inbox hides first");
+	assert.ok(tight.chain.cells[1].width >= 200 && tight.chain.cells[2].width >= 300, "what shows stands on at least its minimum: the split its widest row's newest cell, the breakout its own");
+	instance.resize({ width: 690, height: 500 });
+	assert.deepEqual(instance.layout().chain.cells.map((cell) => [cell.title, cell.visible]), [["Inbox", false], ["Conversation", false], ["Attachment 2", true]], "then the split hides rather than squeezes below what it asks, while the breakout survives");
+	const narrow = mail({ defaults: true, width: 1300 });
 	assert.ok(narrow.get(`${ATTACHMENTS}/attachment:1`), "a default opens when the room its chain then asks for still shows every cell that showed");
 	assert.deepEqual(narrow.layout().chain.cells.map((cell) => cell.visible), [true, true, true, true]);
 });
@@ -876,17 +877,17 @@ scenario("sync names a path into a row: the next id after a split is one of its 
 		destinations: {
 			modes: { title: "Modes", min: 192, max: 256, overflow: { mode: "keep" } },
 			mailboxes: { title: "Mailboxes", min: 256, max: 320 },
-			conversations: { title: "Conversations", min: 320, max: E, preferred: 640 },
+			conversations: { title: "Conversations", min: 320, max: E, preferred: 600 },
 			conversation: { title: "Subject", rows: [{ destination: "metadata", minHeight: 240, maxHeight: E, preferredHeight: 560 }, { destination: "attachments", minHeight: 96, maxHeight: 120 }] },
 			metadata: { title: "Subject", min: 320, max: 640, defaultChild: "messages" },
 			messages: { title: "Subject", min: 320, max: E, preferred: 960, zoomable: true },
-			attachments: { title: "Attachments", min: 320, max: E, preferred: 960 },
-			attachment: { title: "Attachment", min: 320, max: E, preferred: 960, placement: "beside-split" },
+			attachments: { title: "Attachments", min: 320, max: E, preferred: 400 },
+			attachment: { title: "Attachment", min: 320, max: E, preferred: 400, placement: "beside-split" },
 		},
 		root: "modes",
 		minViewportHeight: 320,
 	});
-	chain.resize({ width: 1200, height: 900 });
+	chain.resize({ width: 1500, height: 900 });
 	const visible = () => chain.layout().chain.cells.map((cell) => [cell.title, cell.visible]);
 	const root = ["modes", "mailboxes", "conversations", "conversation"];
 	assert.equal(chain.sync(root).ok, true);
@@ -895,7 +896,7 @@ scenario("sync names a path into a row: the next id after a split is one of its 
 	const into = chain.sync([...root, "metadata", "messages"]);
 	assert.equal(into.ok, true, "a sync may name a row of the split and go on inside it");
 	assert.deepEqual(into.opened, [`${split.id}/metadata/messages`], "and reports what it opened");
-	assert.deepEqual(visible(), [["Modes", true], ["Mailboxes", false], ["Conversations", true], ["Subject", true]], "named explicitly, the cell takes its room and an ancestor hides, as any cell in a chain");
+	assert.deepEqual(visible(), [["Modes", true], ["Mailboxes", false], ["Conversations", false], ["Subject", true]], "named explicitly, the cell takes the room it asks for and ancestors hide, as for any cell in a chain");
 	assert.equal(chain.isAuto(chain.get(`${split.id}/metadata/messages`)), false, "it is a manual cell");
 	assert.equal(chain.sync([...root, "metadata", "messages"]).noop, true, "the same path again changes nothing");
 	assert.equal(chain.sync(root).noop, true, "a sync that ends at the split leaves its rows as they are");
@@ -927,12 +928,12 @@ scenario("room gives way in reading order through a split: the cells before it f
 		modes: { title: "Modes", min: 192, max: 256, overflow: { mode: "keep" } },
 		mailboxes: { title: "Mailboxes", min: 256, max: 320 },
 		nav: { title: "Nav", min: 256, max: 320 },
-		conversations: { title: "Conversations", min: 320, max: E, preferred: 640 },
+		conversations: { title: "Conversations", min: 320, max: E, preferred: 400 },
 		conversation: { title: "Subject", rows: [{ destination: "metadata", minHeight: 240, maxHeight: E, preferredHeight: 560 }, { destination: "attachments", minHeight: 96, maxHeight: 120 }] },
 		metadata: { title: "Summary", min: 320, max: 640, defaultChild: "messages" },
-		messages: { title: "Messages", min: 320, max: E, preferred: 960 },
-		attachments: { title: "Attachments", min: 320, max: E, preferred: 960 },
-		attachment: { title: "Attachment", min: 320, max: E, preferred: 960, placement: "beside-split" },
+		messages: { title: "Messages", min: 320, max: E, preferred: 480 },
+		attachments: { title: "Attachments", min: 320, max: E, preferred: 400 },
+		attachment: { title: "Attachment", min: 320, max: E, preferred: 400, placement: "beside-split" },
 	};
 	const at = (width) => {
 		const chain = new Navigator({ destinations, root: "modes", minViewportHeight: 320 });
@@ -964,9 +965,9 @@ scenario("room gives way in reading order through a split: the cells before it f
 	assert.deepEqual(shown.root.slice(1, 3), ["Mailboxes:hidden", "Nav:hidden"], "at 1440 the mailboxes and the nav give way first");
 	assert.ok(shown.row.length === 2 && shown.row.every((cell) => !cell.endsWith("hidden")), `so the summary keeps standing beside the messages, and the attachment beside the split: ${shown.row}`);
 	assert.ok(shown.root[5].startsWith("Attachment:") && !shown.root[5].endsWith("hidden"));
-	const show = at(900);
+	const show = at(1000);
 	show.sync([...root, "metadata", "messages"]);
-	assert.equal(show.layout().cells.get("modes/mailboxes/nav/conversations").visible, false, "at 900 the list has hidden for the split");
+	assert.equal(show.layout().cells.get("modes/mailboxes/nav/conversations").visible, false, "at 1000 the list has hidden for the split");
 	const closed = show.showByClosing("modes/mailboxes/nav/conversations");
 	assert.deepEqual(closed.map((entry) => entry.title), ["Messages"], "Show closes the newest cell inside the rows, not the split");
 	assert.ok(show.get(split), "the split stays with its summary");
@@ -979,7 +980,7 @@ scenario("ifRoom may name a path into a row, and opens it whole or not at all", 
 		const chain = new Navigator({
 			destinations: {
 				modes: { title: "Modes", min: 192, max: 256, overflow: { mode: "keep" } },
-				conversations: { title: "Conversations", min: 320, max: E, preferred: 640 },
+				conversations: { title: "Conversations", min: 320, max: E, preferred: 400 },
 				conversation: { title: "Subject", header: "title", rows: [{ destination: "metadata", minHeight: 240, maxHeight: E, preferredHeight: 560 }] },
 				metadata: { title: "Summary", min: 320, max: 640 },
 				messages: { title: "Messages", min: 320, max: E, preferred: 960 },

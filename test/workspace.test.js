@@ -435,7 +435,7 @@ test("a long name in the Show control gives way to the title on a phone", async 
 	assert.equal(measured.albums, true, "in the first cell in view, the kept albums menu");
 	assert.ok(measured.cellWidth >= 48 && measured.up <= measured.cellWidth, "the control fits inside the host's narrow menu");
 	assert.equal(measured.nameShown, false, "with only its arrow, since the name has no room there");
-	assert.match(measured.label, /A very long name for depth:18/, "while its accessible name still names the hidden parent by its new title");
+	assert.match(measured.label, /A very long name for depth:19/, "while its accessible name still names the hidden parent by its new title");
 	await openDemo(THREE_ROWS);
 	await resize([[960, 370], [420, 640]]);
 	const wide = await page.locator(inFrame("a", ".supermax-up:not([hidden])")).evaluate((up) => ({ hidden: up.hidden, inBar: !!up.closest(".supermax-cell-title-leading"), nameShown: getComputedStyle(up.querySelector(".supermax-up-target")).display !== "none" && up.querySelector(".supermax-up-target").getBoundingClientRect().width > 20, first: up.closest(".supermax-cell").dataset.occurrence }));
@@ -446,7 +446,7 @@ test("the Show control says Back when the name of what it brings back is long or
 	await openDemo(TWENTY_DEEP);
 	await resize([[960, 640], [420, 640]]);
 	const control = () => page.locator(inFrame("a", ".supermax-up:not([hidden])")).evaluate((up) => ({ text: up.textContent, label: up.getAttribute("aria-label") }));
-	assert.deepEqual(await control(), { text: "Depth 15", label: "Show Depth 15" }, "a short name that differs from the bar names the cell");
+	assert.deepEqual(await control(), { text: "Depth 17", label: "Show Depth 17" }, "a short name that differs from the bar names the cell");
 	await page.evaluate(() => window.supermaxDemo.frames[0].workspace.setTitle(window.supermaxDemo.frames[0].workspace.upDestination.id, "Your order at the corner shop has been delivered"));
 	assert.deepEqual(await control(), { text: "Back", label: "Show Your order at the corner shop has been delivered" }, "a long name becomes Back, while the accessible name still names the cell");
 	await page.evaluate(() => {
@@ -459,19 +459,19 @@ test("the Show control says Back when the name of what it brings back is long or
 test("the up control names the nearest hidden parent, closes what falls off the end to show it, and browser back undoes that", async () => {
 	await openDemo(TWENTY_DEEP);
 	await resize([[960, 640], [420, 640]]);
-	assert.deepEqual(await backButton("a"), { hidden: false, label: "Show Depth 15", text: "Depth 15" });
+	assert.deepEqual(await backButton("a"), { hidden: false, label: "Show Depth 17", text: "Depth 17" });
 	const before = { a: await groups("a"), b: await backButton("b"), bGroups: await groups("b"), url: page.url() };
 	await page.click(inFrame("a", ".supermax-up:not([hidden])"));
 	await settle();
-	assert.deepEqual(await groups("a"), before.a.slice(0, -1), "Depth 20 closes so Depth 15 fits");
+	assert.deepEqual(await groups("a"), before.a.slice(0, -1), "Depth 20 closes so Depth 17 fits");
 	assert.equal(page.url(), before.url, "the shared log does not change");
 	assert.deepEqual([await backButton("b"), await groups("b")], [before.b, before.bGroups], "the other frame keeps its window and its cells");
-	assert.equal((await backButton("a")).label, "Show Depth 14");
+	assert.equal((await backButton("a")).label, "Show Depth 16");
 	assert.equal(await page.evaluate(() => window.supermaxDemo.frames[0].workspace.navigator.locationInfo().title), "Depth 19", "the location names the deepest cell still open, for a host that shows it");
 	const edges = await page.evaluate((id) => {
 		const frame = document.querySelector('.frame[data-frame="a"]');
 		return { menu: frame.querySelector('[data-occurrence="albums"]').getBoundingClientRect().right, revealed: frame.querySelector(`[data-occurrence="${id}"]`).getBoundingClientRect().left };
-	}, TWENTY_DEEP[14].from + "/depth:15");
+	}, TWENTY_DEEP[16].from + "/depth:17");
 	assert.equal(Math.round(edges.revealed), Math.round(edges.menu), "the cells folded between the kept menu and the window take no room");
 	assert.equal(await page.locator(inFrame("a", ".supermax-reveal, .supermax-row-tab, .supermax-collapse")).count(), 0, "no chip, tab or collapse control competes with it");
 	await page.goBack();
@@ -482,7 +482,7 @@ test("the up control names the nearest hidden parent, closes what falls off the 
 
 test("Back climbs the newest branch first, then the branch opened before it in another row", async () => {
 	await openDemo([open("album:coast", "albums")]);
-	await resize([[700, 640], [420, 640]]);
+	await resize([[800, 640], [420, 640]]);
 	await settle();
 	assert.equal((await backButton("a")).label, "Show People", "the smallest kept menu leaves the last row's earlier content as a Show target");
 	await page.click(inFrame("a", `[data-occurrence="${coast.metadata("map", "a")}"] .metadata-link`));
@@ -608,7 +608,7 @@ test("a closed modal folds back into its source as a closing cell does, while th
 });
 
 test("content that arrives after its cell has appeared swaps in without a fade of its own", async () => {
-	await page.goto(`${server.url}/?delay=300${PRESENTATION === "origami" ? "" : `&presentation=${PRESENTATION}`}#${encodeLog([open("album:coast", "albums"), open("coast:photo:a", coast.row("thumbnails"))])}`);
+	await page.goto(`${server.url}/?delay=300${PRESENTATION === "origami" ? "" : `&presentation=${PRESENTATION}`}#${encodeLog([open("album:coast", "albums"), open("coast:photo:a", coast.row("thumbnails")), open("coast:history:a", coast.metadata("thumbnails", "a"))])}`);
 	await page.waitForSelector(inFrame("a", `[data-occurrence="${coast.metadata("thumbnails", "a")}"] .metadata-link`));
 	await settle();
 	await page.evaluate(() => {
@@ -761,15 +761,12 @@ test("cells stand one gutter apart over the canvas, and rows never run past thei
 		"coast:thumbnails": "0px",
 		"coast:photo:a": "1px",
 		"coast:metadata:a": "1px",
-		"coast:history:a": "1px",
 		"coast:map": "0px",
 		"coast:photo:b": "1px",
 		"coast:metadata:b": "1px",
-		"coast:history:b": "1px",
 		"coast:people": "0px",
 		"coast:photo:c": "1px",
 		"coast:metadata:c": "1px",
-		"coast:history:c": "1px",
 	}, "one gutter before every cell but the first of its chain");
 	assert.deepEqual(geometry.frames, ["inset(0px 0px 0px 1px)", "inset(0px 0px 0px 1px)", "inset(0px 0px 0px 1px)"], "and the split's own gutter is the left edge of each row's frame, which stays in place");
 	assert.deepEqual(geometry.rows, ["0px", "1px", "1px"], "one gutter between rows");
@@ -818,7 +815,7 @@ test("a host that shows the canvas keeps cells at their maximum and centres them
 		const outer = chain.getBoundingClientRect();
 		return { width: cells.at(-1).getBoundingClientRect().width, left: cells[0].getBoundingClientRect().left - outer.left, right: outer.right - cells.at(-1).getBoundingClientRect().right };
 	});
-	assert.equal(Math.round(row.width), 240, "the cell stays at its max");
+	assert.equal(Math.round(row.width), 512, "the cell stays at its max");
 	assert.ok(row.left > 4 && Math.abs(row.left - row.right) < 1, `with the canvas showing equally on both sides: ${JSON.stringify(row)}`);
 });
 
@@ -844,7 +841,7 @@ test("a click opens its cell and every default under it in one stroke, folding t
 	assert.equal(new Set(opening.map((fold) => `${fold.start}+${fold.delay}`)).size, 1, "at the same moment");
 	assert.ok(opening.every((fold) => fold.duration === 200 && fold.easing === "ease-out"), "in one 200ms stroke that eases out");
 	const replaced = (await folds("a")).filter((fold) => fold.leaving).map((fold) => fold.cell).sort();
-	assert.deepEqual(replaced, ["coast:history:a", "coast:metadata:a", "coast:photo:a"], "and the cells it replaces fold away with it, defaults included");
+	assert.deepEqual(replaced, ["coast:metadata:a", "coast:photo:a"], "and the cells it replaces fold away with it, defaults included");
 	assert.ok(opening.every((fold) => fold.delay === 200), "a replacement from rest first lets the old cells fold away");
 	await settle();
 	assert.equal(await page.locator(inFrame("a", "[data-supermax-exiting]")).count(), 0);
@@ -1422,7 +1419,7 @@ test("Show asks first, so a host can keep it from closing a cell, and names the 
 	assert.deepEqual(asked.result, { ok: false, reason: "cancelled" }, "a host that refuses keeps Show from happening");
 	assert.equal(asked.after, asked.before, "and nothing closes");
 	assert.equal(asked.seen.length, 1, "nor does an up follow");
-	assert.deepEqual(asked.seen[0].shown, { occurrence: TWENTY_DEEP[14].from + "/depth:15", destination: "depth:15", title: "Depth 15" }, "the question names what would be shown");
+	assert.deepEqual(asked.seen[0].shown, { occurrence: TWENTY_DEEP[16].from + "/depth:17", destination: "depth:17", title: "Depth 17" }, "the question names what would be shown");
 	assert.deepEqual(asked.seen[0].closing.map((entry) => entry.destination), ["depth:20"], "and what would close, by destination");
 	const done = await page.evaluate(() => new Promise((resolve) => {
 		const workspace = window.supermaxDemo.frames[0].workspace;
@@ -1617,7 +1614,7 @@ test("while a layout is on its way the cells it replaces fold away in rooms that
 	assert.equal(await page.locator(photoA).evaluate((cell) => cell.inert), true, "and what folded away takes no clicks");
 	await page.waitForSelector(inFrame("a", `[data-occurrence="${coast.photo("thumbnails", "b")}"]`), { timeout: 3000 });
 	const opening = (await folds("a")).filter((fold) => !fold.leaving);
-	assert.deepEqual(opening.map((fold) => fold.cell).sort(), ["coast:history:b", "coast:metadata:b", "coast:photo:b"]);
+	assert.deepEqual(opening.map((fold) => fold.cell).sort(), ["coast:metadata:b", "coast:photo:b"]);
 	assert.ok(opening.every((fold) => fold.delay === STRIP_TIMING.settle), `the new cells open once the rooms settle, without folding the old ones again: ${JSON.stringify(opening)}`);
 	await settle();
 	assert.equal((await groups("a")).at(-1), "Photo B");
@@ -1630,7 +1627,7 @@ test("a layout that arrives before the cells left replaces them as a known layou
 	await page.click(inFrame("a", `[data-occurrence="${coast.row("thumbnails")}"] .thumb[data-destination="coast:photo:b"]`));
 	await opened();
 	const strokes = await folds("a");
-	assert.deepEqual(strokes.filter((fold) => fold.leaving).map((fold) => [fold.cell, fold.delay]).sort(), [["coast:history:a", 0], ["coast:metadata:a", 0], ["coast:photo:a", 0]], "the old cells fold away once, from where they are");
+	assert.deepEqual(strokes.filter((fold) => fold.leaving).map((fold) => [fold.cell, fold.delay]).sort(), [["coast:metadata:a", 0], ["coast:photo:a", 0]], "the old cells fold away once, from where they are");
 	assert.ok(strokes.filter((fold) => !fold.leaving).every((fold) => fold.delay === STRIP_TIMING.duration), "and the new ones open after them");
 	await settle();
 });
@@ -1680,7 +1677,8 @@ test("origami folds a cell open from its parent's edge and back onto it when it 
 	await openDemo(THREE_ROWS);
 	await page.evaluate((id) => {
 		const workspace = window.supermaxDemo.frames[0].workspace;
-		workspace.navigator.closeSubtree(workspace.navigator.get(id));
+		const history = workspace.navigator.get(id);
+		if (history) workspace.navigator.closeSubtree(history);
 		workspace.render({ animate: false });
 	}, coast.history("thumbnails", "a"));
 	const motion = () => page.evaluate(() => {
@@ -1909,9 +1907,9 @@ test("a dragged divider follows the pointer while every cell in its chain gives 
 	const rowBox = await page.locator(rowDivider).boundingBox();
 	await page.mouse.move(rowBox.x + 50, rowBox.y + rowBox.height / 2);
 	await page.mouse.down();
-	await page.mouse.move(rowBox.x + 50, rowBox.y + rowBox.height / 2 - 10, { steps: 4 });
+	await page.mouse.move(rowBox.x + 50, rowBox.y + rowBox.height / 2 - 5, { steps: 4 });
 	await page.mouse.up();
-	assert.equal(await rowOf(), rowBefore - 10, "a row divider resizes its row by pointer");
+	assert.equal(await rowOf(), rowBefore - 5, "a row divider resizes its row by pointer");
 	const rowReset = page.locator(inFrame("a", `.supermax-divider.is-horizontal[data-divides="${coast.row("thumbnails")}"] .supermax-divider-reset`));
 	assert.equal(await rowReset.getAttribute("data-direction"), "down", "a row reset points toward its preferred lower gutter");
 	await page.click(inFrame("a", `.supermax-divider.is-horizontal[data-divides="${coast.row("thumbnails")}"] .supermax-divider-reset`));
@@ -2244,9 +2242,8 @@ test("veil replaces a cell without turning it, keeps its surface and lifts the n
 	assert.ok(leaving.length > 0 && leaving.every((fold) => fold.duration === TIMING.veilFall && fold.easing === "cubic-bezier(0.4, 0, 1, 1)"), "the old content falls quickly and accelerating");
 	assert.ok(arriving.every((fold) => fold.duration > TIMING.veilFall && fold.easing === "cubic-bezier(0, 0, 0.2, 1)"), "the new content lifts slower than the old fell, decelerating");
 	assert.equal(arriving[0].delay, TIMING.veilFall, "the new content lifts as soon as the old has fallen, so the two never show at once");
-	assert.deepEqual(arriving.map((fold) => fold.cell), ["coast:photo:b", "coast:metadata:b", "coast:history:b"], "and lifts in reading order");
+	assert.deepEqual(arriving.map((fold) => fold.cell), ["coast:photo:b", "coast:metadata:b"], "and lifts in reading order");
 	assert.equal(arriving[1].delay - arriving[0].delay, TIMING.stagger, "one stagger apart");
-	assert.equal(arriving[2].delay - arriving[1].delay, TIMING.stagger, "the next cell follows at the same interval");
 	await page.selectOption("[data-presentation]", PRESENTATION);
 });
 
@@ -2321,7 +2318,7 @@ test("a split draws its own title above its rows, which stays while the rows cha
 	assert.equal(measured.barWidth, measured.cellWidth - 1, "across the whole split, leaving the gutter beside it free as its rows do");
 	assert.equal(measured.firstRowTop, 28, "the rows start below it");
 	assert.equal(measured.rowsHeight, measured.cellHeight - 28, "and share the height that is left");
-	assert.deepEqual(measured.rowBars, [["History A"], ["History B"], ["History C"]], "the split's bar stands above all its rows, and inside them only the cells that declare a bar draw one");
+	assert.deepEqual(measured.rowBars, [[], [], []], "the split's bar stands above all its rows, and inside them no cell draws one, since only the history cells declare a bar and they wait for a wider frame");
 	assert.equal(await page.locator(inFrame("a", `[data-occurrence="${coast.row("people")}"] .selector-label`)).textContent(), "People", "the lettered avatars are named in their content");
 	await page.click(inFrame("a", `[data-occurrence="${coast.row("thumbnails")}"] .thumb[data-destination="coast:photo:d"]`));
 	await settle();
@@ -2469,18 +2466,18 @@ test("a twenty-cell chain stays navigable in both presentations", async () => {
 	assert.equal(chain.length, 20);
 	assert.ok(chain.filter((cell) => cell.visible).length >= 3 && chain.filter((cell) => cell.visible).length < 20, "some cells are visible, the rest hidden behind reveal");
 	assert.ok(chain.every((cell) => !cell.compact), "no cell in a long chain takes a compact form");
-	assert.equal((await backButton("a")).label, "Show Depth 15", "Back names the nearest hidden cell");
+	assert.equal((await backButton("a")).label, "Show Depth 17", "Back names the nearest hidden cell");
 	await page.waitForFunction(() => document.querySelector('.frame[data-frame="a"] [data-spec-for$="/depth:20"] .cell-spec-state')?.textContent === "allocated");
 	const spec = await page.locator(inFrame("a", '[data-spec-for$="/depth:20"]')).evaluate((element) => ({ hidden: element.hidden, text: [...element.querySelectorAll("dt")].map((term) => `${term.textContent} ${term.nextElementSibling.textContent}`) }));
 	assert.equal(spec.hidden, false, "a cell with room shows its definition");
-	assert.deepEqual(spec.text.slice(0, 3), ["id depth:20", "min 160", "max 240"]);
+	assert.deepEqual(spec.text.slice(0, 4), ["id depth:20", "min 128", "max 512", "preferred 256"]);
 	assert.ok(spec.text.includes("overflow hide"));
 	assert.match(spec.text.find((line) => line.startsWith("width ")), /^width \d+ px$/);
 	await page.selectOption("[data-presentation]", "fold");
 	await settle();
 	await page.click(inFrame("a", ".supermax-up:not([hidden])"));
 	await settle();
-	assert.equal((await groups("a")).length, 19, "Show closes Depth 20 to show Depth 15");
+	assert.equal((await groups("a")).length, 19, "Show closes Depth 20 to show Depth 17");
 	assert.equal(await page.locator(inFrame("a", `[data-occurrence="${TWENTY_DEEP[19].from}/depth:20"]`)).count(), 0);
 	await page.evaluate((source) => window.supermaxDemo.frames[0].workspace.notify({ id: "deep-three", scope: "cell", source, kind: "action", message: "Look here", action: { label: "Ok", run() {} } }), "albums/depth:1/depth:2/depth:3");
 	await page.click(inFrame("a", '.supermax-notices [data-notice="deep-three"] .supermax-notice-go:not([hidden])'));

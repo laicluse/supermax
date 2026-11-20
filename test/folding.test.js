@@ -996,8 +996,8 @@ test("a fold between two full cells opens toward the neighbour that yields, with
 			const navigator = new Navigator({ root: "mode", minViewportHeight: 320, destinations: {
 				mode: { title: "Mode", min: 52, max: 52, overflow: { mode: "keep" } },
 				nav: { title: "Nav", min: 208, max: 208 },
-				parent: { title: "Parent", min: 320, max: "*", preferred: 400 },
-				child: { title: "Child", min: 320, max: "*", preferred: 400 },
+				parent: { title: "Parent", min: 320, max: "*", preferred: 320 },
+				child: { title: "Child", min: 320, max: "*", preferred: 320 },
 			} });
 			window.middle = new Workspace(host, { navigator, content: () => ({ element: document.createElement("textarea") }) });
 			window.middle.sync(["mode", "nav", "parent", "child"], { origin: null, animate: false });
@@ -1087,8 +1087,8 @@ test("a fold drag leaves the styles of the content inside its cells alone", asyn
 			const navigator = new Navigator({ root: "mode", minViewportHeight: 320, destinations: {
 				mode: { title: "Mode", min: 52, max: 52, overflow: { mode: "keep" } },
 				nav: { title: "Nav", min: 208, max: 208 },
-				parent: { title: "Parent", min: 320, max: "*", preferred: 400 },
-				child: { title: "Child", min: 320, max: "*", preferred: 400 },
+				parent: { title: "Parent", min: 320, max: "*", preferred: 320 },
+				child: { title: "Child", min: 320, max: "*", preferred: 320 },
 			} });
 			window.quiet = new Workspace(host, { navigator, content: (occurrence) => {
 				const element = document.createElement("div");

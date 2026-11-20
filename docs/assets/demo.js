@@ -1,4 +1,4 @@
-import { Navigator, ORIGAMI_PRESENTATION, TimeScale, VEIL_PRESENTATION, Workspace, layoutHashOf, readLayout } from "./supermax/index.js";
+import { Navigator, ORIGAMI_PRESENTATION, TimeScale, VEIL_PRESENTATION, Workspace, layoutHashOf, linearCurve, readLayout } from "./supermax/index.js";
 import { albums, depthCount, depthId, destinations, edits, embeddedDestinations, ids, minViewportHeight, paths, remoteContent } from "./album.js";
 import { appendAction, decodeLog, encodeLog } from "./deeplink.js";
 import { foldPresentation } from "./presentation-fold.js";
@@ -453,6 +453,9 @@ class Session {
 			presentation: document.querySelector("[data-presentation]"),
 			spare: document.querySelector("[data-spare]"),
 			speed: document.querySelector("[data-speed]"),
+			curve: document.querySelector("[data-curve]"),
+			curveValue: document.querySelector("[data-curve-value]"),
+			curveGraph: document.querySelector("[data-curve-graph] .curve-line"),
 		};
 		const query = new URLSearchParams(location.search);
 		const reloadWith = (key, value) => {
@@ -465,6 +468,19 @@ class Session {
 		if ([...this.controls.spare.options].some((option) => option.value === query.get("spare"))) this.controls.spare.value = query.get("spare");
 		this.controls.spare.addEventListener("change", () => reloadWith("spare", this.controls.spare.value));
 		this.controls.presentation.addEventListener("change", () => this.setPresentation(this.controls.presentation.value));
+		if (query.has("curve") && Number.isFinite(Number(query.get("curve")))) this.controls.curve.value = query.get("curve");
+		this.controls.curve.addEventListener("input", () => {
+			const next = new URL(location.href);
+			if (this.controls.curve.value === "1") next.searchParams.delete("curve");
+			else next.searchParams.set("curve", this.controls.curve.value);
+			history.replaceState(history.state, "", next);
+			this.paintCurve();
+			for (const frame of this.frames) {
+				frame.workspace.navigator.setCurve(this.curve);
+				frame.workspace.render({ animate: false });
+			}
+		});
+		this.paintCurve();
 		if ([...this.controls.speed.options].some((option) => option.value === query.get("speed"))) this.controls.speed.value = query.get("speed");
 		this.time = new TimeScale(Number(this.controls.speed.value));
 		this.time.addEventListener("change", () => this.paintTime());
@@ -604,7 +620,7 @@ class Session {
 		readout.append(element("strong", null, frame.name), size, rejection);
 		wrapper.append(box, readout);
 		document.querySelector("[data-frames]").append(wrapper);
-		const model = new Navigator({ destinations: this.embedded, root: "albums", minViewportHeight, spareSpace: this.controls.spare.value, context: this.context });
+		const model = new Navigator({ destinations: this.embedded, root: "albums", minViewportHeight, spareSpace: this.controls.spare.value, context: this.context, curve: this.curve });
 		for (const set of this.declarations) model.register(set);
 		let hover = null;
 		const wanted = (id) => id && !this.declares(id) && !this.failed.has(id);
@@ -733,6 +749,19 @@ class Session {
 
 	reset() {
 		this.replay([]);
+	}
+
+	get curve() {
+		return linearCurve(Number(this.controls.curve.value));
+	}
+
+	// The graph draws the curve as the share given out up to each position, so its slope at a point is how much room a pixel there gets.
+	paintCurve() {
+		const steepness = Number(this.controls.curve.value);
+		this.controls.curveValue.value = steepness.toFixed(2).replace(/0$/, "");
+		const curve = this.curve;
+		const points = Array.from({ length: 21 }, (_, index) => `${index * 5} ${(100 - 100 * curve(index / 20)).toFixed(1)}`);
+		this.controls.curveGraph.setAttribute("d", `M${points.join(" L")}`);
 	}
 
 	resize(sizes) {

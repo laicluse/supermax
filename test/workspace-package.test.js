@@ -56,7 +56,7 @@ test("the package stylesheet alone renders the chrome at the sizes the model com
 		}
 	});
 	assert.equal(measured.bars, 0, "the workspace draws no bar of its own above the cells");
-	assert.deepEqual(measured.rows, [0, 136, 136], "a row that does not fit takes no height at all, and the rows share what the split's own title bar leaves");
+	assert.deepEqual(measured.rows, [0, 118, 154], "a row that does not fit takes no height at all, and the rows share what the split's own title bar leaves, the lower row getting more");
 });
 
 test("a split and a cell in its row that declares a title header each draw their own bar", async () => {
