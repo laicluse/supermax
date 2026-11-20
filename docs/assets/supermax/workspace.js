@@ -9,6 +9,8 @@ import { ModalHost } from "./modal.js";
 import { NoticeBoard } from "./notices.js";
 import { PeekController } from "./peek.js";
 import { resolveStrings } from "./strings.js";
+import { frustumOrigin } from "./origin.js";
+import { defaultNoticeIcon } from "./icons.js";
 
 export const SLIDE_PRESENTATION = Object.freeze({ name: "slide", motion: null, createStrip: null });
 
@@ -22,9 +24,16 @@ function normalizePresentation(presentation) {
 }
 
 export class Workspace extends EventTarget {
-	constructor(element, { navigator, content, onIntent = null, presentation = SLIDE_PRESENTATION, strings = {} }) {
+	constructor(element, { navigator, content, onIntent = null, presentation = SLIDE_PRESENTATION, strings = {}, origin = frustumOrigin, overlayRoot = element.ownerDocument.body, noticePlacement = "source", noticeIcon = defaultNoticeIcon }) {
 		super();
+		if (noticeIcon !== null && typeof noticeIcon !== "function") throw new TypeError("noticeIcon must be a function that returns an element, or null for no icon");
+		this.noticeIcon = noticeIcon;
+		if (noticePlacement !== "source" && noticePlacement !== "top") throw new TypeError('noticePlacement must be "source" or "top"');
+		this.noticePlacement = noticePlacement;
+		if (origin !== null && typeof origin !== "function") throw new TypeError("origin must be a function that draws links, or null to draw none");
 		this.strings = resolveStrings(strings);
+		this.origin = origin;
+		this.overlayRoot = overlayRoot;
 		this.element = element;
 		this.navigator = navigator;
 		this.content = content;
@@ -86,7 +95,12 @@ export class Workspace extends EventTarget {
 		this.titleBox.append(this.titleContext, this.titleText);
 		this.navbar.append(this.navbarLeft, this.titleBox);
 		this.body = this.create("div", "supermax-body");
-		this.element.replaceChildren(this.navbar, this.body, this.notices.region);
+		this.element.replaceChildren(this.navbar, this.body);
+		this.noticeOrigin = this.origin ? this.originLayer("supermax-origin is-notices") : null;
+		if (this.noticeOrigin) this.overlayRoot.append(this.noticeOrigin);
+		this.onViewportChange = () => this.scheduleOrigins();
+		this.document.defaultView.addEventListener("resize", this.onViewportChange);
+		this.document.addEventListener("scroll", this.onViewportChange, true);
 	}
 
 	measure() {
@@ -404,9 +418,51 @@ export class Workspace extends EventTarget {
 			this.rendering = false;
 		}
 		this.dispatchEvent(new CustomEvent("render", { detail: { layout } }));
+		this.scheduleOrigins();
+		Promise.all([...this.chains.values()].map((entry) => entry.strip.finished)).then(() => this.scheduleOrigins());
 		const target = this.pendingFocus;
 		this.pendingFocus = null;
 		if (target) this.focusCell(target);
+	}
+
+	originLayer(className) {
+		const layer = this.document.createElementNS("http://www.w3.org/2000/svg", "svg");
+		layer.setAttribute("class", className);
+		layer.setAttribute("aria-hidden", "true");
+		return layer;
+	}
+
+	scheduleOrigins() {
+		if (!this.origin || this.originFrame) return;
+		this.originFrame = this.document.defaultView.requestAnimationFrame(() => {
+			this.originFrame = null;
+			this.drawOrigins();
+		});
+	}
+
+	originLink(id, overlay, sourceId) {
+		const entry = sourceId ? this.cells.get(sourceId) : null;
+		if (!overlay?.isConnected || !entry || !this.findCell(sourceId)?.full) return null;
+		return { id, from: overlay.getBoundingClientRect(), to: entry.element.getBoundingClientRect() };
+	}
+
+	drawOrigins() {
+		if (!this.origin || !this.layout) return;
+		const modal = this.modal;
+		const local = (layer, links) => {
+			const base = layer.getBoundingClientRect();
+			const shift = (rect) => new DOMRect(rect.left - base.left, rect.top - base.top, rect.width, rect.height);
+			return links.map((link) => ({ ...link, from: shift(link.from), to: shift(link.to) }));
+		};
+		if (modal) this.origin({ kind: "modal", layer: modal.originLayer, links: local(modal.originLayer, [this.originLink("modal", modal.dialog, modal.source)].filter(Boolean)) });
+		const bubbles = new Map();
+		for (const notice of modal ? [] : this.notices.notices.values()) {
+			if (notice.host === this.notices.region || notice.entering || bubbles.has(notice.source)) continue;
+			const link = this.originLink(notice.source, notice.host, notice.source);
+			if (link) bubbles.set(notice.source, link);
+		}
+		this.origin({ kind: "notice", layer: this.noticeOrigin, links: local(this.noticeOrigin, [...bubbles.values()]) });
+		this.notices.veil();
 	}
 
 	renderNavbar() {
@@ -611,6 +667,10 @@ export class Workspace extends EventTarget {
 		this.element.classList.remove("has-modal", "is-below-minimum");
 		this.observer.disconnect();
 		this.element.removeEventListener("focusin", this.onFocusIn);
+		this.document.defaultView.removeEventListener("resize", this.onViewportChange);
+		this.document.removeEventListener("scroll", this.onViewportChange, true);
+		if (this.originFrame) this.document.defaultView.cancelAnimationFrame(this.originFrame);
+		this.noticeOrigin?.remove();
 		for (const entry of this.cells.values()) entry.slot.dispose();
 		for (const entry of this.chains.values()) entry.strip.destroy();
 		this.cells.clear();

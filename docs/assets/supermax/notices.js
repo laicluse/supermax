@@ -7,9 +7,22 @@ export class NoticeBoard {
 		this.notices = new Map();
 		this.ids = new Set();
 		this.serial = 0;
-		this.region = workspace.create("div", "supermax-notices");
-		this.region.setAttribute("aria-live", "polite");
-		this.region.setAttribute("aria-label", workspace.strings.notices());
+		this.region = NoticeBoard.stack(workspace);
+	}
+
+	static stack(workspace) {
+		const body = workspace.overlayRoot;
+		let region = body.querySelector(":scope > .supermax-notices");
+		if (!region) {
+			region = workspace.create("div", "supermax-notices");
+			region.setAttribute("aria-live", "polite");
+			region.setAttribute("aria-label", workspace.strings.notices());
+			region.supermaxVeil = workspace.create("div", "supermax-notice-veil");
+			region.supermaxVeil.setAttribute("aria-hidden", "true");
+			body.append(region.supermaxVeil, region);
+		}
+		region.supermaxUsers = (region.supermaxUsers ?? 0) + 1;
+		return region;
 	}
 
 	notify({ id = null, scope = "cell", source = null, sourceTitle = null, kind = "success", message, action = null, duration } = {}) {
@@ -21,7 +34,7 @@ export class NoticeBoard {
 		this.notices.set(notice.id, notice);
 		this.place(notice);
 		this.resume(notice);
-		this.workspace.dispatchEvent(new CustomEvent("notice", { detail: { id: notice.id, state: "shown", scope: notice.host === this.region ? "workspace" : "cell" } }));
+		this.workspace.dispatchEvent(new CustomEvent("notice", { detail: { id: notice.id, state: "shown", scope: notice.scope } }));
 		return notice.id;
 	}
 
@@ -31,7 +44,8 @@ export class NoticeBoard {
 		this.notices.delete(noticeId);
 		this.pause(notice);
 		const hadFocus = notice.element.contains(this.workspace.document.activeElement);
-		this.detach(notice.element);
+		this.leave(notice.element);
+		this.workspace.scheduleOrigins();
 		if (hadFocus) this.focusAfter(notice);
 		this.workspace.dispatchEvent(new CustomEvent("notice", { detail: { id: noticeId, state } }));
 		return true;
@@ -47,15 +61,36 @@ export class NoticeBoard {
 	}
 
 	clear() {
-		for (const notice of this.notices.values()) this.pause(notice);
+		for (const notice of this.notices.values()) {
+			this.pause(notice);
+			notice.element?.remove();
+		}
 		this.notices.clear();
 		this.ids.clear();
+		this.region.supermaxUsers -= 1;
+		if (this.region.supermaxUsers <= 0) {
+			this.region.supermaxVeil?.remove();
+			this.region.remove();
+		}
 	}
 
-	detach(element) {
+	leave(element) {
+		element.removeAttribute("data-notice");
+		element.classList.replace("supermax-notice", "supermax-notice-leaving");
+		element.inert = true;
+		const view = this.workspace.document.defaultView;
 		const container = element.parentElement;
-		element.remove();
-		if (container && container !== this.region && container.childElementCount === 0) container.remove();
+		const gone = () => {
+			element.remove();
+			this.tidy(container);
+			this.veil();
+		};
+		if (view.matchMedia("(prefers-reduced-motion: reduce)").matches || !element.animate) {
+			gone();
+			return;
+		}
+		const height = element.offsetHeight;
+		element.animate([{ opacity: 1, transform: "none", marginBottom: "0px" }, { opacity: 0, transform: "translateY(-24px)", marginBottom: `${-height}px` }], { duration: 180, easing: "cubic-bezier(0.4, 0, 1, 1)", fill: "forwards" }).finished.then(gone, gone);
 	}
 
 	focusAfter(notice) {
@@ -68,31 +103,45 @@ export class NoticeBoard {
 		workspace.upButton.focus({ preventScroll: true });
 	}
 
-	hostFor(notice) {
+	hostFor(notice, sourceCell) {
 		const workspace = this.workspace;
-		if (notice.scope !== "cell" || !notice.source || workspace.modal) return this.region;
-		const entry = workspace.cells.get(notice.source);
-		const cell = workspace.findCell(notice.source);
-		if (!entry || !cell?.full) return this.region;
-		let container = entry.element.querySelector(":scope > .supermax-cell-notices");
-		if (!container) {
-			container = workspace.create("div", "supermax-cell-notices");
-			entry.element.append(container);
+		const entry = notice.source ? workspace.cells.get(notice.source) : null;
+		if (workspace.noticePlacement !== "source" || !entry || !sourceCell?.full || workspace.modal) return this.region;
+		let bubbles = entry.element.querySelector(":scope > .supermax-cell-notices");
+		if (!bubbles) {
+			bubbles = workspace.create("div", "supermax-cell-notices");
+			entry.element.append(bubbles);
 		}
-		return container;
+		return bubbles;
+	}
+
+	veil() {
+		const veil = this.region.supermaxVeil;
+		if (!veil) return;
+		const stacked = [...this.region.children].some((child) => child.classList.contains("supermax-notice"));
+		veil.classList.toggle("is-shown", stacked);
+		if (!stacked) return;
+		const root = this.workspace.overlayRoot === this.workspace.document.body ? 0 : this.workspace.overlayRoot.getBoundingClientRect().top;
+		const inset = parseFloat(getComputedStyle(this.region).top) || 0;
+		veil.style.height = `${this.region.getBoundingClientRect().bottom - root + inset}px`;
+	}
+
+	tidy(container) {
+		if (container && container !== this.region && container.childElementCount === 0) container.remove();
 	}
 
 	place(notice) {
 		const workspace = this.workspace;
-		const host = this.hostFor(notice);
 		const sourceOccurrence = notice.source ? workspace.navigator.get(notice.source) : null;
-		const named = host === this.region && notice.source;
 		const sourceCell = sourceOccurrence ? workspace.findCell(notice.source) : null;
+		const host = this.hostFor(notice, sourceCell);
+		const named = host === this.region && !!notice.source;
 		const reachable = !!sourceOccurrence && !sourceCell?.full;
 		if (notice.element && notice.host === host && notice.named === named && notice.sourceOpen === !!sourceOccurrence && notice.reachable === reachable) return;
 		const previous = notice.element;
 		const element = workspace.create("div", `supermax-notice is-${notice.kind}`);
 		element.dataset.notice = notice.id;
+		if (notice.source) element.dataset.source = notice.source;
 		if (notice.kind === "error") element.setAttribute("role", "alert");
 		const text = workspace.create("div", "supermax-notice-text");
 		if (named) {
@@ -119,8 +168,14 @@ export class NoticeBoard {
 		close.type = "button";
 		close.setAttribute("aria-label", workspace.strings.dismissNotice(notice.message));
 		close.addEventListener("click", () => this.dismiss(notice.id));
-		controls.append(close);
-		element.append(text, controls);
+		const icon = workspace.noticeIcon?.(notice.kind, workspace.document, notice) ?? null;
+		if (icon) {
+			const holder = workspace.create("span", "supermax-notice-icon");
+			holder.setAttribute("aria-hidden", "true");
+			holder.append(icon);
+			element.append(holder);
+		}
+		element.append(text, controls, close);
 		element.addEventListener("keydown", (event) => { if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); this.dismiss(notice.id); } });
 		notice.hovered = false;
 		notice.focused = false;
@@ -130,17 +185,36 @@ export class NoticeBoard {
 		element.addEventListener("focusout", (event) => { if (!element.contains(event.relatedTarget)) this.hold(notice, "focused", false); });
 		if (sourceOccurrence) notice.sourceTitle = sourceOccurrence.title;
 		Object.assign(notice, { element, host, named, sourceOpen: !!sourceOccurrence, reachable });
-		host.append(element);
 		if (previous) {
 			const hadFocus = previous.contains(workspace.document.activeElement);
-			this.detach(previous);
+			const container = previous.parentElement;
+			if (container === host) previous.replaceWith(element);
+			else {
+				previous.remove();
+				this.tidy(container);
+				host.append(element);
+			}
 			if (hadFocus) close.focus({ preventScroll: true });
 			else this.resume(notice);
+		} else {
+			host.append(element);
+			this.enter(notice);
 		}
+		workspace.scheduleOrigins();
+	}
+
+	enter(notice) {
+		const view = this.workspace.document.defaultView;
+		if (view.matchMedia("(prefers-reduced-motion: reduce)").matches || !notice.element.animate) return;
+		notice.entering = true;
+		const done = () => { notice.entering = false; this.workspace.scheduleOrigins(); };
+		const from = notice.host === this.region ? "translateY(calc(-100% - var(--supermax-overlay-inset, 16px)))" : "translateY(-6px) scale(0.98)";
+		notice.element.animate([{ opacity: 0, transform: from }, { opacity: 1, transform: "none" }], { duration: 220, easing: "cubic-bezier(0.2, 0, 0, 1)" }).finished.then(done, done);
 	}
 
 	hold(notice, key, held) {
 		notice[key] = held;
+		this.workspace.scheduleOrigins();
 		if (notice.hovered || notice.focused) this.pause(notice);
 		else this.resume(notice);
 	}

@@ -1,0 +1,83 @@
+const SVG = "http://www.w3.org/2000/svg";
+const GROW = 260;
+const starts = new WeakMap();
+
+const corners = (rect) => ({
+	topLeft: [rect.left, rect.top],
+	topRight: [rect.right, rect.top],
+	bottomRight: [rect.right, rect.bottom],
+	bottomLeft: [rect.left, rect.bottom],
+});
+
+const between = (from, to, t) => {
+	const mix = (a, b) => a + (b - a) * t;
+	const left = mix(from.left, to.left);
+	const top = mix(from.top, to.top);
+	return { left, top, right: mix(from.right, to.right), bottom: mix(from.bottom, to.bottom), width: mix(from.right, to.right) - left, height: mix(from.bottom, to.bottom) - top };
+};
+
+function facesOf(from, to) {
+	const near = corners(from);
+	const far = corners(to);
+	return {
+		top: [to.top < from.top, [near.topLeft, near.topRight, far.topRight, far.topLeft]],
+		right: [to.right > from.right, [near.topRight, near.bottomRight, far.bottomRight, far.topRight]],
+		bottom: [to.bottom > from.bottom, [near.bottomRight, near.bottomLeft, far.bottomLeft, far.bottomRight]],
+		left: [to.left < from.left, [near.bottomLeft, near.topLeft, far.topLeft, far.bottomLeft]],
+	};
+}
+
+function paint(group, from, to, progress) {
+	const faces = facesOf(from, between(from, to, 1 - (1 - progress) ** 3));
+	group.style.opacity = String(progress);
+	for (const face of group.querySelectorAll(".supermax-frustum-face")) {
+		const [, points] = faces[face.dataset.side];
+		face.setAttribute("points", points.map((point) => point.join(",")).join(" "));
+	}
+	const target = group.querySelector(".supermax-frustum-target");
+	const far = between(from, to, 1 - (1 - progress) ** 3);
+	for (const [name, value] of [["x", far.left], ["y", far.top], ["width", far.width], ["height", far.height]]) target.setAttribute(name, String(value));
+}
+
+export function frustumOrigin({ kind, layer, links }) {
+	const document = layer.ownerDocument;
+	const view = document.defaultView;
+	const still = view.matchMedia("(prefers-reduced-motion: reduce)").matches;
+	const known = starts.get(layer) ?? new Map();
+	const current = new Map();
+	layer.replaceChildren();
+	const growing = [];
+	for (const { id, from, to } of links) {
+		const start = known.get(id) ?? view.performance.now();
+		current.set(id, start);
+		const group = document.createElementNS(SVG, "g");
+		group.setAttribute("class", `supermax-frustum is-${kind}`);
+		for (const [side, [facing]] of Object.entries(facesOf(from, to))) {
+			if (!facing) continue;
+			const face = document.createElementNS(SVG, "polygon");
+			face.setAttribute("class", `supermax-frustum-face is-${side}`);
+			face.dataset.side = side;
+			group.append(face);
+		}
+		const target = document.createElementNS(SVG, "rect");
+		target.setAttribute("class", "supermax-frustum-target");
+		group.append(target);
+		layer.append(group);
+		const progress = still ? 1 : Math.min(1, (view.performance.now() - start) / GROW);
+		paint(group, from, to, progress);
+		if (progress < 1) growing.push({ group, from, to, start });
+	}
+	starts.set(layer, current);
+	if (growing.length === 0) return;
+	const step = (now) => {
+		let pending = false;
+		for (const { group, from, to, start } of growing) {
+			if (!group.isConnected) continue;
+			const progress = Math.min(1, (now - start) / GROW);
+			paint(group, from, to, progress);
+			pending ||= progress < 1;
+		}
+		if (pending) view.requestAnimationFrame(step);
+	};
+	view.requestAnimationFrame(step);
+}

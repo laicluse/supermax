@@ -215,6 +215,55 @@ test("a click in one frame reaches the other as the same new click, even after t
 	assert.deepEqual(await groups("b"), await groups("a"));
 });
 
+test("a modal sits front and centre in its own viewport and a frustum links it to its source", async () => {
+	await openDemo([open("album:coast", "albums")]);
+	await page.click(inFrame("a", `[data-occurrence="${coast.photo("people", "a")}"] .caption-edit`));
+	await settle();
+	await page.waitForFunction(() => document.querySelector('.frame[data-frame="a"] .supermax-origin.is-modal .supermax-frustum-face'));
+	const geometry = await page.evaluate(() => {
+		const frame = document.querySelector('.frame[data-frame="a"]').getBoundingClientRect();
+		const dialog = document.querySelector('.frame[data-frame="a"] .supermax-modal').getBoundingClientRect();
+		return { dx: Math.round((dialog.left + dialog.width / 2) - (frame.left + frame.width / 2)), dy: Math.round((dialog.top + dialog.height / 2) - (frame.top + frame.height / 2)), inside: dialog.left >= frame.left && dialog.right <= frame.right && dialog.top >= frame.top && dialog.bottom <= frame.bottom };
+	});
+	assert.ok(Math.abs(geometry.dx) <= 1 && Math.abs(geometry.dy) <= 1 && geometry.inside, `the dialog is centred inside its frame (${geometry.dx}, ${geometry.dy})`);
+	const faces = await page.locator(inFrame("a", ".supermax-origin.is-modal .supermax-frustum-face")).evaluateAll((elements) => elements.map((element) => element.getAttribute("class").split(" ").pop()));
+	assert.ok(faces.length >= 1 && faces.length <= 2, `only the faces turned towards the viewer are drawn: ${faces.join(", ")}`);
+	assert.equal(await page.locator(inFrame("b", ".supermax-modal")).count(), 0, "the other frame stays clear");
+	await page.keyboard.press("Escape");
+	assert.equal(await page.locator(inFrame("a", ".supermax-origin.is-modal")).count(), 0, "closing removes the frustum with the modal");
+});
+
+test("a modal opens at its preferred size, moves by its header and resizes only within its bounds and its viewport", async () => {
+	await openDemo([open("album:coast", "albums")]);
+	await page.evaluate(() => window.supermaxDemo.frames[0].workspace.openModal({ title: "Sized", min: 300, max: 520, preferred: 480, minHeight: 200, preferredHeight: 260, content: () => ({ element: document.createElement("p") }) }, {}));
+	await settle();
+	const dialog = inFrame("a", ".supermax-modal");
+	const size = () => page.locator(dialog).evaluate((element) => { const box = element.getBoundingClientRect(); return { left: Math.round(box.left), top: Math.round(box.top), width: Math.round(box.width), height: Math.round(box.height) }; });
+	const opened = await size();
+	assert.deepEqual([opened.width, opened.height], [480, 260], "the preferred size within min and max");
+	const header = await page.locator(`${dialog} .supermax-modal-title`).boundingBox();
+	await page.mouse.move(header.x + 4, header.y + 4);
+	await page.mouse.down();
+	await page.mouse.move(header.x - 96, header.y + 64, { steps: 4 });
+	await page.mouse.up();
+	const moved = await size();
+	assert.deepEqual([moved.left - opened.left, moved.top - opened.top], [-100, 60], "the header moves the dialog with the pointer");
+	const resize = async (dx, dy) => {
+		const box = await page.locator(dialog).boundingBox();
+		await page.mouse.move(box.x + box.width - 4, box.y + box.height - 4);
+		await page.mouse.down();
+		await page.mouse.move(box.x + box.width - 4 + dx, box.y + box.height - 4 + dy, { steps: 6 });
+		await page.mouse.up();
+		return size();
+	};
+	assert.equal((await resize(800, 0)).width, 520, "growing stops at max");
+	assert.equal((await resize(-800, 0)).width, 300, "shrinking stops at min");
+	const tall = await resize(0, 2000);
+	const viewport = await page.locator(frame("a")).boundingBox();
+	assert.ok(tall.top + tall.height <= viewport.y + viewport.height - 15, "growing stops at the viewport inset");
+	await page.keyboard.press("Escape");
+});
+
 test("rows span the split and no cell crosses a row", async () => {
 	await openDemo(THREE_ROWS);
 	const rows = await boxes(inFrame("a", ".supermax-row"));
@@ -556,7 +605,7 @@ test("a modal knows its source, traps the keyboard, closes before Back and retur
 	assert.ok(await page.evaluate(() => document.activeElement?.closest(".supermax-cell") !== null), "closing onto a hidden source lands in a visible cell");
 });
 
-test("notices stay with their cell, move to the workspace when the source is out of view, and never steal focus", async () => {
+test("a notice is a bubble in its source cell, moves to the top of the viewport naming a source out of view, and never steals focus", async () => {
 	await openDemo([open("album:coast", "albums")]);
 	await resize([[1100, 640], [360, 640]]);
 	const photoA = inFrame("a", `[data-occurrence="${coast.photo("thumbnails", "a")}"]`);
@@ -564,7 +613,7 @@ test("notices stay with their cell, move to the workspace when the source is out
 	await page.focus(`${photoA} .caption`);
 	await page.click(`${photoA} .caption-save`);
 	await page.waitForSelector(cellNotice);
-	assert.equal(await page.locator(`${cellNotice} .supermax-notice-text`).textContent(), "Caption saved", "a success notice appears inside its source cell");
+	assert.equal(await page.locator(`${cellNotice} .supermax-notice-text`).textContent(), "Caption saved", "a success notice appears as a bubble in its source cell, without naming it");
 	assert.equal(await page.locator(cellNotice).evaluate((element) => element.classList.contains("is-success")), true);
 	assert.equal(await page.evaluate(() => document.activeElement?.className), "metadata-link caption-save", "the notice takes no focus");
 	const narrowNotice = inFrame("b", ".supermax-notices .supermax-notice");
@@ -593,11 +642,11 @@ test("notices stay with their cell, move to the workspace when the source is out
 	await page.waitForSelector(`${cellNotice}.is-success`);
 	assert.equal(await page.locator(`${cellNotice}.is-error`).count(), 0, "acting on the error retires it");
 	await page.evaluate((source) => window.supermaxDemo.frames[0].workspace.notify({ id: "keep", scope: "cell", source, kind: "action", message: "Review the crop", action: { label: "Open", run() {} } }), coast.photo("thumbnails", "a"));
-	assert.equal(await page.locator(`${photoA} .supermax-cell-notices [data-notice="keep"]`).count(), 1);
+	assert.equal(await page.locator(`${photoA} .supermax-cell-notices [data-notice="keep"] .supermax-notice-text`).textContent(), "Review the crop");
 	await resize([[1100, 400], [360, 640]]);
 	assert.equal(await page.locator(inFrame("a", `.supermax-row[data-row="${coast.row("thumbnails")}"]`)).evaluate((element) => element.classList.contains("is-hidden")), true, "the source row is out of view");
 	const moved = inFrame("a", '.supermax-notices [data-notice="keep"]');
-	assert.equal(await page.locator(`${moved} .supermax-notice-text`).textContent(), "Photo A: Review the crop", "a notice whose source is out of view moves to the workspace and names it");
+	assert.equal(await page.locator(`${moved} .supermax-notice-text`).textContent(), "Photo A: Review the crop", "a notice whose source went out of view moves to the top and names it");
 	await page.click(`${moved} .supermax-notice-go`);
 	await settle();
 	assert.equal(await page.locator(inFrame("a", `.supermax-row[data-row="${coast.row("thumbnails")}"]`)).evaluate((element) => element.classList.contains("is-hidden")), false, "Show brings the row back");
@@ -610,18 +659,28 @@ test("notices stay with their cell, move to the workspace when the source is out
 	await page.click(inFrame("a", `[data-occurrence="${coast.photo("people", "b")}"] .caption-save`));
 	await closeNewest("a");
 	await settle();
-	await page.waitForSelector(inFrame("a", ".supermax-notices .supermax-notice.is-success"));
-	assert.equal(await page.locator(inFrame("a", ".supermax-notices .supermax-notice.is-success .supermax-notice-text")).textContent(), "Photo B (not open): Caption saved", "a late response for a closed source lands in the workspace");
+	const late = inFrame("a", `.supermax-notices .supermax-notice[data-source="${coast.photo("people", "b")}"]`);
+	await page.waitForSelector(late);
+	assert.equal(await page.locator(`${late} .supermax-notice-text`).textContent(), "Photo B (not open): Caption saved", "a late response for a closed source names it");
 	assert.ok(!(await state("a")).occurrences.includes(coast.photo("people", "b")), "and does not reopen it");
 	await page.selectOption("[data-delay]", "0");
-	await page.waitForSelector(inFrame("a", ".supermax-notices .supermax-notice.is-success"), { state: "detached", timeout: 6000 });
+	await page.waitForSelector(late, { state: "detached", timeout: 6000 });
 	await page.click(inFrame("a", `[data-occurrence="${coast.metadata("thumbnails", "a")}"] .album-export`));
-	const exportNotice = inFrame("a", ".supermax-notices .supermax-notice.is-action");
-	assert.equal(await page.locator(`${exportNotice} .supermax-notice-text`).textContent(), "Metadata A: Export of Coast is ready");
+	const exportNotice = inFrame("a", ".supermax-notice.is-action");
+	assert.equal(await page.locator(`${inFrame("a", `[data-occurrence="${coast.metadata("thumbnails", "a")}"]`)} .supermax-cell-notices .supermax-notice-text`).textContent(), "Export of Coast is ready", "the bubble in its source cell needs no name");
+	await page.waitForFunction(() => [...document.querySelectorAll('.frame[data-frame="a"] .supermax-origin.is-notices .supermax-frustum.is-notice')].some((group) => group.style.opacity === "1"));
+	const recess = await page.evaluate(() => {
+		const frame = document.querySelector('.frame[data-frame="a"]');
+		const target = [...frame.querySelectorAll(".supermax-origin.is-notices .supermax-frustum-target")].map((element) => element.getBoundingClientRect());
+		const cells = [...frame.querySelectorAll(".supermax-cell-notices")].map((element) => element.closest(".supermax-cell").getBoundingClientRect());
+		return target.every((rect) => cells.some((cell) => Math.abs(rect.left - cell.left) < 2 && Math.abs(rect.width - cell.width) < 2));
+	});
+	assert.equal(recess, true, "each bubble's frustum stays inside its own source cell");
+	assert.equal(await page.locator(inFrame("b", ".supermax-notice-veil.is-shown")).count(), 1, "the frame whose notices sit at the top dims a band behind them");
 	assert.equal(await page.locator(`${exportNotice} .supermax-notice-go`).count(), 0, "a source that is in view needs no Show control");
 	await page.click(`${photoA} .caption-edit`);
 	await settle();
-	assert.equal(await page.locator(exportNotice).isVisible(), true, "a workspace notice stays visible above a modal");
+	assert.equal(await page.locator(`${inFrame("a", ".supermax-notices")} .supermax-notice.is-action .supermax-notice-text`).textContent(), "Metadata A: Export of Coast is ready", "a modal moves bubbles to the top, where the keyboard can reach them, naming their source");
 	assert.equal(await page.evaluate(() => document.activeElement?.closest(".supermax-modal") !== null), true, "the modal keeps focus");
 	const trapped = () => page.evaluate(() => { const active = document.activeElement; const frame = active?.closest('.frame[data-frame="a"]'); return !!frame && !!(active.closest(".supermax-modal") || active.closest(".supermax-notices")); });
 	const cycle = await page.evaluate(() => { const frame = document.querySelector('.frame[data-frame="a"]'); const selector = "a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex='-1'])"; return [...frame.querySelector(".supermax-modal").querySelectorAll(selector), ...frame.querySelector(".supermax-notices").querySelectorAll(selector)].filter((element) => element.offsetParent !== null).length; });
@@ -645,9 +704,10 @@ test("notices stay with their cell, move to the workspace when the source is out
 	assert.equal(await page.locator(inFrame("a", ".supermax-modal")).count(), 1, "and leaves the modal open");
 	assert.equal(await page.evaluate(() => document.activeElement?.closest(".supermax-modal") !== null), true, "with focus back inside it");
 	await page.evaluate((source) => window.supermaxDemo.frames[0].workspace.notify({ id: "under-modal", scope: "cell", source, kind: "error", message: "Still here" }), coast.photo("thumbnails", "a"));
-	assert.equal(await page.locator(inFrame("a", '.supermax-notices [data-notice="under-modal"]')).count(), 1, "a cell notice raised while a modal is open lands in the workspace region, where it is reachable");
+	const underModal = inFrame("a", '.supermax-notices [data-notice="under-modal"]');
+	assert.equal(await page.locator(`${underModal} .supermax-notice-text`).textContent(), "Photo A: Still here", "a notice raised while a modal hides its source names it");
 	await page.keyboard.press("Escape");
-	assert.equal(await page.locator(`${photoA} .supermax-cell-notices [data-notice="under-modal"]`).count(), 1, "closing the modal returns the cell notice to its cell");
+	assert.equal(await page.locator(`${photoA} .supermax-cell-notices [data-notice="under-modal"] .supermax-notice-text`).textContent(), "Still here", "closing the modal returns the notice to its cell");
 	await page.click(`${photoA} [data-notice="under-modal"] .supermax-notice-dismiss`);
 	await page.click(inFrame("a", `[data-occurrence="${coast.metadata("thumbnails", "a")}"] .album-export`));
 	await page.click(`${exportNotice} .supermax-notice-action`);

@@ -1,0 +1,13 @@
+const PATHS = {
+	success: '<path d="M3.5 8.5l3 3 6-7"/>',
+	error: '<circle cx="8" cy="8" r="6.25"/><path d="M8 4.75v4"/><path d="M8 11.1v.15"/>',
+	action: '<circle cx="8" cy="8" r="6.25"/><path d="M8 7.25v4"/><path d="M8 4.9v.15"/>',
+};
+
+export function defaultNoticeIcon(kind, document) {
+	const paths = PATHS[kind];
+	if (!paths) return null;
+	const holder = document.createElement("span");
+	holder.innerHTML = `<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${paths}</svg>`;
+	return holder.firstElementChild;
+}

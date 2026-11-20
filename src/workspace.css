@@ -215,62 +215,110 @@
 .supermax-divider-reset:focus-visible { outline: 2px solid var(--supermax-accent, #0b6bcb); outline-offset: 2px; }
 
 .supermax-notices {
-	position: absolute;
-	right: 8px;
-	bottom: 8px;
-	z-index: 9;
+	position: fixed;
+	top: var(--supermax-overlay-inset, 16px);
+	left: 50%;
+	z-index: 1001;
 	display: flex;
 	flex-direction: column;
-	gap: 6px;
-	width: min(360px, calc(100% - 16px));
+	gap: 8px;
+	width: min(var(--supermax-notice-width, 440px), calc(100% - 2 * var(--supermax-overlay-inset, 16px)));
+	transform: translateX(-50%);
 	pointer-events: none;
 }
 .supermax-notices:empty { display: none; }
-.supermax-cell-notices {
-	position: absolute;
+.supermax-notice-veil {
+	position: fixed;
+	top: 0;
 	left: 0;
 	right: 0;
-	top: var(--supermax-cell-title);
+	z-index: 1000;
+	height: 0;
+	background: var(--supermax-notice-veil, linear-gradient(rgba(20, 30, 40, 0.22), rgba(20, 30, 40, 0.14)));
+	opacity: 0;
+	pointer-events: none;
+	transition: opacity 180ms ease, height 180ms ease;
+}
+.supermax-notice-veil.is-shown { opacity: 1; }
+.supermax-cell-notices {
+	position: absolute;
+	top: calc(var(--supermax-cell-title, 32px) + 10px);
+	left: 50%;
 	z-index: 3;
 	display: flex;
 	flex-direction: column;
-	gap: 4px;
-	padding: 6px;
+	gap: 6px;
+	width: min(var(--supermax-notice-width, 440px), calc(100% - 16px));
+	transform: translateX(-50%);
 	pointer-events: none;
 }
-.supermax-notice {
+.supermax-cell-notices > :first-child::before {
+	content: "";
+	position: absolute;
+	top: -6px;
+	left: 50%;
+	width: 10px;
+	height: 10px;
+	border-top: 1px solid var(--notice-border);
+	border-left: 1px solid var(--notice-border);
+	background: var(--notice-surface);
+	transform: translateX(-50%) rotate(45deg);
+}
+.supermax-notice, .supermax-notice-leaving {
+	--notice-surface: var(--supermax-notice-surface, var(--supermax-surface, #ffffff));
+	--notice-border: var(--supermax-notice-border, var(--supermax-line, #d6dde5));
+	--notice-ink: var(--supermax-notice-ink, var(--supermax-muted, #5c6b7a));
+	position: relative;
 	display: flex;
+	flex-wrap: wrap;
 	align-items: flex-start;
 	gap: 8px;
-	padding: 8px 8px 8px 12px;
-	border: 1px solid var(--supermax-line, #d6dde5);
-	border-left-width: 4px;
-	border-radius: 8px;
-	background: var(--supermax-surface, #ffffff);
-	box-shadow: 0 6px 18px rgba(0, 0, 0, 0.14);
+	padding: 9px 38px 9px 12px;
+	border: 1px solid var(--notice-border);
+	border-radius: 10px;
+	background: var(--notice-surface);
+	box-shadow: 0 4px 14px rgba(0, 0, 0, 0.08);
 	font-size: 13px;
 	color: var(--supermax-ink, #1f2933);
 	pointer-events: auto;
 }
-.supermax-notice.is-success { border-left-color: var(--supermax-success, #1b7f3b); }
-.supermax-notice.is-error { border-left-color: var(--supermax-warn, #b4261b); }
-.supermax-notice.is-action { border-left-color: var(--supermax-accent, #0b6bcb); }
-.supermax-notice-text { flex: 1 1 auto; min-width: 0; padding-top: 3px; }
+:is(.supermax-notice, .supermax-notice-leaving).is-success {
+	--notice-surface: var(--supermax-notice-success-surface, #f3f9f4);
+	--notice-border: var(--supermax-notice-success-border, #cfe6d6);
+	--notice-ink: var(--supermax-notice-success-ink, #1b7f3b);
+}
+:is(.supermax-notice, .supermax-notice-leaving).is-error {
+	--notice-surface: var(--supermax-notice-error-surface, #fdf4f3);
+	--notice-border: var(--supermax-notice-error-border, #f1d1cc);
+	--notice-ink: var(--supermax-notice-error-ink, #b4261b);
+}
+:is(.supermax-notice, .supermax-notice-leaving).is-action {
+	--notice-surface: var(--supermax-notice-action-surface, #f2f7fd);
+	--notice-border: var(--supermax-notice-action-border, #cfe0f4);
+	--notice-ink: var(--supermax-notice-action-ink, #0b6bcb);
+}
+.supermax-notice-icon { flex: none; width: 16px; height: 16px; margin-top: 2px; color: var(--notice-ink); }
+.supermax-notice-icon svg { display: block; width: 100%; height: 100%; }
+.supermax-notice-text { flex: 1 1 14ch; min-width: 0; padding-top: 1px; }
 .supermax-notice-source { font-weight: 600; color: var(--supermax-muted, #5c6b7a); }
 .supermax-notice-controls { display: flex; align-items: center; gap: 4px; flex: none; }
+.supermax-notice-controls:empty { display: none; }
 .supermax-notice-go, .supermax-notice-action {
-	padding: 4px 10px;
-	border: 1px solid var(--supermax-accent, #0b6bcb);
+	padding: 3px 10px;
+	border: 1px solid var(--notice-border);
 	border-radius: 999px;
-	background: var(--supermax-surface, #ffffff);
-	color: var(--supermax-accent, #0b6bcb);
+	background: rgba(255, 255, 255, 0.6);
+	color: var(--notice-ink);
 	font: inherit;
 	font-size: 12px;
 	cursor: pointer;
 	white-space: nowrap;
 }
-.supermax-notice.is-error .supermax-notice-action { border-color: var(--supermax-warn, #b4261b); color: var(--supermax-warn, #b4261b); }
+.supermax-notice-go:hover, .supermax-notice-action:hover { background: var(--supermax-surface, #ffffff); }
 .supermax-notice-dismiss {
+	position: absolute;
+	top: 6px;
+	right: 6px;
 	width: 26px;
 	height: 26px;
 	border: 0;
@@ -284,26 +332,22 @@
 }
 .supermax-notice-dismiss:hover, .supermax-notice-dismiss:focus-visible { background: var(--supermax-muted-surface, #eef2f6); color: var(--supermax-ink, #1f2933); }
 .supermax-notice-go:focus-visible, .supermax-notice-action:focus-visible, .supermax-notice-dismiss:focus-visible { outline: 2px solid var(--supermax-accent, #0b6bcb); outline-offset: 2px; }
-@media (prefers-reduced-motion: no-preference) {
-	.supermax-notice { animation: supermax-notice-in 140ms ease-out; }
-	@keyframes supermax-notice-in { from { opacity: 0; transform: translateY(4px); } }
-}
 
 .supermax-modal-layer {
-	position: absolute;
-	inset: var(--supermax-navbar, 44px) 0 0 0;
-	z-index: 8;
-	background: rgba(20, 30, 40, 0.28);
+	position: fixed;
+	inset: 0;
+	z-index: 1000;
+	display: grid;
+	place-items: center;
+	padding: var(--supermax-overlay-inset, 16px);
+	background: var(--supermax-backdrop, rgba(20, 30, 40, 0.28));
 }
 .supermax-modal {
-	position: absolute;
-	left: 50%;
-	top: 50%;
-	transform: translate(-50%, -50%);
+	position: relative;
 	display: flex;
 	flex-direction: column;
-	width: min(420px, calc(100% - 16px));
-	max-height: calc(100% - 16px);
+	box-sizing: border-box;
+	resize: both;
 	background: var(--supermax-surface, #ffffff);
 	border: 1px solid var(--supermax-line, #d6dde5);
 	border-radius: 10px;
@@ -311,8 +355,10 @@
 	overflow: hidden;
 	outline: none;
 }
-.supermax-modal.is-anchored { transform: none; }
+.supermax-modal.is-placed { position: absolute; }
 .supermax-modal-header {
+	cursor: move;
+	user-select: none;
 	display: flex;
 	align-items: flex-start;
 	justify-content: space-between;
@@ -341,12 +387,21 @@
 .supermax-modal-body { flex: 1 1 auto; min-height: 0; overflow: auto; padding: 12px 16px 16px; }
 .supermax-modal-body .supermax-loading, .supermax-modal-body .supermax-error { padding: 0; }
 @media (prefers-reduced-motion: no-preference) {
-	.supermax-modal { animation: supermax-modal-in 160ms ease-out; }
-	@keyframes supermax-modal-in { from { opacity: 0; transform: translate(-50%, -50%) scale(0.98); } }
-	.supermax-modal.is-anchored { animation-name: supermax-modal-in-anchored; }
-	@keyframes supermax-modal-in-anchored { from { opacity: 0; transform: scale(0.98); } }
+	.supermax-modal { animation: supermax-modal-in 180ms cubic-bezier(0.2, 0, 0, 1); }
+	@keyframes supermax-modal-in { from { opacity: 0; transform: scale(0.97); } }
+	.supermax-modal-layer { animation: supermax-backdrop-in 200ms ease-out; }
+	@keyframes supermax-backdrop-in { from { background-color: transparent; } }
 }
 
 .supermax-crumb { padding: 0; border: 0; background: none; color: inherit; font: inherit; cursor: pointer; }
 .supermax-crumb:hover, .supermax-crumb:focus-visible { color: var(--supermax-accent, #0b6bcb); text-decoration: underline; outline: none; }
 .supermax-crumb-separator { margin: 0 4px; }
+
+.supermax-origin { position: fixed; inset: 0; width: 100%; height: 100%; overflow: visible; pointer-events: none; }
+.supermax-origin.is-notices { z-index: 1000; }
+.supermax-frustum-face { stroke: none; }
+.supermax-frustum-face.is-top { fill: var(--supermax-origin-top, rgba(0, 0, 0, 0.04)); }
+.supermax-frustum-face.is-left { fill: var(--supermax-origin-left, rgba(0, 0, 0, 0.08)); }
+.supermax-frustum-face.is-right { fill: var(--supermax-origin-right, rgba(0, 0, 0, 0.1)); }
+.supermax-frustum-face.is-bottom { fill: var(--supermax-origin-bottom, rgba(0, 0, 0, 0.13)); }
+.supermax-frustum-target { fill: none; stroke: var(--supermax-origin-edge, rgba(0, 0, 0, 0.16)); stroke-width: 1; }

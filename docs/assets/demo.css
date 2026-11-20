@@ -83,9 +83,7 @@ body {
 .supermax-presentation-fold .supermax-modal { border-radius: 2px; }
 @media (prefers-reduced-motion: no-preference) {
 	.supermax-presentation-fold .supermax-modal { animation-name: fold-modal-in; }
-	.supermax-presentation-fold .supermax-modal.is-anchored { animation-name: fold-modal-in-anchored; }
-	@keyframes fold-modal-in { from { opacity: 0; transform: translate(-50%, -50%) perspective(1200px) rotateX(-12deg); } }
-	@keyframes fold-modal-in-anchored { from { opacity: 0; transform: perspective(1200px) rotateX(-12deg); } }
+	@keyframes fold-modal-in { from { opacity: 0; transform: perspective(1200px) rotateX(-12deg); } }
 }
 .caption-editor { display: flex; flex-direction: column; gap: 10px; }
 .caption-editor-field { width: 100%; min-width: 0; }
@@ -103,6 +101,7 @@ body {
 
 .frame {
 	position: relative;
+	contain: layout;
 	resize: both;
 	overflow: hidden;
 	min-width: 240px;

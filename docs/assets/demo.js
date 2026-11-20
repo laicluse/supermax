@@ -569,7 +569,7 @@ class Session {
 		const definitions = localDestinations();
 		definitions.albums.compact = { min: 48, content: renderAlbumIcons };
 		const model = new Navigator({ destinations: definitions, root: "albums", minViewportHeight });
-		const workspace = new Workspace(root, { navigator: model, content: renderContent, onIntent: (action, origin) => this.dispatch(action, origin) });
+		const workspace = new Workspace(root, { navigator: model, content: renderContent, overlayRoot: box, onIntent: (action, origin) => this.dispatch(action, origin) });
 		workspace.addEventListener("change", () => this.completeDefaults());
 		workspace.addEventListener("up", () => this.record("push"));
 		workspace.addEventListener("rejected", (event) => {

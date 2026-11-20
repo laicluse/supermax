@@ -4,3 +4,5 @@ export { Navigator, SupermaxConfigurationError, validateDestinations } from "./n
 export { Workspace, SLIDE_PRESENTATION } from "./workspace.js";
 export { validateSplit } from "./layout.js";
 export { DEFAULT_STRINGS } from "./strings.js";
+export { defaultNoticeIcon } from "./icons.js";
+export { frustumOrigin } from "./origin.js";

@@ -60,13 +60,14 @@ test("the workspace composes its overlays behind one surface", async () => {
 	const result = await page.evaluate(() => {
 		const workspace = window.workspace;
 		const element = workspace.element;
-		const regionLast = element.lastElementChild === workspace.notices.region;
+		const region = workspace.notices.region;
+		const regionInRoot = region.parentElement === document.body && !element.contains(region);
 		const id = workspace.notify({ scope: "workspace", kind: "action", message: "Hello", action: { label: "Ok", run() {} } });
-		const shown = element.querySelectorAll(".supermax-notice").length;
+		const shown = region.querySelectorAll(".supermax-notice").length;
 		workspace.dismissAll();
-		return { regionLast, id, shown, afterDismiss: element.querySelectorAll(".supermax-notice").length, modal: workspace.modal, peek: workspace.peek };
+		return { regionInRoot, id, shown, afterDismiss: region.querySelectorAll(".supermax-notice").length, modal: workspace.modal, peek: workspace.peek };
 	});
-	assert.deepEqual(result, { regionLast: true, id: "notice-1", shown: 1, afterDismiss: 0, modal: null, peek: null });
+	assert.deepEqual(result, { regionInRoot: true, id: "notice-1", shown: 1, afterDismiss: 0, modal: null, peek: null }, "notices live in the overlay root, the page by default, outside the cells");
 });
 
 test("library text is opt-in: defaults stay English, a host replaces what it names, and a typo fails loudly", async () => {
@@ -76,7 +77,11 @@ test("library text is opt-in: defaults stay English, a host replaces what it nam
 		host.style.cssText = "width:600px;height:400px";
 		document.body.append(host);
 		const navigator = new Navigator({ destinations: window.fixture.destinations, root: "root", minViewportHeight: window.fixture.minViewportHeight, chrome: window.fixture.chrome });
-		const dutch = new Workspace(host, { navigator, content: () => ({ element: document.createElement("div") }), strings: { navigation: () => "Werkruimtenavigatie", notices: () => "Meldingen" } });
+		const frame = document.createElement("div");
+		frame.style.cssText = "contain:layout";
+		frame.append(host);
+		document.body.append(frame);
+		const dutch = new Workspace(host, { navigator, content: () => ({ element: document.createElement("div") }), overlayRoot: frame, strings: { navigation: () => "Werkruimtenavigatie", notices: () => "Meldingen" } });
 		const labels = {
 			defaults: [window.workspace.element.querySelector(".supermax-navbar").getAttribute("aria-label"), window.workspace.notices.region.getAttribute("aria-label")],
 			replaced: [host.querySelector(".supermax-navbar").getAttribute("aria-label"), dutch.notices.region.getAttribute("aria-label")],
@@ -88,7 +93,7 @@ test("library text is opt-in: defaults stay English, a host replaces what it nam
 			try { new Workspace(document.createElement("div"), { navigator, content: () => ({}), strings }); } catch (error) { failures.push(error.constructor.name + ": " + error.message.split(";")[0]); }
 		}
 		dutch.destroy();
-		host.remove();
+		frame.remove();
 		return { ...labels, failures };
 	});
 	assert.deepEqual(result.defaults, ["Workspace navigation", "Notices"], "a host that passes nothing gets the English defaults");
@@ -96,4 +101,77 @@ test("library text is opt-in: defaults stay English, a host replaces what it nam
 	assert.equal(result.untouched, "Retry", "every other string keeps its default");
 	assert.equal(result.table, true);
 	assert.deepEqual(result.failures, ['TypeError: Unknown Supermax string "navigaton"', 'TypeError: Supermax string "retry" must be a function that returns text']);
+});
+
+test("origin: null draws no link, and anything else that is not a function is refused", async () => {
+	const result = await page.evaluate(async () => {
+		const { Navigator, Workspace } = await import("/src/index.js");
+		const navigator = new Navigator({ destinations: window.fixture.destinations, root: "root", minViewportHeight: window.fixture.minViewportHeight, chrome: window.fixture.chrome });
+		const host = document.createElement("div");
+		host.style.cssText = "width:600px;height:400px";
+		document.body.append(host);
+		const before = document.querySelectorAll(".supermax-origin").length;
+		const bare = new Workspace(host, { navigator, content: () => ({ element: document.createElement("div") }), origin: null });
+		const added = document.querySelectorAll(".supermax-origin").length - before;
+		bare.destroy();
+		host.remove();
+		let refused = null;
+		try { new Workspace(document.createElement("div"), { navigator, content: () => ({}), origin: "frustum" }); } catch (error) { refused = error.constructor.name; }
+		return { added, refused };
+	});
+	assert.deepEqual(result, { added: 0, refused: "TypeError" });
+});
+
+test("notices sit in their source cell by default, or at the top with noticePlacement top", async () => {
+	const result = await page.evaluate(async () => {
+		const { Navigator, Workspace } = await import("/src/index.js");
+		const place = async (options) => {
+			const navigator = new Navigator({ destinations: window.fixture.destinations, root: "root", minViewportHeight: window.fixture.minViewportHeight, chrome: window.fixture.chrome });
+			const frame = document.createElement("div");
+			frame.style.cssText = "contain:layout;width:1000px;height:500px";
+			const host = document.createElement("div");
+			host.style.cssText = "width:1000px;height:500px";
+			frame.append(host);
+			document.body.append(frame);
+			const workspace = new Workspace(host, { navigator, content: () => ({ element: document.createElement("div") }), overlayRoot: frame, ...options });
+			workspace.navigate("gallery", { from: "root" });
+			await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+			workspace.notify({ id: "n", source: "root/gallery/list", kind: "action", message: "Hi", action: { label: "Ok", run() {} } });
+			const element = frame.querySelector('[data-notice="n"]');
+			const where = element.closest(".supermax-cell-notices") ? "cell" : element.closest(".supermax-notices") ? "top" : "elsewhere";
+			workspace.destroy();
+			frame.remove();
+			return where;
+		};
+		let refused = null;
+		try { new Workspace(document.createElement("div"), { navigator: new Navigator({ destinations: window.fixture.destinations, root: "root", minViewportHeight: window.fixture.minViewportHeight, chrome: window.fixture.chrome }), content: () => ({}), noticePlacement: "corner" }); } catch (error) { refused = error.constructor.name; }
+		return { byDefault: await place({}), top: await place({ noticePlacement: "top" }), refused };
+	});
+	assert.deepEqual(result, { byDefault: "cell", top: "top", refused: "TypeError" });
+});
+
+test("notice icons are opt-out: line icons by default, a host function or null", async () => {
+	const result = await page.evaluate(async () => {
+		const { Navigator, Workspace } = await import("/src/index.js");
+		const icons = async (options) => {
+			const navigator = new Navigator({ destinations: window.fixture.destinations, root: "root", minViewportHeight: window.fixture.minViewportHeight, chrome: window.fixture.chrome });
+			const frame = document.createElement("div");
+			frame.style.cssText = "contain:layout;width:600px;height:400px";
+			const host = document.createElement("div");
+			host.style.cssText = "width:600px;height:400px";
+			frame.append(host);
+			document.body.append(frame);
+			const workspace = new Workspace(host, { navigator, content: () => ({ element: document.createElement("div") }), overlayRoot: frame, ...options });
+			workspace.notify({ id: "i", kind: "error", message: "Hi" });
+			const icon = frame.querySelector('[data-notice="i"] .supermax-notice-icon');
+			const found = icon ? icon.firstElementChild.tagName.toLowerCase() : null;
+			workspace.destroy();
+			frame.remove();
+			return found;
+		};
+		let refused = null;
+		try { new Workspace(document.createElement("div"), { navigator: new Navigator({ destinations: window.fixture.destinations, root: "root", minViewportHeight: window.fixture.minViewportHeight, chrome: window.fixture.chrome }), content: () => ({}), noticeIcon: "check" }); } catch (error) { refused = error.constructor.name; }
+		return { byDefault: await icons({}), custom: await icons({ noticeIcon: (kind, document) => document.createElement("b") }), none: await icons({ noticeIcon: null }), refused };
+	});
+	assert.deepEqual(result, { byDefault: "svg", custom: "b", none: null, refused: "TypeError" });
 });
