@@ -1,7 +1,7 @@
 import { ELASTIC, breakoutOf, chainCells, chainFits, chainRootOf, chainWidth, isFull, isSplit, layoutWorkspace, rowSplitOf, validateSplit } from "./layout.js";
 import { sameLayout, validateDeclarationSet } from "./layout-declaration.js";
 
-const DEFAULT_CHROME = { navbar: 44, maxRows: 4 };
+const DEFAULT_CHROME = { navbar: 44, header: 28, maxRows: 4 };
 
 export class SupermaxConfigurationError extends Error {
 	constructor(problems) {
@@ -26,6 +26,8 @@ export function validateDestinations(destinations, { minViewportHeight, chrome =
 		.filter((problem) => !problem.validation.ok);
 	for (const id of Object.keys(destinations)) {
 		if (destinations[id].height != null && (!isFull(destinations[id]) || isSplit(destinations[id]))) problems.push({ destination: id, reason: "invalid-height" });
+		if (isSplit(destinations[id]) && ["min", "max", "preferred"].some((key) => destinations[id][key] != null)) problems.push({ destination: id, reason: "split-with-width" });
+		if (destinations[id].header != null && destinations[id].header !== "none") problems.push({ destination: id, reason: "invalid-header" });
 	}
 	const elastic = Object.keys(destinations).filter((id) => destinations[id].max === ELASTIC);
 	for (const id of elastic) {
@@ -205,8 +207,15 @@ export class Navigator {
 		if (place.cells.some((cell) => cell.destination === candidate)) return;
 		if (isSplit(this.definitionOf(candidate)) && !validateSplit(this, candidate, occurrence).ok) return;
 		if (place.beside && this.breakoutBeside(occurrence)) return;
-		if (!chainFits(this, [...place.cells, { id: `${occurrence.id}/${candidate}`, destination: candidate }], chainWidth(this, place.root))) return;
+		const shown = (layout) => new Set([...layout.cells.values()].filter((cell) => cell.visible && !cell.compact).map((cell) => cell.occurrence));
+		const before = shown(this.layout());
 		const child = this.createOccurrence(candidate, occurrence, 0, group);
+		const after = shown(this.layout());
+		// allow-comment: a default opens only when, with the room its chain then asks for, it shows in full without hiding or compacting any cell that showed in full before.
+		if (!after.has(child.id) || [...before].some((id) => !after.has(id))) {
+			this.removeSubtree(child);
+			return;
+		}
 		this.openDefaults(child, group);
 	}
 
@@ -281,35 +290,62 @@ export class Navigator {
 		const unknown = [...destinationIds, ...ifRoom.flat()].find((id) => !this.definitionOf(id));
 		if (unknown) return { ok: false, reason: "unknown-destination", destination: unknown };
 		if (zoom != null && (!destinationIds.includes(zoom) || !this.definitionOf(zoom).zoomable)) return { ok: false, reason: "not-zoomable", destination: zoom };
-		const open = chainCells(this, this.root);
+		// allow-comment: the ids name the path from the root to the tip, the occurrence's own path: after a split the next id names one of its rows, and the chain continues inside that row.
+		const path = [this.root];
 		let shared = 1;
-		while (shared < destinationIds.length && shared < open.length && open[shared].destination === destinationIds[shared]) shared += 1;
+		while (shared < destinationIds.length) {
+			const current = path[path.length - 1];
+			const id = destinationIds[shared];
+			let next = null;
+			if (isSplit(this.definitionOf(current.destination))) {
+				next = current.children.map((childId) => this.get(childId)).find((row) => row?.destination === id) ?? null;
+				if (!next) return { ok: false, reason: "not-a-row", destination: id, source: current.id };
+			} else {
+				const candidate = this.next(current);
+				next = candidate?.destination === id ? candidate : null;
+			}
+			if (!next) break;
+			path.push(next);
+			shared += 1;
+		}
 		const before = this.snapshot();
-		let last = open[shared - 1];
+		let last = path[path.length - 1];
 		let changed = false;
-		if (shared === destinationIds.length) {
-			const beyond = open[shared];
-			if (beyond && !this.isAuto(beyond)) {
-				this.closeSubtree(beyond);
+		const opened = [];
+		// allow-comment: a manual cell that follows a member of the path in its own chain without being the next member lies beside the path and closes: the cell after the tip, and the breakout beside a split the path goes into.
+		path.forEach((member, index) => {
+			const beside = this.next(member);
+			if (beside && beside !== path[index + 1] && !this.isAuto(beside)) {
+				this.closeSubtree(beside);
 				changed = true;
 			}
-			if (shared > 1 && this.isAuto(last)) {
-				this.promote(last);
-				changed = true;
-			}
+		});
+		if (shared === destinationIds.length && shared > 1 && this.isAuto(last) && !this.isRowRoot(last)) {
+			this.promote(last);
+			changed = true;
 		}
 		for (const id of destinationIds.slice(shared)) {
+			if (isSplit(this.definitionOf(last.destination))) {
+				const row = last.children.map((childId) => this.get(childId)).find((candidate) => candidate?.destination === id) ?? null;
+				if (!row) {
+					this.restore(before);
+					return { ok: false, reason: "not-a-row", destination: id, source: last.id };
+				}
+				last = row;
+				continue;
+			}
 			const result = this.open(id, { from: last.id });
 			if (!result.ok) {
 				this.restore(before);
 				return { ok: false, reason: result.reason, destination: id };
 			}
 			last = result.occurrence;
+			opened.push(last.id);
 			changed = true;
 		}
 		if (zoom !== undefined) {
 			let target = null;
-			for (let current = this.root; current && zoom !== null; current = this.next(current)) if (current.destination === zoom) target = current.id;
+			for (const current of [...path, ...opened.map((id) => this.get(id))]) if (zoom !== null && current.destination === zoom) target = current.id;
 			if ((this.zoomed ?? null) !== target) {
 				this.zoomed = target;
 				changed = true;
@@ -330,7 +366,12 @@ export class Navigator {
 		if (changed) this.bringIntoView(last.id);
 		const optional = this.openIfRoom(last, ifRoom);
 		if (!changed && optional.length === 0) return { ok: true, noop: true, occurrence: last };
-		return { ok: true, occurrence: last, optional };
+		return { ok: true, occurrence: last, optional, opened };
+	}
+
+	isRowRoot(occurrence) {
+		const parent = occurrence.parent ? this.get(occurrence.parent) : null;
+		return !!parent && isSplit(this.definitionOf(parent.destination));
 	}
 
 	// allow-comment: an optional cell opens only when it shows without hiding or compacting a cell that is in view now; existing widths may change. A nested list opens whole or not at all.
@@ -458,10 +499,17 @@ export class Navigator {
 				const cells = chainCells(this, root);
 				const last = cells[cells.length - 1];
 				if (last.id === member.id) break;
-				closed.push(...this.closeSubtree(last));
+				closed.push(...this.closeSubtree(this.newestWithin(last)));
 			}
 		}
 		return closed;
+	}
+
+	// allow-comment: the cells in a split's rows come after the split in reading order, so the end of a chain that ends in a split is the newest cell inside its rows; the split itself goes once its rows hold only their roots.
+	newestWithin(occurrence) {
+		if (!isSplit(this.definitionOf(occurrence.destination))) return occurrence;
+		const inside = [...this.occurrences.values()].filter((candidate) => !this.isRowRoot(candidate) && rowSplitOf(this, candidate) === occurrence);
+		return inside.length > 0 ? inside[inside.length - 1] : occurrence;
 	}
 
 	placeOf(occurrence, layout = this.layout()) {

@@ -18,7 +18,7 @@ When the package is linked from a checkout (`file:`), the same files are in that
 
 1. **Pass the clicked element as `origin`** to every `navigate`, `apply`, `sync` and `depart` that comes from a click. A replaced cell folds away towards the new click, compared with the click that opened it; without an origin it folds on its far edge. Pass `origin: null` when nothing was clicked (a route change, a keyboard shortcut, a timer).
 2. **Pass `from` to `openModal`**: the occurrence the modal belongs to, so a frustum links them. `from: null` for a modal that belongs to no cell.
-3. **Know the layout before you open.** Every destination the page does not embed needs its layout declaration registered first: `navigator.register(await readLayout(response))`, from a `HEAD` the server answers with a `Supermax-Layout` header.
+3. **Know the layout before you open.** A split declares a title and `rows` only, never a width: its width follows what is open in its rows. Every destination the page does not embed needs its layout declaration registered first: `navigator.register(await readLayout(response))`, from a `HEAD` the server answers with a `Supermax-Layout` header.
    - Prefetch it when a pointer rests on a link for about 100 ms.
    - Keep one in-flight promise per destination and viewer context; a click waits on that same promise instead of sending a second request.
    - A deep link or reload asks for every layout it needs in one batch, then renders once without motion.
@@ -37,6 +37,7 @@ The workspace warns once per kind in the console when a host leaves out an `orig
   - `update`: refresh after every render;
   - `leave()`: stop writing shared state the moment a cell starts to close, because it stays mounted while it folds away;
   - `dispose()`: clean up once it is gone.
+- **`header: "none"` on a destination**: a cell whose content names itself, such as a strip of thumbnails, gets no title bar; the title stays its accessible name. Never hide `.supermax-cell-title` with host CSS.
 - **Titles**: a cell's title, and with it the bar's title, names the content the cell shows, such as the vault's name, a conversation's subject or "3 open todos", never its role in the structure, such as "Viewer", "Detail" or "List". The host supplies it; declare it with the content's name, and use `setTitle(occurrence, title)` when that name or a count is known or changes after the cell opened.
 - **The `show` event**: cancelable before Show closes cells; prevent it to keep an unsaved form open. The `up` event names the closed cells in `detail.closed`, with destinations, so the host can record the step in its history.
 - **`zoom(occurrence)`**: a cell that should take the width of the cells before it, for a destination declared `zoomable: true`. Draw the toggle in the content's `header`. When a sync replaces the zoomed cell, for example after archiving it, pass `zoom` with the destination that stays zoomed, so the cells before it never flash into view.

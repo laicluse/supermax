@@ -56,7 +56,7 @@ test("the package stylesheet alone renders the chrome at the sizes the model com
 		}
 	});
 	assert.equal(measured.navbar, 40);
-	assert.deepEqual(measured.rows, [0, 130, 130], "a row that does not fit takes no height at all");
+	assert.deepEqual(measured.rows, [0, 116, 116], "a row that does not fit takes no height at all, and the rows share what the navbar and the split's own title bar leave");
 });
 
 test("the workspace composes its overlays behind one surface", async () => {

@@ -4,7 +4,6 @@ export const minViewportHeight = 360;
 
 const widths = {
 	albums: { min: 200, max: 320, preferred: 200, keep: true, compact: { min: 48 } },
-	album: { min: 300, max: "*", preferred: 1600 },
 	selector: { min: 200, max: "*", preferred: 360 },
 	map: { min: 220, max: "*", preferred: 480 },
 	photo: { min: 240, max: "*", preferred: 360, zoomable: true },
@@ -12,7 +11,7 @@ const widths = {
 	history: { min: 200, max: 320 },
 	edit: { min: 200, max: 320 },
 	depth: { min: 160, max: 240 },
-	full: { min: 320, max: "*", preferred: 900, height: "full" },
+	full: { min: 320, max: "*", preferred: 900, height: "full", header: "none" },
 };
 
 export const depthCount = 20;
@@ -53,7 +52,7 @@ export const albums = [
 		id: "lab-fit",
 		title: "Lab: exact fit",
 		rows: [
-			{ key: "thumbnails", title: "Gallery", minHeight: 316, maxHeight: "*", preferredHeight: 400 },
+			{ key: "thumbnails", title: "Gallery", minHeight: 288, maxHeight: "*", preferredHeight: 400 },
 			{ key: "map", title: "Notes", minHeight: 180, maxHeight: 520 },
 		],
 		photos: [{ id: "x", title: "Photo X", date: "Jan 1, 2024", place: "Lab", tags: "fixture", hue: 300 }],
@@ -99,7 +98,6 @@ export function destinations(context = "ana") {
 		const key = ids(album);
 		result[key.album] = {
 			title: album.title,
-			...widths.album,
 			rows: album.rows.map(({ key: rowKey, title, ...bounds }) => ({ destination: key.row(rowKey), ...bounds })),
 			data: { kind: "album", album },
 		};

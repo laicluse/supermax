@@ -122,7 +122,7 @@ scenario("rejections leave the model untouched and name their reason", () => {
 scenario("an impossible split is a configuration error for the developer before anything opens", () => {
 	assert.equal(validateDestinations(destinations, { minViewportHeight, chrome }).ok, true, "the fixture is a possible configuration");
 	const instance = model(1000, 300);
-	assert.equal(validateSplit(instance, "fit", instance.root).ok, true, "40 + 260 = 300 passes");
+	assert.equal(validateSplit(instance, "fit", instance.root).ok, true, "40 of navbar, 28 of the split's title bar and 232 of row = 300 passes");
 	const report = validateDestinations({ ...destinations, ...invalidSplits }, { minViewportHeight, chrome });
 	const verdict = Object.fromEntries(report.problems.map((problem) => [problem.destination, problem.validation]));
 	assert.deepEqual(Object.keys(verdict).sort(), ["conflict", "crowd", "doubled", "empty", "outer", "over", "rigid", "twins", "unpreferred"]);
@@ -133,7 +133,7 @@ scenario("an impossible split is a configuration error for the developer before 
 	assert.deepEqual(cellProblems({ loose: { title: "Loose", min: 100, max: "*" } }), [["loose", "elastic-without-preferred"]], "an elastic cell declares its preferred width");
 	assert.deepEqual(validateDestinations({ root: { title: "Root", min: 100, max: 200 } }, { minViewportHeight, chrome }).problems.map((problem) => problem.reason), ["no-elastic-destination"], "a configuration without any elastic cell is refused");
 	const failing = verdict.over.rows.find((candidate) => !candidate.ok);
-	assert.deepEqual({ title: failing.title, required: failing.required, chrome: failing.chrome, supported: failing.supported }, { title: "List", required: 301, chrome: 40, supported: 300 }, "one pixel over fails");
+	assert.deepEqual({ title: failing.title, required: failing.required, chrome: failing.chrome, supported: failing.supported }, { title: "List", required: 301, chrome: 68, supported: 300 }, "one pixel over fails: the navbar and the split's title bar count as chrome");
 	assert.deepEqual(verdict.conflict.rows[0].problems, ["row-min-exceeds-max", "cell-min-exceeds-max"]);
 	assert.equal(verdict.empty.reason, "no-rows");
 	assert.deepEqual(verdict.crowd.rows, [], "a split beyond maxRows reports an empty row list");
@@ -160,16 +160,16 @@ scenario("rows hide from the top, a window start keeps an earlier row, and the l
 	openGallery(instance);
 	const rows = () => instance.layout().chain.cells[1].rows.rows;
 	assert.deepEqual(rows().map((candidate) => candidate.visible), [true, true, true]);
-	assert.equal(rows().reduce((sum, candidate) => sum + candidate.height, 0), 500 - chrome.navbar);
+	assert.equal(rows().reduce((sum, candidate) => sum + candidate.height, 0), 500 - chrome.navbar - instance.chrome.header, "the rows share what is left below the navbar and the split's own title bar");
 	assert.ok(rows().every((candidate) => candidate.chain.width === instance.layout().chain.cells[1].width), "rows span the split width");
 
 	instance.resize({ width: 1000, height: 300 });
 	const before = instance.state();
-	assert.deepEqual(rows().map((candidate) => [candidate.visible, candidate.height]), [[false, 0], [true, 130], [true, 130]], "the top row hides entirely, no tab is left");
+	assert.deepEqual(rows().map((candidate) => [candidate.visible, candidate.height]), [[false, 0], [true, 116], [true, 116]], "the top row hides entirely, no tab is left");
 	assert.deepEqual(instance.state(), before, "resize rewrites nothing");
 
 	instance.startRows(GALLERY, row("list"));
-	assert.deepEqual(rows().map((candidate) => [candidate.visible, candidate.height]), [[true, 130], [true, 130], [false, 0]], "a window start shows the earlier row and the last one gives way");
+	assert.deepEqual(rows().map((candidate) => [candidate.visible, candidate.height]), [[true, 116], [true, 116], [false, 0]], "a window start shows the earlier row and the last one gives way");
 	instance.resize({ width: 1000, height: 500 });
 	assert.deepEqual(rows().map((candidate) => candidate.visible), [true, true, true], "with room again the window fills toward the end");
 
@@ -178,7 +178,7 @@ scenario("rows hide from the top, a window start keeps an earlier row, and the l
 	assert.equal(layout.belowMinimum, true);
 	assert.equal(layout.overflow, true);
 	assert.deepEqual(rows().map((candidate) => [candidate.visible, candidate.height]), [[true, 100], [false, 0], [false, 0]], "even at a short budget the window start keeps its declared minimum");
-	assert.equal(layout.contentHeight, 100);
+	assert.equal(layout.contentHeight, 100 + instance.chrome.header, "the content height counts the split's title bar above its rows");
 });
 
 scenario("a window start shifts the row window and never changes what is open", () => {
@@ -345,7 +345,7 @@ scenario("a dragged size is a session preference inside min and max, and rows fo
 
 scenario("a destination opens only from its registered declaration, and a second declaration may not differ", () => {
 	const declared = (title, more = {}) => ({ title, min: 100, max: 200, preferred: null, defaultChild: null, ...more });
-	const set = { schemaVersion: 1, context: null, root: "remote:a", destinations: { "remote:a": declared("Remote A", { min: 150, max: 260, defaultChild: "remote:b" }), "remote:b": declared("Remote B") } };
+	const set = { schemaVersion: 2, context: null, root: "remote:a", destinations: { "remote:a": declared("Remote A", { min: 150, max: 260, defaultChild: "remote:b" }), "remote:b": declared("Remote B") } };
 	const instance = model(1000, 500);
 	openGallery(instance);
 	assert.equal(instance.open("remote:a", { from: item("list", "a") }).reason, "unknown-destination", "an undeclared destination is refused");
@@ -360,12 +360,13 @@ scenario("a destination opens only from its registered declaration, and a second
 	assert.equal(instance.definitionOf("remote:a").min, 150, "and the known declaration stays");
 	assert.throws(() => instance.register({ ...set, root: "remote:c", destinations: { "remote:c": declared("Remote C", { defaultChild: "remote:missing" }) } }), differs(["remote:c"], "missing-destination"), "a set must carry every default it names");
 	assert.throws(() => instance.register({ ...set, root: "remote:d", destinations: { "remote:d": declared("Remote D", { defaultChild: "remote:e" }), "remote:e": declared("Remote E", { defaultChild: "remote:d" }) } }), differs(["remote:d", "remote:e"], "default-cycle"), "a cyclic default chain is refused");
-	assert.throws(() => instance.register({ ...set, schemaVersion: 2 }), differs(["remote:a"], "schema-version"), "an unknown schema version is refused");
+	assert.throws(() => instance.register({ ...set, schemaVersion: 3 }), differs(["remote:a"], "schema-version"), "an unknown schema version is refused");
 	assert.throws(() => instance.register({ ...set, root: "remote:f", destinations: { "remote:f": { ...declared("Remote F"), data: { kind: "photo" } } } }), differs(["remote:f"], "unknown-field"), "a declaration carries layout only");
 	assert.throws(() => instance.register({ ...set, root: "remote:g", destinations: { "remote:g": declared("Remote G", { min: 300, max: 200 }) } }), differs(["remote:g"], "invalid-size"));
 	assert.throws(() => instance.register({ ...set, root: "remote:h", destinations: { "remote:h": declared("Remote H", { max: "*" }) } }), differs(["remote:h"], "elastic-without-preferred"), "an elastic declaration names its preferred width");
 	assert.deepEqual(instance.register({ ...set, root: "remote:i", destinations: { "remote:i": declared("Remote I", { max: "*", preferred: 180 }) } }), ["remote:i"], "and is accepted with it");
-	assert.throws(() => instance.register({ ...set, root: "remote:t", destinations: { "remote:t": declared("Remote T", { min: 300, max: 600, rows: [{ destination: "list", minHeight: 400, maxHeight: 500 }] }) } }), differs(["remote:t"], "invalid-rows"), "a split is validated against the minimum height when it is registered");
+	assert.throws(() => instance.register({ ...set, root: "remote:t", destinations: { "remote:t": { title: "Remote T", rows: [{ destination: "list", minHeight: 400, maxHeight: 500 }] } } }), differs(["remote:t"], "invalid-rows"), "a split is validated against the minimum height when it is registered");
+	assert.throws(() => instance.register({ ...set, root: "remote:w", destinations: { "remote:w": declared("Remote W", { rows: [{ destination: "list", minHeight: 100, maxHeight: "*", preferredHeight: 200 }] }) } }), differs(["remote:w"], "split-with-width"), "a split declares no width of its own; its rows decide");
 	assert.equal(instance.definitionOf("remote:c"), null, "a refused set registers nothing");
 
 	const viewer = new Navigator({ destinations, root: "root", minViewportHeight, chrome, context: "ana" });
@@ -630,21 +631,18 @@ const mail = ({ defaults = false, width = 1600 } = {}) => {
 			inbox: { title: "Inbox", min: 200, max: 300 },
 			conversation: {
 				title: "Conversation",
-				min: 400,
-				max: "*",
-				preferred: 700,
 				rows: [
 					{ destination: "messages", minHeight: 120, maxHeight: "*", preferredHeight: 300 },
 					{ destination: "attachments", minHeight: 100, maxHeight: 160 },
 				],
 			},
-			messages: { title: "Messages", min: 300, max: 600, zoomable: true },
+			messages: { title: "Messages", min: 300, max: "*", preferred: 600, zoomable: true },
 			attachments: { title: "Attachments", min: 200, max: 400, ...(defaults ? { defaultChild: "attachment:1" } : {}) },
 			"attachment:1": { title: "Attachment 1", min: 300, max: 500, height: "full", defaultChild: "info:1" },
 			"attachment:2": { title: "Attachment 2", min: 300, max: 500, height: "full" },
 			"info:1": { title: "Info 1", min: 150, max: 200 },
 			note: { title: "Note", min: 150, max: 200 },
-			"second:conversation": { title: "Second", min: 300, max: 400, rows: [{ destination: "note", minHeight: 100, maxHeight: "*", preferredHeight: 200 }] },
+			"second:conversation": { title: "Second", rows: [{ destination: "note", minHeight: 100, maxHeight: "*", preferredHeight: 200 }] },
 		},
 		root: "inbox",
 		minViewportHeight,
@@ -671,7 +669,7 @@ scenario("a full-height cell opened from a row stands beside the split, at the w
 	const layout = instance.layout();
 	assert.equal(layout.cells.get(`${ATTACHMENTS}/attachment:2`).width, 500, "it takes its own width in the root chain");
 	assert.equal(layout.chain.cells[2].rows, undefined, "a breakout is an ordinary cell, not a split");
-	assert.ok(layout.chain.cells[1].width >= 400, "the split keeps at least its minimum beside it");
+	assert.ok(layout.chain.cells[1].width >= 300, "the split keeps at least its minimum beside it, the newest cell of its widest row");
 	assert.equal(instance.child(instance.get(ATTACHMENTS)).id, `${ATTACHMENTS}/attachment:2`, "child() still answers what the origin opened");
 	assert.deepEqual(titles(instance), ["Conversation", "Attachment 2"], "the breakout is a group of its own");
 	assert.deepEqual(closedTitles(instance.closeNewestGroup()), ["Attachment 2"], "Back closes the breakout and leaves its origin");
@@ -691,14 +689,14 @@ scenario("a split holds one breakout: another row replaces it, the same origin r
 	assert.deepEqual(rootTitles(instance).map(([title]) => title), ["Inbox", "Conversation", "Attachment 1", "Info 1"], "the same origin replaces its own breakout");
 	assert.deepEqual(closedTitles(instance.closeNewestGroup()), ["Attachment 1", "Info 1"]);
 	assert.deepEqual(rootTitles(instance).map(([title]) => title), ["Inbox", "Conversation"], "Back closes the replacement and brings nothing back");
-	const defaults = mail({ defaults: true, width: 850 });
+	const defaults = mail({ defaults: true, width: 750 });
 	defaults.open("attachment:2", { from: MESSAGES, origin: null });
 	const before = defaults.snapshot();
 	defaults.closeSubtree(defaults.get(ATTACHMENTS));
 	defaults.openDefaults(defaults.get(CONVERSATION), defaults.groupOf(defaults.get(CONVERSATION)));
 	assert.equal(defaults.get(`${ATTACHMENTS}/attachment:1`), null, "a default full-height cell does not replace the breakout that is there");
 	defaults.restore(before);
-	const fresh = mail({ defaults: true, width: 850 });
+	const fresh = mail({ defaults: true, width: 750 });
 	assert.equal(fresh.get(`${ATTACHMENTS}/attachment:1`), null, "a default breakout needs room beside the split before it opens by itself");
 	fresh.resize({ width: 2400, height: 500 });
 	fresh.closeSubtree(fresh.get(CONVERSATION));
@@ -713,9 +711,9 @@ scenario("a breakout survives a snapshot, follows the window and zoom rules of t
 	const restored = mail();
 	assert.equal(restored.restore(instance.snapshot()), true);
 	assert.deepEqual(rootTitles(restored).map(([title]) => title), ["Inbox", "Conversation", "Attachment 2"], "a restored breakout stands beside its split again");
-	instance.resize({ width: 820, height: 500 });
+	instance.resize({ width: 790, height: 500 });
 	assert.deepEqual(rootTitles(instance), [["Inbox", false], ["Conversation", true], ["Attachment 2", true]], "ancestors hide from the left, the inbox first");
-	instance.resize({ width: 600, height: 500 });
+	instance.resize({ width: 580, height: 500 });
 	assert.deepEqual(rootTitles(instance), [["Inbox", false], ["Conversation", false], ["Attachment 2", true]], "then the split itself, while the breakout survives");
 	assert.equal(instance.upTarget().id, ATTACHMENTS, "Show names the origin of the breakout, hidden with its split");
 	const closed = instance.showByClosing(ATTACHMENTS);
@@ -756,7 +754,7 @@ scenario("sync follows the root chain past a split: a split opens from ifRoom wi
 			modes: { title: "Modes", min: 192, max: 256 },
 			list: { title: "List", min: 320, max: "*", preferred: 640 },
 			"metadata:1": { title: "Metadata", min: 320, max: 640 },
-			"conversation:1": { title: "Conversation", min: 320, max: "*", preferred: 960, rows: [{ destination: "messages:1", minHeight: 240, maxHeight: "*", preferredHeight: 560 }, { destination: "attachments:1", minHeight: 100, maxHeight: 200 }] },
+			"conversation:1": { title: "Conversation", rows: [{ destination: "messages:1", minHeight: 240, maxHeight: "*", preferredHeight: 560 }, { destination: "attachments:1", minHeight: 100, maxHeight: 200 }] },
 			"messages:1": { title: "Messages", min: 320, max: "*", preferred: 960 },
 			"attachments:1": { title: "Attachments", min: 200, max: 400 },
 			"attachment:1": { title: "Attachment", min: 300, max: 500, height: "full" },
@@ -781,4 +779,129 @@ scenario("sync follows the root chain past a split: a split opens from ifRoom wi
 	assert.equal(chain.get(`${attachments}/attachment:1`), null, "a sync whose chain ends at the split closes the breakout beside it");
 	assert.ok(chain.get(attachments), "and keeps the row's cell");
 	assert.equal(chain.sync(["modes", "list", "metadata:1", "conversation:1"]).noop, true, "a sync that finds the chain in place changes nothing");
+});
+
+scenario("a split declares no width: it asks for what its widest row holds, grows as the row opens cells, and keeps its newest row cell before its neighbours hide", () => {
+	const instance = mail({ width: 1100 });
+	const widths = () => instance.layout().chain.cells.map((cell) => [cell.title, Math.round(cell.width)]);
+	instance.open("attachment:2", { from: ATTACHMENTS, origin: null });
+	const before = widths();
+	assert.equal(before[1][0], "Conversation");
+	instance.open("note", { from: MESSAGES, origin: null });
+	const after = widths();
+	assert.ok(after[1][1] > before[1][1], `opening a cell in a row widens the split: ${JSON.stringify([before, after])}`);
+	assert.ok(after[2][1] < before[2][1], "and the breakout beside it gives room up");
+	assert.deepEqual(rowTitles(instance, MESSAGES), ["Messages", "Note"], "the row holds both cells");
+	instance.resize({ width: 690, height: 500 });
+	const tight = instance.layout();
+	assert.deepEqual(tight.chain.cells.map((cell) => [cell.title, cell.visible]), [["Inbox", false], ["Conversation", true], ["Attachment 2", true]], "when room runs out the inbox hides, the split keeps its minimum beside the breakout");
+	assert.deepEqual(tight.chains.get(MESSAGES).cells.map((cell) => [cell.title, cell.visible]), [["Messages", false], ["Note", true]], "and the row hides its own left cell, keeping its newest");
+	assert.ok(tight.chain.cells[1].width >= 200 && tight.chain.cells[2].width >= 300, "both keep at least their minimum: the split its widest row's newest cell, the breakout its own");
+	const narrow = mail({ defaults: true, width: 1000 });
+	assert.ok(narrow.get(`${ATTACHMENTS}/attachment:1`), "a default opens when the room its chain then asks for still shows every cell that showed");
+	assert.deepEqual(narrow.layout().chain.cells.map((cell) => cell.visible), [true, true, true, true]);
+});
+
+scenario("sync names a path into a row: the next id after a split is one of its rows, the chain continues inside it, and an explicit cell there asks for room like any cell", () => {
+	const E = "*";
+	const chain = new Navigator({
+		destinations: {
+			modes: { title: "Modes", min: 192, max: 256, keep: true, compact: { min: 48 } },
+			mailboxes: { title: "Mailboxes", min: 256, max: 320 },
+			conversations: { title: "Conversations", min: 320, max: E, preferred: 640 },
+			conversation: { title: "Subject", rows: [{ destination: "metadata", minHeight: 240, maxHeight: E, preferredHeight: 560 }, { destination: "attachments", minHeight: 96, maxHeight: 120 }] },
+			metadata: { title: "Subject", min: 320, max: 640, defaultChild: "messages" },
+			messages: { title: "Subject", min: 320, max: E, preferred: 960, zoomable: true },
+			attachments: { title: "Attachments", min: 320, max: E, preferred: 960, header: "none" },
+			attachment: { title: "Attachment", min: 320, max: E, preferred: 960, height: "full" },
+		},
+		root: "modes",
+		minViewportHeight: 320,
+		chrome: { navbar: 36 },
+	});
+	chain.resize({ width: 1200, height: 900 });
+	const visible = () => chain.layout().chain.cells.map((cell) => [cell.title, cell.visible]);
+	const root = ["modes", "mailboxes", "conversations", "conversation"];
+	assert.equal(chain.sync(root).ok, true);
+	const split = chain.get("modes/mailboxes/conversations/conversation");
+	assert.equal(chain.get(`${split.id}/metadata/messages`), null, "the row's default does not open: it would hide the mailboxes");
+	const into = chain.sync([...root, "metadata", "messages"]);
+	assert.equal(into.ok, true, "a sync may name a row of the split and go on inside it");
+	assert.deepEqual(into.opened, [`${split.id}/metadata/messages`], "and reports what it opened");
+	assert.deepEqual(visible(), [["Modes", true], ["Mailboxes", false], ["Conversations", true], ["Subject", true]], "named explicitly, the cell takes its room and an ancestor hides, as any cell in a chain");
+	assert.equal(chain.isAuto(chain.get(`${split.id}/metadata/messages`)), false, "it is a manual cell");
+	assert.equal(chain.sync([...root, "metadata", "messages"]).noop, true, "the same path again changes nothing");
+	assert.equal(chain.sync(root).noop, true, "a sync that ends at the split leaves its rows as they are");
+	assert.ok(chain.get(`${split.id}/metadata/messages`));
+	assert.deepEqual(chain.sync([...root, "mailboxes"]), { ok: false, reason: "not-a-row", destination: "mailboxes", source: split.id }, "an id after a split must name one of its rows");
+	assert.equal(chain.sync([...root, "attachments", "attachment"]).ok, true);
+	assert.equal(chain.next(split)?.id, `${split.id}/attachments/attachment`, "a full-height cell named after a row cell opens beside the split");
+	assert.ok(chain.get(`${split.id}/metadata/messages`), "and the other row keeps its cell");
+	assert.equal(chain.sync([...root, "metadata"]).ok, true);
+	assert.equal(chain.get(`${split.id}/metadata/messages`), null, "a sync that ends at a row root closes what the row had opened");
+	assert.equal(chain.get(`${split.id}/attachments/attachment`), null, "and the breakout beside the split, since the path did not name it");
+	assert.equal(chain.sync([...root, "attachments", "attachment"]).ok, true);
+	assert.equal(chain.sync(root).ok, true);
+	assert.equal(chain.get(`${split.id}/attachments/attachment`), null, "a sync that ends at the split closes the breakout");
+	const fresh = new Navigator({ destinations: chain.destinations, root: "modes", minViewportHeight: 320, chrome: { navbar: 36 } });
+	fresh.resize({ width: 1200, height: 900 });
+	const whole = fresh.sync([...root, "metadata", "messages"]);
+	assert.equal(whole.ok, true, "a path into a row opens the split and steps into its row in one sync");
+	assert.deepEqual(whole.opened.map((id) => id.split("/").pop()), ["mailboxes", "conversations", "conversation", "messages"], "the rows themselves are not opened, they come with the split");
+	assert.ok(fresh.get("modes/mailboxes/conversations/conversation/metadata/messages"));
+	assert.equal(chain.sync([...root, "metadata", "messages"], { zoom: "messages" }).ok, true);
+	assert.equal(chain.zoomed, `${split.id}/metadata/messages`, "the zoom may name a cell inside the row");
+	assert.equal(chain.groups.some((group) => group.root === `${split.id}/metadata`), false, "a row root is never promoted into a group of its own");
+});
+
+scenario("room gives way in reading order through a split: the cells before it first, then the row's older cells, the split last, and Show closes the newest row cell before the split", () => {
+	const E = "*";
+	const destinations = {
+		modes: { title: "Modes", min: 192, max: 256, keep: true, compact: { min: 48 } },
+		mailboxes: { title: "Mailboxes", min: 256, max: 320 },
+		nav: { title: "Nav", min: 256, max: 320 },
+		conversations: { title: "Conversations", min: 320, max: E, preferred: 640 },
+		conversation: { title: "Subject", rows: [{ destination: "metadata", minHeight: 240, maxHeight: E, preferredHeight: 560 }, { destination: "attachments", minHeight: 96, maxHeight: 120 }] },
+		metadata: { title: "Summary", min: 320, max: 640, defaultChild: "messages" },
+		messages: { title: "Messages", min: 320, max: E, preferred: 960 },
+		attachments: { title: "Attachments", min: 320, max: E, preferred: 960, header: "none" },
+		attachment: { title: "Attachment", min: 320, max: E, preferred: 960, height: "full" },
+	};
+	const at = (width) => {
+		const chain = new Navigator({ destinations, root: "modes", minViewportHeight: 320, chrome: { navbar: 36 } });
+		chain.resize({ width, height: 900 });
+		return chain;
+	};
+	const root = ["modes", "mailboxes", "nav", "conversations", "conversation"];
+	const split = "modes/mailboxes/nav/conversations/conversation";
+	const picture = (chain) => {
+		const layout = chain.layout();
+		return {
+			root: layout.chain.cells.map((cell) => `${cell.title}:${cell.visible ? (cell.compact ? "compact" : Math.round(cell.width)) : "hidden"}`),
+			row: layout.chains.get(`${split}/metadata`)?.cells.map((cell) => `${cell.title}:${cell.visible ? Math.round(cell.width) : "hidden"}`) ?? null,
+		};
+	};
+	const wide = at(1920);
+	wide.sync([...root, "metadata", "messages"]);
+	wide.sync([...root, "attachments", "attachment"]);
+	wide.open("messages", { from: `${split}/metadata`, origin: null });
+	let shown = picture(wide);
+	assert.ok(shown.row.length === 2 && shown.row.every((cell) => !cell.endsWith("hidden")), `at 1920 the summary and the messages stand side by side in the row: ${shown.row}`);
+	assert.ok(shown.root.slice(0, 4).every((cell) => !cell.endsWith("hidden")), `with everything before the split in view, the menu compact: ${shown.root}`);
+	assert.equal(shown.root[0], "Modes:compact");
+	const laptop = at(1440);
+	laptop.sync([...root, "metadata", "messages"]);
+	laptop.sync([...root, "attachments", "attachment"]);
+	laptop.open("messages", { from: `${split}/metadata`, origin: null });
+	shown = picture(laptop);
+	assert.deepEqual(shown.root.slice(0, 3), ["Modes:compact", "Mailboxes:hidden", "Nav:hidden"], "at 1440 the mailboxes and the nav give way first");
+	assert.ok(shown.row.length === 2 && shown.row.every((cell) => !cell.endsWith("hidden")), `so the summary keeps standing beside the messages, and the attachment beside the split: ${shown.row}`);
+	assert.ok(shown.root[5].startsWith("Attachment:") && !shown.root[5].endsWith("hidden"));
+	const show = at(900);
+	show.sync([...root, "metadata", "messages"]);
+	assert.equal(show.layout().cells.get("modes/mailboxes/nav/conversations").visible, false, "at 900 the list has hidden for the split");
+	const closed = show.showByClosing("modes/mailboxes/nav/conversations");
+	assert.deepEqual(closed.map((entry) => entry.title), ["Messages"], "Show closes the newest cell inside the rows, not the split");
+	assert.ok(show.get(split), "the split stays with its summary");
+	assert.equal(show.layout().cells.get("modes/mailboxes/nav/conversations").visible, true, "and the list is back in view");
 });

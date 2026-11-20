@@ -3,7 +3,7 @@ import { LAYOUT_HEADER, SupermaxLayoutError, encodeLayoutHeader, layoutOf, readL
 import { closureOf, declarationSet, destinations, embeddedDestinations } from "../docs/assets/album.js";
 
 const set = {
-	schemaVersion: 1,
+	schemaVersion: 2,
 	context: "ana",
 	root: "photo:a",
 	destinations: {
@@ -15,7 +15,7 @@ const head = (value, url = "https://example.test/supermax/layout?destination=pho
 
 const inline = await encodeLayoutHeader(set);
 assert.deepEqual(await readLayout(head(inline.value)), JSON.parse(inline.text), "a HEAD response carries the whole set inline");
-assert.match(inline.value, /^v=1; hash="sha256-[\w-]+"; inline="[\w-]+"$/);
+assert.match(inline.value, /^v=2; hash="sha256-[\w-]+"; inline="[\w-]+"$/);
 
 const snapshot = await encodeLayoutHeader(set, { url: "/supermax/layout/snapshot/1" });
 const fetched = [];
@@ -27,7 +27,7 @@ const tampered = await encodeLayoutHeader({ ...set, destinations: { ...set.desti
 const mixed = tampered.value.replace(/hash="[^"]+"/, `hash="${inline.hash}"`);
 await assert.rejects(readLayout(head(mixed)), (error) => error instanceof SupermaxLayoutError && error.reason === "hash-mismatch", "bytes that do not match the hash are refused");
 await assert.rejects(readLayout(head(null)), (error) => error.reason === "missing-header");
-await assert.rejects(readLayout(head(inline.value.replace("v=1", "v=2"))), (error) => error.reason === "schema-version");
+await assert.rejects(readLayout(head(inline.value.replace("v=2", "v=3"))), (error) => error.reason === "schema-version");
 
 assert.deepEqual(layoutOf({ title: "Albums", min: 200, max: 320, keep: true, compact: { min: 48, content: () => null }, data: { kind: "albums" } }), { title: "Albums", min: 200, max: 320, preferred: null, keep: true, compact: { min: 48 }, rows: null, defaultChild: null }, "the layout of a definition leaves host data and callbacks out");
 
@@ -42,11 +42,18 @@ for (const context of ["ana", "ben"]) {
 	const plain = layoutOf({ title: "Plain", min: 200, max: 300 });
 	assert.equal(Object.hasOwn(plain, "zoomable"), false, "a declaration that cannot zoom carries no zoomable field, so existing hashes stay the same");
 	assert.equal(layoutOf({ title: "Zoomable", min: 200, max: 300, zoomable: true }).zoomable, true, "one that can zoom says so");
+	assert.equal(Object.hasOwn(layoutOf({ title: "Titled", min: 200, max: 300 }), "header"), false, "a cell with its title bar carries no header field");
+	assert.equal(layoutOf({ title: "Strip", min: 200, max: 300, header: "none" }).header, "none", "a cell whose content names itself says it has no title bar");
+	const headless = (declaration) => validateDeclarationSet({ schemaVersion: 2, context: "ana", root: "x", destinations: { x: { title: "X", min: 200, max: 300, preferred: null, defaultChild: null, ...declaration } } }).map((problem) => problem.reason);
+	assert.deepEqual(headless({ header: "none" }), [], "header: \"none\" is a valid declaration");
+	assert.deepEqual(headless({ header: "small" }), ["invalid-header"], "any other value is refused");
+	assert.deepEqual(validateDeclarationSet({ schemaVersion: 2, context: "ana", root: "s", destinations: { s: { title: "S", rows: [{ destination: "x", minHeight: 100, maxHeight: "*", preferredHeight: 200 }], header: "none" }, x: { title: "X", min: 200, max: 300, preferred: null, defaultChild: null } } }).map((problem) => problem.reason), [], "a split draws its title above its rows and may leave it out the same way");
+	assert.equal(layoutOf({ title: "S", rows: [{ destination: "x", minHeight: 100, maxHeight: "*", preferredHeight: 200 }], header: "none" }).header, "none");
 }
 
 console.log("Layout declaration scenarios passed");
 
 {
-	const set = { schemaVersion: 1, context: "ana", root: "a/b", destinations: { "a/b": { title: "Slashed", min: 200, max: "*", preferred: 300, defaultChild: null } } };
+	const set = { schemaVersion: 2, context: "ana", root: "a/b", destinations: { "a/b": { title: "Slashed", min: 200, max: "*", preferred: 300, defaultChild: null } } };
 	assert.ok(validateDeclarationSet(set).some((problem) => problem.destination === "a/b" && problem.reason === "invalid-id"), "a destination id with a slash is refused, because occurrence ids are paths of destination ids joined by slashes");
 }

@@ -207,8 +207,9 @@ export class CellStrip {
 		this.strip.style.transform = targetTransform;
 
 		if (this.motion) {
+			// allow-comment: a split opens and closes through its rows, which fold in the same stroke, but a split that another cell replaces leaves as one card, or it would vanish in a frame.
 			for (const entry of newlyLeaving) {
-				if (entry.still) continue;
+				if (entry.still && !entry.overlay) continue;
 				if (departed.has(entry.id)) {
 					this.track(entry, "leave", departed.get(entry.id));
 					continue;
@@ -223,7 +224,7 @@ export class CellStrip {
 				else this.foldIn(entry, start);
 			}
 			for (const entry of returning) {
-				if (entry.still) continue;
+				if (entry.still && !this.motions.has(entry.id)) continue;
 				if (this.motions.get(entry.id)?.reversible) this.reverse(entry, "enter");
 				else this.foldBack(entry);
 			}

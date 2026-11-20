@@ -382,11 +382,7 @@ export class Workspace extends EventTarget {
 		const before = new Set(this.navigator.occurrences.keys());
 		const result = this.navigator.sync(destinationIds, { ifRoom, zoom });
 		if (result.ok && !result.noop && animate && origin === undefined && [...before].some((id) => !this.navigator.get(id))) this.warn("sync()", "replaced cells without an origin, so they fold away on their far edge. Pass the element the user clicked as { origin }, or origin: null when no element started it.");
-		if (result.ok && origin) {
-			let opened = this.navigator.root;
-			while (opened && before.has(opened.id)) opened = this.navigator.child(opened);
-			if (opened) this.remember(opened.id, origin);
-		}
+		if (result.ok && origin && result.opened?.[0]) this.remember(result.opened[0], origin);
 		if (!result.ok) {
 			this.dispatchEvent(new CustomEvent("rejected", { detail: { action, result } }));
 			return result;
@@ -616,7 +612,9 @@ export class Workspace extends EventTarget {
 		if (isSplit(definition)) {
 			element.classList.add("is-split");
 			body.append(this.create("div", "supermax-rows"));
-		} else {
+		}
+		if (definition.header === "none") element.classList.add("is-headless");
+		else {
 			header = this.create("header", "supermax-cell-title");
 			titleNode = this.create("span", "supermax-cell-title-text", occurrence.title);
 			header.append(titleNode);

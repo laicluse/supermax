@@ -44,6 +44,38 @@ export function widthBounds(definition) {
 	return { min: definition.min, max: elastic ? definition.preferred : definition.max, reach: elastic ? Infinity : definition.max, preferred: definition.preferred ?? null, elastic };
 }
 
+function compactWidth(definition) {
+	return definition.compact ? definition.compact.min : null;
+}
+
+// allow-comment: a split declares no width; its bounds are its widest row's. A row asks for the sum of its cells' minima and gives that up one cell at a time from its left (steps), down to its newest cell with the kept cells (min); it prefers the sum of its cells' preferences and reaches the sum of their maxima. Only what is open counts, never what is visible, so the demand cannot depend on its own outcome.
+export function boundsOf(model, occurrence) {
+	const definition = model.definitionOf(occurrence.destination);
+	if (!isSplit(definition)) return { ...widthBounds(definition), steps: [definition.min] };
+	const bounds = { min: 0, max: 0, reach: 0, preferred: 0, elastic: false };
+	const rowSteps = [];
+	definition.rows.forEach((row, index) => {
+		const root = occurrence.children?.[index] ? model.get(occurrence.children[index]) : null;
+		const cells = (root ? chainCells(model, root) : [{ destination: row.destination }]).map((cell) => model.definitionOf(cell.destination));
+		const newest = cells[cells.length - 1];
+		const keptBefore = (count) => cells.slice(0, count).reduce((sum, cell) => sum + (cell.keep ? compactWidth(cell) ?? cell.min : 0), 0);
+		const steps = cells.map((cell, dropped) => keptBefore(dropped) + cells.slice(dropped).reduce((sum, member) => sum + member.min, 0));
+		rowSteps.push(steps);
+		const min = steps[steps.length - 1];
+		const preferred = cells.reduce((sum, cell) => sum + (widthBounds(cell).preferred ?? widthBounds(cell).max), 0);
+		const max = cells.reduce((sum, cell) => sum + widthBounds(cell).max, 0);
+		const elastic = cells.some((cell) => cell.max === ELASTIC);
+		bounds.min = Math.max(bounds.min, min);
+		bounds.preferred = Math.max(bounds.preferred, preferred);
+		bounds.max = Math.max(bounds.max, max);
+		bounds.reach = Math.max(bounds.reach, elastic ? Infinity : max);
+		bounds.elastic ||= elastic;
+	});
+	const length = Math.max(...rowSteps.map((steps) => steps.length));
+	const steps = Array.from({ length }, (_, level) => Math.max(...rowSteps.map((row) => row[Math.min(level, row.length - 1)])));
+	return { ...bounds, steps, max: bounds.elastic ? bounds.preferred : bounds.max };
+}
+
 export function heightBounds(row) {
 	const elastic = row.maxHeight === ELASTIC;
 	return { min: row.minHeight, max: elastic ? row.preferredHeight : row.maxHeight, reach: elastic ? Infinity : row.maxHeight, preferred: row.preferredHeight ?? null, elastic };
@@ -53,6 +85,7 @@ export function validateSplit(model, definitionId, parentOccurrence) {
 	const definition = model.definitionOf(definitionId);
 	const { navbar, maxRows } = model.chrome;
 	const rows = definition.rows;
+	const chrome = navbar + headerOf(model, definition);
 	const base = { ok: false, rows: [], chrome: null, supported: model.minViewportHeight };
 	if (parentOccurrence && chainRootOf(model, parentOccurrence).parent) return { ...base, reason: "nested-split" };
 	if (parentOccurrence) {
@@ -61,7 +94,6 @@ export function validateSplit(model, definitionId, parentOccurrence) {
 	}
 	if (rows.length === 0) return { ...base, reason: "no-rows" };
 	if (rows.length > maxRows) return { ...base, reason: "too-many-rows", count: rows.length, maxRows };
-	const chrome = navbar;
 	const seen = new Set();
 	const results = rows.map((row, index) => {
 		const rowDefinition = model.definitionOf(row.destination);
@@ -92,6 +124,11 @@ export function validateSplit(model, definitionId, parentOccurrence) {
 	return { ok: reason === null, reason, rows: results, chrome, supported: model.minViewportHeight };
 }
 
+// allow-comment: a split draws its title above its rows unless it declares header: "none"; that bar is chrome the rows do not get.
+export function headerOf(model, definition) {
+	return definition.header === "none" ? 0 : model.chrome.header;
+}
+
 export function chainRootOf(model, occurrence) {
 	let current = occurrence;
 	for (;;) {
@@ -118,16 +155,12 @@ export function chainCells(model, chainRoot) {
 	}
 }
 
-function compactWidth(definition) {
-	return definition.compact ? definition.compact.min : null;
-}
-
 function compactPass(model, cells, width) {
 	const last = cells[cells.length - 1];
 	const compact = new Set();
 	const sumOfMins = () => cells.reduce((sum, occurrence) => {
 		const definition = model.definitionOf(occurrence.destination);
-		return sum + (compact.has(occurrence.id) ? compactWidth(definition) : definition.min);
+		return sum + (compact.has(occurrence.id) ? compactWidth(definition) : boundsOf(model, occurrence).steps[0]);
 	}, 0);
 	for (const occurrence of cells) {
 		if (sumOfMins() <= width) break;
@@ -138,7 +171,7 @@ function compactPass(model, cells, width) {
 }
 
 export function chainFits(model, cells, width) {
-	return cells.reduce((sum, occurrence) => sum + model.definitionOf(occurrence.destination).min, 0) <= width;
+	return cells.reduce((sum, occurrence) => sum + boundsOf(model, occurrence).min, 0) <= width;
 }
 
 function sessionBounds(base, session, hard) {
@@ -162,24 +195,49 @@ function zoomAnchors(model) {
 	return anchors;
 }
 
+// allow-comment: room gives way in reading order, in one walk from the left: a cell before a split hides first, then the split gives its widest row up one cell at a time from the row's left, then the split itself hides; the newest cell always stays. What is left shares the width with the demand that walk settled on.
 function allocateChain(model, cells, width) {
 	const { compact } = compactPass(model, cells, width);
-	const bounds = cells.map((occurrence) => {
-		const definition = model.definitionOf(occurrence.destination);
-		if (compact.has(occurrence.id)) {
-			const size = compactWidth(definition);
-			return { min: size, max: size, preferred: null, session: null };
-		}
-		return { ...widthBounds(definition), session: model.sizeOf(occurrence.id, "width") };
-	});
-	const hard = sessionsHold(bounds, width);
 	const anchors = zoomAnchors(model);
 	const anchor = cells.find((occurrence) => anchors.has(occurrence.id))?.id ?? null;
-	const configs = cells.map((occurrence, index) => {
-		const config = { id: occurrence.id, title: occurrence.title, keep: !!model.definitionOf(occurrence.destination).keep, ...sessionBounds(bounds[index], bounds[index].session, hard) };
-		return occurrence.id === anchor ? { ...config, zoomable: true, elastic: true } : config;
+	const units = cells.map((occurrence) => {
+		const definition = model.definitionOf(occurrence.destination);
+		const own = boundsOf(model, occurrence);
+		const steps = compact.has(occurrence.id) ? [compactWidth(definition)] : own.steps;
+		return { occurrence, definition, own, steps, level: 0, hidden: false, keep: !!definition.keep };
 	});
-	const allocation = new CellCollection(configs).distribute(width, anchor);
+	const minOf = (unit) => unit.steps[unit.level];
+	let total = units.reduce((sum, unit) => sum + minOf(unit), 0);
+	for (let index = 0; index < units.length && total > width; ) {
+		const unit = units[index];
+		if (unit.keep || unit.hidden) {
+			index += 1;
+			continue;
+		}
+		if (unit.level < unit.steps.length - 1) {
+			total -= minOf(unit);
+			unit.level += 1;
+			total += minOf(unit);
+			continue;
+		}
+		if (index === units.length - 1) break;
+		unit.hidden = true;
+		total -= minOf(unit);
+		index += 1;
+	}
+	const members = units.filter((unit) => !unit.hidden);
+	const bounds = members.map((unit) => {
+		if (compact.has(unit.occurrence.id)) return { min: minOf(unit), max: minOf(unit), preferred: null, session: null };
+		return { ...unit.own, min: Math.min(minOf(unit), unit.own.max), session: model.sizeOf(unit.occurrence.id, "width") };
+	});
+	const hard = sessionsHold(bounds, width);
+	const configs = members.map((unit, index) => {
+		const config = { id: unit.occurrence.id, title: unit.occurrence.title, keep: !!unit.definition.keep, ...sessionBounds(bounds[index], bounds[index].session, hard) };
+		return unit.occurrence.id === anchor ? { ...config, zoomable: true, elastic: true } : config;
+	});
+	const sharing = new CellCollection(configs).distribute(width, anchor);
+	const byId = new Map(sharing.cells.map((cell) => [cell.config.id, cell]));
+	const allocation = { ...sharing, cells: cells.map((occurrence) => byId.get(occurrence.id) ?? { config: { id: occurrence.id, title: occurrence.title }, actual: 0, visible: false }) };
 	return { allocation, compact };
 }
 
@@ -189,7 +247,7 @@ export function chainWidth(model, chainRoot) {
 	const outerRoot = chainRootOf(model, split);
 	const { allocation } = allocateChain(model, chainCells(model, outerRoot), chainWidth(model, outerRoot));
 	const cell = allocation.cells.find((candidate) => candidate.config.id === split.id);
-	return cell && cell.visible ? cell.actual : model.definitionOf(split.destination).min;
+	return cell && cell.visible ? cell.actual : boundsOf(model, split).min;
 }
 
 export function layoutWorkspace(model) {
@@ -245,15 +303,17 @@ function layoutChain(model, chainRoot, width, height, containerInView) {
 	const layoutCells = cells.map((occurrence, index) => {
 		const definition = model.definitionOf(occurrence.destination);
 		const allocated = byId.get(occurrence.id);
+		const bounds = boundsOf(model, occurrence);
 		const visible = allocated ? allocated.visible : false;
-		const cellWidth = visible ? allocated.actual : definition.min;
+		const cellWidth = visible ? allocated.actual : bounds.min;
 		const isCompact = visible && compact.has(occurrence.id);
 		const inView = containerInView && visible;
-		const cell = { occurrence: occurrence.id, title: occurrence.title, width: cellWidth, visible, compact: isCompact, inView, full: inView && !isCompact, kept: !!definition.keep, sized: model.sizeOf(occurrence.id, "width") !== null, min: definition.min, max: widthBounds(definition).reach };
+		const cell = { occurrence: occurrence.id, title: occurrence.title, width: cellWidth, visible, compact: isCompact, inView, full: inView && !isCompact, kept: !!definition.keep, sized: model.sizeOf(occurrence.id, "width") !== null, min: bounds.min, max: bounds.reach };
 		if (isSplit(definition)) {
-			cell.rows = layoutRows(model, occurrence, cellWidth, height, inView);
+			const bar = headerOf(model, definition);
+			cell.rows = layoutRows(model, occurrence, cellWidth, Math.max(0, height - bar), inView);
 			overflow = overflow || cell.rows.overflow;
-			contentHeight = Math.max(contentHeight, cell.rows.contentHeight);
+			contentHeight = Math.max(contentHeight, cell.rows.contentHeight + bar);
 		}
 		return cell;
 	});

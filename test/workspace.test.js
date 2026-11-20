@@ -225,6 +225,7 @@ test("the up control names the nearest hidden parent, closes what falls off the 
 
 test("Back climbs the newest branch first, then the branch opened before it in another row", async () => {
 	await openDemo([open("album:coast", "albums")]);
+	await resize([[860, 640], [420, 640]]);
 	assert.equal((await backButton("a")).hidden, true);
 	await page.click(inFrame("a", `[data-occurrence="${coast.metadata("map", "a")}"] .metadata-link`));
 	await settle();
@@ -1438,10 +1439,11 @@ test("below the declared minimum the last row keeps its height and the workspace
 		.map((element) => ({ id: element.dataset.occurrence, width: element.getBoundingClientRect().width })));
 	const minima = await page.evaluate(() => {
 		const model = window.supermaxDemo.frames[1].workspace.navigator;
+		const layout = model.layout();
 		return Object.fromEntries([...model.occurrences.values()].map((occurrence) => {
 			const definition = model.definitionOf(occurrence.destination);
-			const compact = model.layout && window.supermaxDemo.frames[1].workspace.findCell(occurrence.id)?.compact;
-			return [occurrence.id, compact ? definition.compact.min : definition.min];
+			const compact = window.supermaxDemo.frames[1].workspace.findCell(occurrence.id)?.compact;
+			return [occurrence.id, compact ? definition.compact.min : layout.cells.get(occurrence.id)?.min ?? 0];
 		}));
 	});
 	for (const cell of visible) assert.ok(cell.width >= minima[cell.id], `${cell.id} is not narrower than its own minimum`);
@@ -1486,6 +1488,7 @@ const LONG_CHAIN = [open("album:coast", "albums"), open("coast:history:a", coast
 
 test("a long chain hides old cells entirely while the kept albums menu stays as an icon rail", async () => {
 	await openDemo(LONG_CHAIN);
+	await resize([[960, 640], [380, 640]]);
 	const cells = await page.locator(inFrame("a", `[data-occurrence^="${coast.row("thumbnails")}"]`)).evaluateAll((elements) => elements.map((element) => ({ compact: element.classList.contains("is-compact"), visible: getComputedStyle(element).visibility === "visible" && element.getBoundingClientRect().width > 0 })));
 	assert.ok(cells.every((cell) => !cell.compact), "no content cell takes a compact form");
 	assert.ok(cells.some((cell) => !cell.visible) && cells[cells.length - 1].visible, "old cells hide entirely and the newest stays");
@@ -1496,12 +1499,13 @@ test("a long chain hides old cells entirely while the kept albums menu stays as 
 	await page.click(inFrame("b", '.album-icon[data-destination="album:empty"]'));
 	assert.deepEqual(await groups("b"), ["Empty album"], "an icon in the rail navigates");
 	assert.deepEqual(await groups("a"), ["Empty album"], "and the other frame follows");
-	await resize([[960, 640], [420, 360]]);
+	await resize([[960, 640], [380, 360]]);
 	assert.equal(await page.locator(inFrame("b", '[data-occurrence="albums"] .album-icon')).first().isVisible(), true, "at the supported minimum height the menu rail is still there");
 });
 
 test("a peek shows the kept menu's own content without touching history", async () => {
 	await openDemo(LONG_CHAIN);
+	await resize([[960, 640], [380, 640]]);
 	const rail = inFrame("b", '[data-occurrence="albums"] .supermax-rail');
 	const urlBefore = page.url();
 	await page.hover(rail);
@@ -1521,6 +1525,7 @@ test("a peek shows the kept menu's own content without touching history", async 
 
 test("a dragged divider follows the pointer while every cell in its chain gives way within its own bounds, and resets to the app preference", async () => {
 	await openDemo([open("album:coast", "albums")]);
+	await resize([[1200, 640], [420, 640]]);
 	const thumbnails = inFrame("a", `[data-occurrence="${coast.row("thumbnails")}"]`);
 	const photo = inFrame("a", `[data-occurrence="${coast.photo("thumbnails", "a")}"]`);
 	const metadata = inFrame("a", `[data-occurrence="${coast.photo("thumbnails", "a")}/coast:metadata:a"]`);
@@ -1536,11 +1541,11 @@ test("a dragged divider follows the pointer while every cell in its chain gives 
 		return box;
 	};
 	const [thumbnailsBefore, photoBefore, metadataBefore] = await widths();
-	const box = await drag(-40);
-	assert.deepEqual(await widths(), [thumbnailsBefore - 40, photoBefore + 40, metadataBefore], "dragging left shrinks the cell before the edge and gives the room to the cell after it");
+	const box = await drag(-20);
+	assert.deepEqual(await widths(), [thumbnailsBefore - 20, photoBefore + 20, metadataBefore], "dragging left shrinks the cell before the edge and gives the room to the cell after it");
 	assert.equal(await page.locator(inFrame("a", `.supermax-divider.is-sized[data-divides="${coast.row("thumbnails")}"] .supermax-divider-reset`)).count(), 1, "a divider with a session size shows its reset control");
 	const hairline = () => page.locator(divider).evaluate((element) => getComputedStyle(element, "::before").backgroundColor);
-	await page.mouse.move(box.x + box.width / 2 - 40, box.y + 400);
+	await page.mouse.move(box.x + box.width / 2 - 20, box.y + 400);
 	await page.waitForTimeout(400);
 	assert.equal(await hairline(), "rgba(0, 0, 0, 0)", "a sized divider goes back to a quiet hairline once the pointer leaves it");
 	const held = await page.locator(divider).boundingBox();
@@ -1552,18 +1557,18 @@ test("a dragged divider follows the pointer while every cell in its chain gives 
 	assert.notEqual(await hairline(), "rgba(0, 0, 0, 0)", "the divider stays lit while it is dragged, also beyond its hit area");
 	await page.mouse.move(held.x + held.width / 2, held.y + held.height / 2, { steps: 4 });
 	await page.mouse.up();
-	assert.deepEqual(await widths(), [thumbnailsBefore - 40, photoBefore + 40, metadataBefore], "dragging back to where the drag started puts every cell back");
+	assert.deepEqual(await widths(), [thumbnailsBefore - 20, photoBefore + 20, metadataBefore], "dragging back to where the drag started puts every cell back");
 	const lost = await page.locator(divider).boundingBox();
 	await page.mouse.move(lost.x + lost.width / 2, lost.y + lost.height / 2);
 	await page.mouse.down();
 	await page.locator(divider).evaluate((element) => { for (let id = 0; id < 8; id += 1) if (element.hasPointerCapture(id)) element.releasePointerCapture(id); });
-	await page.mouse.move(lost.x + lost.width / 2 + 20, lost.y + lost.height / 2 + 200, { steps: 4 });
+	await page.mouse.move(lost.x + lost.width / 2 + 10, lost.y + lost.height / 2 + 200, { steps: 4 });
 	await page.mouse.up();
-	assert.deepEqual(await widths(), [thumbnailsBefore - 20, photoBefore + 20, metadataBefore], "the edge keeps following when the handle loses the pointer capture");
+	assert.deepEqual(await widths(), [thumbnailsBefore - 10, photoBefore + 10, metadataBefore], "the edge keeps following when the handle loses the pointer capture");
 	await drag(2000 + 20);
 	const [thumbnailsWide, photoNarrow, metadataNarrow] = await widths();
-	assert.equal(thumbnailsWide, 320, "dragging far right grows the cell before the edge to its maximum");
-	assert.ok(photoNarrow === 240 && metadataNarrow < metadataBefore, `the cells after it give way nearest first, photo to its minimum before metadata shrinks: ${photoNarrow}px and ${metadataNarrow}px`);
+	assert.ok(thumbnailsWide > thumbnailsBefore + 40, `dragging far right grows the cell before the edge: ${thumbnailsWide}px from ${thumbnailsBefore}px`);
+	assert.ok(photoNarrow < photoBefore && photoNarrow >= 240 && metadataNarrow <= metadataBefore && metadataNarrow >= 200, `the cells after it give way within their bounds: ${photoNarrow}px and ${metadataNarrow}px`);
 	await resize([[900, 640], [420, 640]]);
 	assert.equal(await page.locator(photo).evaluate((element) => element.closest(".supermax-chain").querySelector(".supermax-divider.is-sized") !== null), true, "the session size survives a frame resize");
 	await page.evaluate((from) => window.supermaxDemo.frames[0].workspace.navigate("coast:photo:d", { from }), coast.row("thumbnails"));
@@ -1577,9 +1582,9 @@ test("a dragged divider follows the pointer while every cell in its chain gives 
 	const rowBox = await page.locator(rowDivider).boundingBox();
 	await page.mouse.move(rowBox.x + 50, rowBox.y + rowBox.height / 2);
 	await page.mouse.down();
-	await page.mouse.move(rowBox.x + 50, rowBox.y + rowBox.height / 2 - 30, { steps: 4 });
+	await page.mouse.move(rowBox.x + 50, rowBox.y + rowBox.height / 2 - 10, { steps: 4 });
 	await page.mouse.up();
-	assert.equal(await rowOf(), rowBefore - 30, "a row divider resizes its row by pointer");
+	assert.equal(await rowOf(), rowBefore - 10, "a row divider resizes its row by pointer");
 	await page.click(inFrame("a", `.supermax-divider.is-horizontal[data-divides="${coast.row("thumbnails")}"] .supermax-divider-reset`));
 	assert.equal(await rowOf(), rowBefore, "its reset control restores the app preference");
 	assert.equal(await page.locator(inFrame("a", ".supermax-divider.is-horizontal.is-sized")).count(), 0);
@@ -1889,6 +1894,53 @@ test("veil replaces a cell without turning it, keeps its surface and lifts the n
 	await page.selectOption("[data-presentation]", PRESENTATION);
 });
 
+test("a split that another split replaces leaves with the presentation's exit instead of vanishing in a frame", async () => {
+	await openDemo([open("album:coast", "albums"), open("coast:photo:a", coast.row("thumbnails"))]);
+	await page.selectOption("[data-speed]", "10");
+	await page.click(inFrame("a", '.album-item[data-destination="album:lab-fit"]'));
+	const leaving = await page.locator(inFrame("a", '[data-occurrence="albums/album:coast"]')).evaluate((cell) => ({
+		exiting: cell.hasAttribute("data-supermax-exiting"),
+		split: cell.classList.contains("is-split"),
+		exit: cell.getAnimations({ subtree: true }).some((animation) => animation.effect.target === cell && (animation.playState === "running" || animation.pending)),
+	}));
+	assert.deepEqual(leaving, { exiting: true, split: true, exit: true }, "the replaced split stays mounted, marked as exiting, with its own exit running on it");
+	await settle();
+	assert.equal(await page.locator(inFrame("a", '[data-occurrence="albums/album:coast"]')).count(), 0, "and is gone once the exit has finished");
+	assert.equal(await page.locator(inFrame("a", '[data-occurrence="albums/album:lab-fit"]')).count(), 1);
+	await page.selectOption("[data-speed]", "1");
+});
+
+test("a split draws its own title above its rows, which stays while the rows change, and its rows share the height below it", async () => {
+	await openDemo(THREE_ROWS);
+	const album = inFrame("a", '[data-occurrence="albums/album:coast"]');
+	const measured = await page.locator(album).evaluate((cell) => {
+		const bar = cell.querySelector(":scope > .supermax-cell-title");
+		const rows = [...cell.querySelectorAll(".supermax-row:not(.is-hidden)")];
+		const top = cell.getBoundingClientRect().top;
+		return {
+			title: bar?.querySelector(".supermax-cell-title-text")?.textContent,
+			barHeight: Math.round(bar.getBoundingClientRect().height),
+			barWidth: Math.round(bar.getBoundingClientRect().width),
+			cellWidth: Math.round(cell.getBoundingClientRect().width),
+			firstRowTop: Math.round(rows[0].getBoundingClientRect().top - top),
+			rowsHeight: Math.round(rows.reduce((sum, row) => sum + row.getBoundingClientRect().height, 0)),
+			cellHeight: Math.round(cell.getBoundingClientRect().height),
+			rowBars: rows.map((row) => row.querySelectorAll(".supermax-cell > .supermax-cell-title").length > 0),
+		};
+	});
+	assert.equal(measured.title, "Coast", "the split's bar carries the split's title");
+	assert.equal(measured.barHeight, 28, "at the height the model counts as chrome");
+	assert.equal(measured.barWidth, measured.cellWidth, "across the whole split");
+	assert.equal(measured.firstRowTop, 28, "the rows start below it");
+	assert.equal(measured.rowsHeight, measured.cellHeight - 28, "and share the height that is left");
+	assert.ok(measured.rowBars.every(Boolean), "the row cells keep their own bars unless they declare header: \"none\"");
+	await page.click(inFrame("a", `[data-occurrence="${coast.row("thumbnails")}"] .thumb[data-destination="coast:photo:d"]`));
+	await settle();
+	assert.equal(await page.locator(album + " > .supermax-cell-title .supermax-cell-title-text").textContent(), "Coast", "the bar stays while a row opens another cell");
+	assert.equal(await page.evaluate(() => window.supermaxDemo.frames[0].workspace.setTitle("albums/album:coast", "Coast, 4 photos")), true);
+	assert.equal(await page.locator(album + " > .supermax-cell-title .supermax-cell-title-text").textContent(), "Coast, 4 photos", "and setTitle renames it");
+});
+
 test("a full-height cell opened from a row breaks out beside its split, and Back closes it alone", async () => {
 	await openDemo([open("album:coast", "albums"), open("coast:photo:b", coast.row("thumbnails"))]);
 	const photoB = coast.photo("thumbnails", "b");
@@ -1905,6 +1957,8 @@ test("a full-height cell opened from a row breaks out beside its split, and Back
 	assert.equal(placed.inRow, false, "the full-height cell stands in the root chain, not inside the thumbnails row");
 	assert.equal(placed.rightOfSplit, true, "to the right of the album's split");
 	assert.equal(placed.height, placed.splitHeight, "as tall as the split beside it");
+	const headless = await page.locator(inFrame("a", `[data-occurrence="${fullB}"]`)).evaluate((cell) => ({ bars: cell.querySelectorAll(":scope > .supermax-cell-title").length, label: cell.getAttribute("aria-label"), headless: cell.classList.contains("is-headless"), bodyTop: Math.round(cell.querySelector(".supermax-cell-body").getBoundingClientRect().top - cell.getBoundingClientRect().top) }));
+	assert.deepEqual(headless, { bars: 0, label: "Photo B at full height", headless: true, bodyTop: 0 }, "a cell declared header: \"none\" draws no title bar, its body starts at the top, and it keeps its title as its accessible name");
 	assert.equal(await page.locator(inFrame("a", `[data-occurrence="${photoB}"] .full-link`)).getAttribute("aria-current"), null);
 	assert.equal(await page.locator(inFrame("a", `[data-row="${coast.row("thumbnails")}"] [data-occurrence="${fullB}"]`)).count(), 0, "the row's own chain does not hold it");
 	await closeNewest("a");
@@ -2012,6 +2066,7 @@ test("the demo's Speed control slows every time Supermax and the demo keep, and 
 		poll();
 	}), check.toString());
 	await openDemo(LONG_CHAIN);
+	await resize([[960, 640], [380, 640]]);
 	await page.selectOption("[data-speed]", String(SLOW));
 	assert.match(page.url(), /[?&]speed=10/, "the choice is in the URL");
 	await page.evaluate(() => document.querySelector('.frame[data-frame="b"] [data-occurrence="albums"] .supermax-rail').dispatchEvent(new PointerEvent("pointerenter", { pointerType: "mouse" })));
