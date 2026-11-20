@@ -52,7 +52,7 @@ A cell has three regions. Only the body is required, but their order is stable:
 ```
 
 - **Header/navigation bar:** orientation and controls that affect the entire cell. Put collection creation, search, sort, filter, view, and cell zoom here. In the V2 workspace the shell draws the cell header (title and reveal control) and the Show control lives in the workspace navigation bar; host content starts below the header.
-- **Body:** content and selection. A collection row has one primary interaction: select it. Row-level button farms duplicate the detail cell and make the hierarchy ambiguous.
+- **Body:** content and selection. A collection row that opens a detail has one primary interaction: select it. Keep simple contextual actions directly available when they need no separate task space; duplicating a detail's whole toolbar on every row makes the hierarchy ambiguous. [Controls, modals and task cells](#controls-modals-and-task-cells) distinguishes these cases.
 - **Context bar:** temporary state that qualifies the body, such as a batch selection summary. It appears only while that state exists.
 - **Task toolbar:** the stable action set for the current item or task. Use it for repeated decisions, commit/cancel actions, and destructive actions that operate on the body above. Its visual association must be with this cell, never with a neighboring cell or all rows at once.
 
@@ -62,14 +62,14 @@ Place a control by scope, not by available space:
 | --- | --- |
 | Application or workspace | Root cell header |
 | Entire collection | Collection header |
-| One collection row | Select the row; expose actions in its child detail cell |
+| One collection row | Keep simple contextual actions in place; select the row for a separate detail or task |
 | Current item identity or lightweight utility | Detail header |
 | Current item decision or mutation | Detail task toolbar |
 | Form draft | Form toolbar or form footer |
 | Temporary multi-selection | Context bar in the owning collection cell |
 | Child resource | A new cell to the right |
 
-Creation is navigation as well as an action: a collection-level **New** control belongs in the collection header and opens an editor cell to the right. It does not replace the collection, open an unrelated page, or appear as another list row.
+Creation that needs its own task is navigation as well as an action: a collection-level **New** control belongs in the collection header and opens an editor cell to the right. A compact contextual input needs no new cell; a short bounded task can use a modal when the interruption helps. Apply [Controls, modals and task cells](#controls-modals-and-task-cells) to this choice.
 
 ## Widths express content semantics
 
@@ -147,9 +147,20 @@ Content loads through the same `content` callback: return a promise of `{ elemen
 
 The demo answers layout and content from the album catalog inside the page, with real `Response` objects and headers, a viewer, a delay and a failure switch as controls, so it also runs as a static site.
 
-### A modal with an origin
+### Controls, modals and task cells
 
-A modal where a modal belongs, a cell where one is needed, and a simple control or compact input stays where its task happens. A modal from its cell holds a short, infrequent task the user finishes and leaves; content or a process with its own weight opens as a cell and never goes in a modal; a new edit or create form never unfolds between a reading cell's content. The size and content of the task decide, not the pattern the application used before or the shape of its input, and feedback and confirmation follow the risk of the change. The `supermax:supermax` skill holds the full rule under "Control, modal or cell", with its sources from NN/g, Carbon and GOV.UK.
+Give an interaction the space its task needs. Decide from task length, frequency, consequences, recoverability and the need to consult surrounding content, not from an HTML form, a field count or the application's previous presentation.
+
+- A direct action or compact contextual input stays where its task happens. Show pending and result feedback in proportion to the change. Ask for confirmation only when the risk warrants interruption, such as a serious consequence that cannot easily be undone; a readily reversible toggle needs no confirmation.
+- A modal holds a short, bounded, infrequent task whose completion or deliberate choice benefits from blocking the surrounding view. Open it with `from` set to its source cell. Frequently repeated actions belong on the main surface rather than behind repeated interruptions.
+- A substantial edit, multi-step process, draft, detail or comparison gets its own cell. Work that needs to consult the background must not block that background in a modal.
+- Disclosure reveals additional reading information without changing the cell's task. It does not unfold a new editor between reading content; that is a different boundary from a compact control already present where its task happens.
+
+Moving an action between these forms preserves its choices, defaults, pending/result feedback, errors, recovery and focus. The host moves focus into a task, returns it on dismissal and handles modal focus containment; Supermax does not do that itself.
+
+Sources: [NN/g on modal and nonmodal dialogs](https://www.nngroup.com/articles/modal-nonmodal-dialog/), [Carbon's modal guidelines](https://www.carbondesignsystem.com/building-blocks/core/components/modal/guidelines) and [GOV.UK's button guidance](https://design-system.service.gov.uk/components/button/).
+
+### A modal with an origin
 
 `workspace.openModal({ title, content }, { from })` opens one dialog front and centre in the viewport, above a backdrop. The header carries the title and moves the dialog by pointer; the frustum shows where the modal comes from, and the dialog describes its source to assistive technology as `From <source title>` (`aria-description`, `strings.modalFrom`); the corner grip resizes it. The definition bounds it with the names cells and rows use: `min`, `max` and `preferred` for its width (defaults 280, 720 and 440 pixels), `minHeight`, `maxHeight` and `preferredHeight` for its height (defaults 160, the viewport, and the height of its content); moving and resizing never take it past the viewport inset. Without `preferredHeight` a modal whose content loads late opens at its minimum height and grows when the content arrives; a host that knows how tall that content will be declares it, as a destination declares its layout, so the modal opens at its final size. `content(modal, workspace)` follows the cell contract, including a promise with the loading and error states, so delayed modal content shows `Loading <title>` and a Retry. The cells behind the modal are inert, and the close control, the backdrop and `workspace.closeModal(reason)` close it. A second `openModal` replaces the open modal; there are no nested modals. A modal writes no history and is local to one workspace.
 

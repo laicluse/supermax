@@ -11,6 +11,7 @@ Supermax (`@laicluse/supermax`) is an application shell: a `Navigator` decides w
 
 - `node_modules/@laicluse/supermax/README.md`, section "Workspace reference": every workspace method with all its options.
 - `node_modules/@laicluse/supermax/docs/application-shell.md`: the behaviour behind them (window and Show, groups, loading layout, modals, notices, motion, time).
+- For a major upgrade, inventory the host's existing contracts and read `docs/migrating-to-v2.md` from the target package or its matching release notes; a v1 install lacks it. Retaining `CellCollection` or `CellStrip` does not require adopting `Workspace`.
 
 When the package is linked from a checkout (`file:`), the same files are in that checkout.
 
@@ -48,16 +49,14 @@ The workspace warns once per kind in the console when a host leaves out an `orig
 
 ## Control, modal or cell
 
-A modal where a modal belongs, a cell where one is needed. A cell holds one kind of content for one task, as the guide's "one data owner and one responsibility", so a reading cell stays a reading cell. Choose by the size and content of the task, never by the pattern the app used before or by the shape of the input: an HTML form or a count of fields decides nothing.
+Use the installed application-shell guide's "Controls, modals and task cells" for the complete rule and sources. Decide by task length, frequency, risk, recoverability and need for context, never by an HTML form, field count or existing presentation:
 
-- **A control in place**: an action, or a simple contextual input such as one field with its button, a toggle or a select, stays where the task happens. Its result shows in proportion to the change, in the control's own state for a toggle and in a notice for an outcome the user could miss. It asks for confirmation only where the risk or the consequence justifies it, such as a destructive action that cannot easily be undone, and that confirmation is a modal; a delete with a working Undo or an easily undone toggle asks nothing.
-- **Modal**, `openModal` with `from` set to the cell it is about: a short, infrequent task the user finishes and leaves before going on, such as a confirmation or a choice or edit that needs the user's attention apart from the cell's content.
-- **Cell**, a registered destination that opens deeper, to the right of the cell it belongs to: content or a process with its own weight, such as a list, a detail, a form with steps or a draft, anything the user reads beside other cells or comes back to. Content that reads as a cell never goes in a modal.
-- **Disclosure** (`<details>`, an accordion, a "show more") only reveals extra reading information that leaves the cell's task unchanged. It never unfolds a new edit or create form between a reading cell's content; that is a separate limit from a compact control that already sits where its task happens.
+- **Control in place:** direct actions and compact contextual inputs stay where the task happens; feedback is proportional and confirmation is reserved for risk that justifies interrupting. Easily reversible toggles need none.
+- **Modal:** a short, bounded, infrequent task that benefits from blocking; use `openModal` with its source `from`.
+- **Cell:** substantial editing, steps, drafts, detail or comparison; a task that needs surrounding content must not block it in a modal.
+- **Disclosure:** extra reading information, without unfolding a new editor between reading content.
 
-Moving an interaction from one of these forms to another keeps everything the task needs: its choices and defaults, its feedback while it runs and after, its error handling and Retry, and its focus. Supermax moves no focus itself, so the host does: into a modal's first field or primary control and back to the control that opened it when it closes, and to the first field or heading of a cell that opens for a task.
-
-Sources: [NN/g, Modal & Nonmodal Dialogs: When (& When Not) to Use Them](https://www.nngroup.com/articles/modal-nonmodal-dialog/); [Carbon Design System, Modal usage](https://carbondesignsystem.com/components/modal/usage/); [GOV.UK Design System, Notification banner](https://design-system.service.gov.uk/components/notification-banner/).
+Preserve choices, defaults, pending/result feedback, errors and recovery when moving an interaction. The host owns focus entry, return and modal containment; Supermax moves no focus itself.
 
 ## What a host never does
 

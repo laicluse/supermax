@@ -2,9 +2,13 @@
 
 Framework-free cell layout and navigation primitives for workspaces that open content below and to the right.
 
+## Upgrading from v1
+
+Read [Migrating from v1 to v2](docs/migrating-to-v2.md) before accepting a major dependency update. It covers retained primitives, removed contracts, changed behavior, the optional Workspace adoption, and verification. The [changelog](CHANGELOG.md) identifies the upgrade entry point. Upgrading the package does not require replacing an existing allocator or strip with a Workspace.
+
 ## For coding agents
 
-This repository is also a plugin marketplace, `supermax`, with the Supermax skill for Claude Code and Codex: the contract every click follows, which feature fits which need, and what a host never does. An agent that works on an application built on Supermax installs that skill, or asks for it to be installed, before it writes code against the library:
+Start with the README and migration guide shipped in the target package, inventory the application's existing uses, and follow the lane that matches them. These documents work without an agent plugin. This repository also offers the optional `supermax` plugin for Claude Code and Codex, with the interaction contract and guidance on which feature fits which need:
 
 ```bash
 claude plugins marketplace add laicluse/supermax
@@ -13,7 +17,7 @@ codex plugin marketplace add laicluse/supermax
 codex plugin add supermax@supermax
 ```
 
-The skill loads by itself whenever Supermax comes up and points at this README and the [application-shell guide](docs/application-shell.md) for the signatures.
+The optional skill points at this README and the [application-shell guide](docs/application-shell.md) for the signatures; the installed package remains the version-specific reference.
 
 The package has four parts. `CellCollection` allocates one horizontal chain of cells within a budget. `CellStrip` animates such a chain. `Navigator` models a workspace whose cells can split into independent rows, with one Show control that brings back whatever hid above the window; `validateSplit` checks a split against the declared minimum height. `Workspace` renders a navigator into the DOM with the stylesheet `@laicluse/supermax/workspace.css`, and `ORIGAMI_PRESENTATION` is its default motion. Hosts own their content and their routing. A GitHub Pages demo lives in `docs/` outside the package files.
 
@@ -169,7 +173,7 @@ The first update and reduced-motion updates paint immediately; `update(entries, 
 
 Every duration comes from `TIMING`, and `new CellStrip(viewport, { time })` takes the `TimeScale` that multiplies them; a workspace passes its own. An animated update from rest moves rooms only after `settle` milliseconds (`STRIP_TIMING.settle` by default), so updates that follow each other closely move each room once, by the net change; a target that moves less than `STILL` pixels is taken without motion. `strip.depart(ids, { after, toward })` folds those cells away inside their rooms after `after` milliseconds while the rooms stay, `strip.stay(ids)` folds them back, and the next `update` keeps or replaces whatever departed.
 
-Keep cell IDs stable when replacing content. Removed cells become inert immediately but remain mounted through their exit, marked with `data-supermax-exiting`; do not remove them before calling `update`. Hidden ancestors likewise become inert immediately and become visually hidden only after their transition. Existing `display: contents` wrappers inside the public `strip.strip` element are preserved. Headers and bodies can share the same cell element to move together. Call `destroy()` when disposing the host; it removes the strip and restores the viewport's previous overflow style.
+Keep cell IDs stable when replacing content. Removed cells become inert immediately but remain mounted through their exit, marked with `data-supermax-exiting`; do not remove them before calling `update`. Hidden ancestors likewise become inert immediately and become visually hidden only after their transition. Hidden entries between visible entries occupy zero width in the settled strip; leading hidden ancestors retain their widths for the strip offset. Existing `display: contents` wrappers inside the public `strip.strip` element are preserved. Headers and bodies can share the same cell element to move together. Call `destroy()` when disposing the host; it removes the strip and restores the viewport's previous overflow style.
 
 ## Development
 

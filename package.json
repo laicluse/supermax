@@ -20,6 +20,9 @@
   "files": [
     "src",
     "docs/application-shell.md",
+    "docs/migrating-to-v2.md",
+    "docs/assets/captures",
+    "CHANGELOG.md",
     "LICENSE",
     "README.md"
   ],
