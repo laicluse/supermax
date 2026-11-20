@@ -58,3 +58,16 @@ test("the package stylesheet alone renders the chrome at the sizes the model com
 	assert.equal(measured.tab, 20);
 	assert.deepEqual(measured.rows, [20, 120, 120]);
 });
+
+test("the workspace composes its overlays behind one surface", async () => {
+	const result = await page.evaluate(() => {
+		const workspace = window.workspace;
+		const element = workspace.element;
+		const regionLast = element.lastElementChild === workspace.notices.region;
+		const id = workspace.notify({ scope: "workspace", kind: "action", message: "Hello", action: { label: "Ok", run() {} } });
+		const shown = element.querySelectorAll(".supermax-notice").length;
+		workspace.dismissAll();
+		return { regionLast, id, shown, afterDismiss: element.querySelectorAll(".supermax-notice").length, modal: workspace.modal, peek: workspace.peek };
+	});
+	assert.deepEqual(result, { regionLast: true, id: "notice-1", shown: 1, afterDismiss: 0, modal: null, peek: null });
+});

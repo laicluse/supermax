@@ -18,13 +18,7 @@
     "./workspace.css": "./src/workspace.css"
   },
   "files": [
-    "src/cell-collection.js",
-    "src/cell-strip.js",
-    "src/layout.js",
-    "src/navigation.js",
-    "src/workspace.js",
-    "src/workspace.css",
-    "src/index.js",
+    "src",
     "docs/application-shell.md",
     "LICENSE",
     "README.md"
@@ -37,7 +31,7 @@
     "test:browser": "node test/cell-strip.test.js && node --test --test-concurrency=1 test/workspace.test.js test/workspace-package.test.js",
     "test:browser:fold": "SUPERMAX_PRESENTATION=fold node --test --test-concurrency=1 test/workspace.test.js",
     "test": "npm run check:docs && npm run test:node && npm run test:browser",
-    "check": "npm run test && npm run test:bun"
+    "check": "npm run test && npm run test:browser:fold && npm run test:bun"
   },
   "engines": {
     "node": ">=22"

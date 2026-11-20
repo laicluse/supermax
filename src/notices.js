@@ -1,0 +1,160 @@
+export class NoticeBoard {
+	constructor(workspace) {
+		this.workspace = workspace;
+		this.notices = new Map();
+		this.ids = new Set();
+		this.serial = 0;
+		this.region = workspace.create("div", "supermax-notices");
+		this.region.setAttribute("aria-live", "polite");
+		this.region.setAttribute("aria-label", "Notices");
+	}
+
+	get size() {
+		return this.notices.size;
+	}
+
+	notify({ id = null, scope = "cell", source = null, sourceTitle = null, kind = "success", message, action = null, duration } = {}) {
+		if (id !== null) {
+			if (this.ids.has(id)) return null;
+			this.ids.add(id);
+		}
+		const notice = { id: id ?? `notice-${(this.serial += 1)}`, scope, source, sourceTitle, kind, message, action, element: null, host: null, timer: null, remaining: duration ?? (kind === "success" ? 4000 : null), startedAt: null, hovered: false, focused: false };
+		this.notices.set(notice.id, notice);
+		this.place(notice);
+		this.resume(notice);
+		this.workspace.dispatchEvent(new CustomEvent("notice", { detail: { id: notice.id, state: "shown", scope: notice.host === this.region ? "workspace" : "cell" } }));
+		return notice.id;
+	}
+
+	dismiss(noticeId, state = "dismissed") {
+		const notice = this.notices.get(noticeId);
+		if (!notice) return false;
+		this.notices.delete(noticeId);
+		this.pause(notice);
+		const hadFocus = notice.element.contains(this.workspace.document.activeElement);
+		this.detach(notice.element);
+		if (hadFocus) this.focusAfter(notice);
+		this.workspace.dispatchEvent(new CustomEvent("notice", { detail: { id: noticeId, state } }));
+		return true;
+	}
+
+	dismissAll(state = "dismissed") {
+		for (const id of [...this.notices.keys()]) this.dismiss(id, state);
+	}
+
+	render() {
+		for (const notice of this.notices.values()) this.place(notice);
+	}
+
+	clear() {
+		for (const notice of this.notices.values()) this.pause(notice);
+		this.notices.clear();
+		this.ids.clear();
+	}
+
+	detach(element) {
+		const container = element.parentElement;
+		element.remove();
+		if (container && container !== this.region && container.childElementCount === 0) container.remove();
+	}
+
+	focusAfter(notice) {
+		const workspace = this.workspace;
+		if (workspace.modal) { workspace.focusModal(); return; }
+		const target = notice.source && workspace.navigator.get(notice.source) ? workspace.visibleCellFor(notice.source) : null;
+		if (target) { workspace.focusCell(target); return; }
+		const next = this.region.querySelector(".supermax-notice-dismiss");
+		if (next) { next.focus({ preventScroll: true }); return; }
+		workspace.backButton.focus({ preventScroll: true });
+	}
+
+	hostFor(notice) {
+		const workspace = this.workspace;
+		if (notice.scope !== "cell" || !notice.source || workspace.modal) return this.region;
+		const entry = workspace.cells.get(notice.source);
+		const cell = workspace.findCell(notice.source);
+		if (!entry || !cell?.full) return this.region;
+		let container = entry.element.querySelector(":scope > .supermax-cell-notices");
+		if (!container) {
+			container = workspace.create("div", "supermax-cell-notices");
+			entry.element.append(container);
+		}
+		return container;
+	}
+
+	place(notice) {
+		const workspace = this.workspace;
+		const host = this.hostFor(notice);
+		const sourceOccurrence = notice.source ? workspace.navigator.get(notice.source) : null;
+		const named = host === this.region && notice.source;
+		const sourceCell = sourceOccurrence ? workspace.findCell(notice.source) : null;
+		const reachable = !!sourceOccurrence && !sourceCell?.full;
+		if (notice.element && notice.host === host && notice.named === named && notice.sourceOpen === !!sourceOccurrence && notice.reachable === reachable) return;
+		const previous = notice.element;
+		const element = workspace.create("div", `supermax-notice is-${notice.kind}`);
+		element.dataset.notice = notice.id;
+		if (notice.kind === "error") element.setAttribute("role", "alert");
+		const text = workspace.create("div", "supermax-notice-text");
+		if (named) {
+			const title = sourceOccurrence?.title ?? notice.sourceTitle ?? "A closed cell";
+			const label = workspace.create("span", "supermax-notice-source", sourceOccurrence ? `${title}:` : `${title} (not open):`);
+			text.append(label, workspace.document.createTextNode(` ${notice.message}`));
+		} else {
+			text.textContent = notice.message;
+		}
+		const controls = workspace.create("div", "supermax-notice-controls");
+		if (named && reachable) {
+			const go = workspace.create("button", "supermax-notice-go", `Show ${sourceOccurrence.title}`);
+			go.type = "button";
+			go.addEventListener("click", () => { if (workspace.goTo(notice.source)) this.dismiss(notice.id, "acted"); });
+			controls.append(go);
+		}
+		if (notice.action) {
+			const act = workspace.create("button", "supermax-notice-action", notice.action.label);
+			act.type = "button";
+			act.addEventListener("click", () => { this.dismiss(notice.id, "acted"); notice.action.run?.(workspace); });
+			controls.append(act);
+		}
+		const close = workspace.create("button", "supermax-notice-dismiss", "×");
+		close.type = "button";
+		close.setAttribute("aria-label", `Dismiss: ${notice.message}`);
+		close.addEventListener("click", () => this.dismiss(notice.id));
+		controls.append(close);
+		element.append(text, controls);
+		element.addEventListener("keydown", (event) => { if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); this.dismiss(notice.id); } });
+		notice.hovered = false;
+		notice.focused = false;
+		element.addEventListener("pointerenter", () => this.hold(notice, "hovered", true));
+		element.addEventListener("pointerleave", () => this.hold(notice, "hovered", false));
+		element.addEventListener("focusin", () => this.hold(notice, "focused", true));
+		element.addEventListener("focusout", (event) => { if (!element.contains(event.relatedTarget)) this.hold(notice, "focused", false); });
+		if (sourceOccurrence) notice.sourceTitle = sourceOccurrence.title;
+		Object.assign(notice, { element, host, named, sourceOpen: !!sourceOccurrence, reachable });
+		host.append(element);
+		if (previous) {
+			const hadFocus = previous.contains(workspace.document.activeElement);
+			this.detach(previous);
+			if (hadFocus) close.focus({ preventScroll: true });
+			else this.resume(notice);
+		}
+	}
+
+	hold(notice, key, held) {
+		notice[key] = held;
+		if (notice.hovered || notice.focused) this.pause(notice);
+		else this.resume(notice);
+	}
+
+	pause(notice) {
+		if (notice.timer === null) return;
+		clearTimeout(notice.timer);
+		notice.timer = null;
+		notice.remaining = Math.max(0, notice.remaining - (Date.now() - notice.startedAt));
+	}
+
+	resume(notice) {
+		if (notice.remaining === null || notice.timer !== null || !this.notices.has(notice.id)) return;
+		notice.startedAt = Date.now();
+		notice.timer = setTimeout(() => { notice.timer = null; this.dismiss(notice.id, "expired"); }, notice.remaining);
+	}
+}
