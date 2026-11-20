@@ -25,17 +25,19 @@ export const destinations = {
 	"detail:c": { title: "Detail C", min: 150, max: 200 },
 	"notes:a": { title: "Notes A", min: 100, max: 200 },
 	fit: { title: "Fit", min: 300, max: 1000, rows: [{ destination: "list", minHeight: 260, maxHeight: 300 }, { destination: "grid", minHeight: 100, maxHeight: 200 }] },
-	over: { title: "Over", min: 300, max: 1000, rows: [{ destination: "list", minHeight: 261, maxHeight: 300 }, { destination: "grid", minHeight: 100, maxHeight: 200 }] },
-	empty: { title: "Empty", min: 300, max: 1000, rows: [] },
-	twins: { title: "Twins", min: 300, max: 1000, rows: [{ destination: "list", minHeight: 100, maxHeight: 200 }, { destination: "list", minHeight: 100, maxHeight: 200 }] },
-	crowd: { title: "Crowd", min: 300, max: 1000, rows: ["list", "grid", "tags", "item:a", "item:b"].map((destination) => ({ destination, minHeight: 50, maxHeight: 100 })) },
-	conflict: { title: "Conflict", min: 300, max: 1000, rows: [{ destination: "upside", minHeight: 200, maxHeight: 100 }] },
 	upside: { title: "Upside", min: 300, max: 200 },
 	"item:nested": { title: "Nested item", min: 100, max: 200, defaultChild: "inner" },
 	inner: { title: "Inner", min: 200, max: 1000, rows: [{ destination: "list", minHeight: 100, maxHeight: 300 }, { destination: "grid", minHeight: 100, maxHeight: 200 }] },
 };
 
-destinations.outer = { title: "Outer", min: 300, max: 1000, rows: [{ destination: "empty", minHeight: 100, maxHeight: 200 }] };
+export const invalidSplits = {
+	over: { title: "Over", min: 300, max: 1000, rows: [{ destination: "list", minHeight: 261, maxHeight: 300 }, { destination: "grid", minHeight: 100, maxHeight: 200 }] },
+	empty: { title: "Empty", min: 300, max: 1000, rows: [] },
+	twins: { title: "Twins", min: 300, max: 1000, rows: [{ destination: "list", minHeight: 100, maxHeight: 200 }, { destination: "list", minHeight: 100, maxHeight: 200 }] },
+	crowd: { title: "Crowd", min: 300, max: 1000, rows: ["list", "grid", "tags", "item:a", "item:b"].map((destination) => ({ destination, minHeight: 50, maxHeight: 100 })) },
+	conflict: { title: "Conflict", min: 300, max: 1000, rows: [{ destination: "upside", minHeight: 200, maxHeight: 100 }] },
+	outer: { title: "Outer", min: 300, max: 1000, rows: [{ destination: "empty", minHeight: 100, maxHeight: 200 }] },
+};
 
 
 export const GALLERY = "root/gallery";

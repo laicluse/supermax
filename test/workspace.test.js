@@ -786,18 +786,13 @@ test("reset restores both frames and clears the URL", async () => {
 	}
 });
 
-test("empty and rejected albums are told apart and keep the workspace usable", async () => {
+test("an empty album says so, and the exact-fit lab opens", async () => {
 	await openDemo();
 	await page.click(inFrame("a", '.album-item[data-destination="album:empty"]'));
 	assert.equal(await page.locator(inFrame("a", ".empty-state")).first().textContent(), "No photos in this album.");
-	await page.click(inFrame("a", '.album-item[data-destination="album:lab-over"]'));
-	assert.equal(await page.locator(inFrame("a", '.album-item[data-destination="album:lab-over"] + .album-note')).textContent(), "This album needs a taller window than the app supports. Pick another album.");
-	assert.deepEqual(await groups("a"), ["Empty album"], "a rejected album leaves the open album in place");
-	assert.equal(await page.locator(readout("a", "rejection")).textContent(), "Rejected: row Gallery needs 361px (44px chrome), supported 360px.");
-	assert.equal(page.url().split("#")[1], "o:album:empty@albums", "an action rejected everywhere stays out of the log");
 	await page.click(inFrame("a", '.album-item[data-destination="album:lab-fit"]'));
-	assert.deepEqual(await groups("a"), ["Lab: exact fit"]);
-	assert.equal(await page.locator(inFrame("a", '.album-item[data-destination="album:lab-over"] + .album-note')).isHidden(), true, "the note clears after the next successful opening");
+	assert.deepEqual(await groups("a"), ["Lab: exact fit"], "a split that fits the supported height to the pixel opens");
+	assert.equal(await page.locator(inFrame("a", ".album-note")).count(), 0, "configuration diagnostics never appear in the interface");
 });
 
 test("hostile deeplinks are rejected without breaking the page", async () => {
@@ -805,14 +800,6 @@ test("hostile deeplinks are rejected without breaking the page", async () => {
 	assert.deepEqual(await groups("a"), [], "the row root could not be promoted, so Back closed the album");
 	assert.equal(await page.locator(readout("a", "rejection")).textContent(), "Rejected: constructor is not a destination here.");
 	assert.equal(page.url().split("#")[1], "o:album:coast@albums;b", "only applied actions survive in the URL");
-});
-
-test("a scenario button that every frame refuses leaves the URL untouched", async () => {
-	await openDemo();
-	await page.click("[data-scenarios] .scenario:has-text(\"Lab: one pixel over\")");
-	await page.waitForFunction(() => document.querySelector('.frame[data-frame="a"] + .readout .readout-rejection')?.textContent.includes("Gallery"));
-	assert.equal(page.url().includes("#"), false);
-	assert.deepEqual(await groups("a"), []);
 });
 
 test("history restore that removes the focused cell hands focus to visible content", async () => {

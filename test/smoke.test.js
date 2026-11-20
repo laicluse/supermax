@@ -8,6 +8,8 @@ assert.equal(typeof packageApi.CellStrip, "function");
 assert.equal(typeof packageApi.Navigator, "function");
 assert.equal(typeof packageApi.Workspace, "function");
 assert.equal(typeof packageApi.validateSplit, "function");
+assert.equal(typeof packageApi.validateDestinations, "function");
+assert.equal(typeof packageApi.SupermaxConfigurationError, "function");
 assert.equal(globalThis.Supermax, undefined, "the package leaves no global behind");
 
 const configs = [

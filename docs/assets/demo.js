@@ -84,7 +84,6 @@ const scenarios = [
 	{ label: "Empty album", actions: [open(ids(albums[1]).album, "albums")] },
 	{ label: "Twenty cells deep", actions: twentyDeep },
 	{ label: "Lab: exact fit", actions: [open(ids(albums[2]).album, "albums")] },
-	{ label: "Lab: one pixel over", actions: [open(ids(albums[3]).album, "albums")] },
 ];
 
 function element(tag, className, text) {
@@ -202,31 +201,15 @@ function renderDepth(occurrence, data, workspace) {
 
 function renderAlbums(occurrence, data, workspace) {
 	const list = element("ul", "album-list");
-	const notes = new Map();
 	for (const album of albums) {
 		const item = element("li");
 		const button = element("button", "album-item", album.title);
 		button.type = "button";
 		button.dataset.destination = ids(album).album;
 		button.addEventListener("click", () => workspace.navigate(ids(album).album, { from: occurrence.id }));
-		const note = element("p", "album-note");
-		note.hidden = true;
-		notes.set(ids(album).album, note);
-		item.append(button, note);
+		item.append(button);
 		list.append(item);
 	}
-	const onRejected = (event) => {
-		const { action, result } = event.detail;
-		const note = notes.get(action.destination);
-		if (!note || result.reason !== "invalid-rows") return;
-		note.hidden = false;
-		note.textContent = "This album needs a taller window than the app supports. Pick another album.";
-	};
-	const onChange = (event) => {
-		if (event.detail.result.ok) for (const note of notes.values()) note.hidden = true;
-	};
-	workspace.addEventListener("rejected", onRejected);
-	workspace.addEventListener("change", onChange);
 	const lab = element("li", "album-lab");
 	const depth = element("button", "album-item depth-start", "Lab: twenty cells deep");
 	depth.type = "button";
@@ -241,10 +224,6 @@ function renderAlbums(occurrence, data, workspace) {
 			for (const button of list.querySelectorAll(".album-item")) {
 				button.setAttribute("aria-current", button.dataset.destination === selected ? "true" : "false");
 			}
-		},
-		dispose() {
-			workspace.removeEventListener("rejected", onRejected);
-			workspace.removeEventListener("change", onChange);
 		},
 	};
 }

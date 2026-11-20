@@ -55,15 +55,6 @@ export const albums = [
 		],
 		photos: [{ id: "x", title: "Photo X", date: "Jan 1, 2024", place: "Lab", tags: "fixture", hue: 300 }],
 	},
-	{
-		id: "lab-over",
-		title: "Lab: one pixel over",
-		rows: [
-			{ key: "thumbnails", title: "Gallery", minHeight: 317, maxHeight: 600 },
-			{ key: "map", title: "Notes", minHeight: 180, maxHeight: 520 },
-		],
-		photos: [{ id: "y", title: "Photo Y", date: "Jan 2, 2024", place: "Lab", tags: "fixture", hue: 330 }],
-	},
 ];
 
 export function ids(album) {

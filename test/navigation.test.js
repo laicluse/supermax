@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
-import { Navigator } from "../src/navigation.js";
+import { Navigator, SupermaxConfigurationError, validateDestinations } from "../src/navigation.js";
 import { validateSplit } from "../src/layout.js";
-import { GALLERY, chrome, destinations, detail, item, minViewportHeight, row } from "./fixtures/gallery.js";
+import { GALLERY, chrome, destinations, detail, invalidSplits, item, minViewportHeight, row } from "./fixtures/gallery.js";
 import { scenario } from "./scenario.js";
 
 function model(width = 1000, height = 500) {
@@ -120,23 +120,22 @@ scenario("rejections leave the model untouched and name their reason", () => {
 	assert.deepEqual(instance.layout().chain.cells.map((cell) => cell.occurrence), ["root", GALLERY], "the layout still renders the same chain");
 });
 
-scenario("a split is validated against the declared minimum height before it opens", () => {
+scenario("an impossible split is a configuration error for the developer before anything opens", () => {
+	assert.equal(validateDestinations(destinations, { minViewportHeight, chrome }).ok, true, "the fixture is a possible configuration");
 	const instance = model(1000, 300);
 	assert.equal(validateSplit(instance, "fit", instance.root).ok, true, "40 + 260 = 300 passes");
-	const rejected = instance.open("over", { from: "root" });
-	assert.equal(rejected.reason, "invalid-rows");
-	const failing = rejected.validation.rows.find((candidate) => !candidate.ok);
-	assert.deepEqual({ title: failing.title, required: failing.required, chrome: failing.chrome, supported: failing.supported }, { title: "List", required: 301, chrome: 40, supported: 300 });
-	assert.deepEqual(instance.state().occurrences, ["root"]);
-	openGallery(instance);
-	const before = instance.state();
-	assert.equal(instance.open("over", { from: "root" }).ok, false);
-	assert.deepEqual(instance.state(), before, "no branch loss after a rejection");
-	assert.deepEqual(validateSplit(instance, "conflict", instance.root).rows[0].problems, ["row-min-exceeds-max", "cell-min-exceeds-max"]);
-	assert.equal(validateSplit(instance, "empty", instance.root).reason, "no-rows");
-	assert.deepEqual(validateSplit(instance, "crowd", instance.root).rows, [], "a split beyond maxRows reports an empty row list");
-	assert.equal(validateSplit(instance, "crowd", instance.root).reason, "too-many-rows");
-	assert.ok(validateSplit(instance, "twins", instance.root).rows[1].problems.includes("duplicate-row-destination"));
+	const report = validateDestinations({ ...destinations, ...invalidSplits }, { minViewportHeight, chrome });
+	const verdict = Object.fromEntries(report.problems.map((problem) => [problem.destination, problem.validation]));
+	assert.deepEqual(Object.keys(verdict).sort(), ["conflict", "crowd", "empty", "outer", "over", "twins"]);
+	const failing = verdict.over.rows.find((candidate) => !candidate.ok);
+	assert.deepEqual({ title: failing.title, required: failing.required, chrome: failing.chrome, supported: failing.supported }, { title: "List", required: 301, chrome: 40, supported: 300 }, "one pixel over fails");
+	assert.deepEqual(verdict.conflict.rows[0].problems, ["row-min-exceeds-max", "cell-min-exceeds-max"]);
+	assert.equal(verdict.empty.reason, "no-rows");
+	assert.deepEqual(verdict.crowd.rows, [], "a split beyond maxRows reports an empty row list");
+	assert.equal(verdict.crowd.reason, "too-many-rows");
+	assert.ok(verdict.twins.rows[1].problems.includes("duplicate-row-destination"));
+	assert.ok(verdict.outer.rows[0].problems.includes("split-row"));
+	assert.throws(() => new Navigator({ destinations: { ...destinations, over: invalidSplits.over }, root: "root", minViewportHeight, chrome }), (error) => error instanceof SupermaxConfigurationError && /over, row 0 \(List\): exceeds-supported-height; needs 301px of 300px/.test(error.message), "the navigator refuses an impossible configuration when it is created and names the split, the row and the numbers");
 	assert.throws(() => new Navigator({ destinations, root: "root" }), TypeError, "a missing minimum height is a configuration error");
 });
 
@@ -148,8 +147,6 @@ scenario("a split cannot open inside a row, and a row cannot be a split", () => 
 	assert.equal(instance.open("item:nested", { from: row("list") }).ok, true, "the item opens");
 	assert.ok(!instance.get(`${item("list", "nested")}/inner`), "its default split stays closed inside the row");
 	assert.equal(instance.open("inner", { from: item("list", "nested") }).validation.reason, "nested-split", "the manual click gets the same verdict");
-	assert.ok(validateSplit(instance, "outer", instance.root).rows[0].problems.includes("split-row"));
-	assert.equal(instance.open("outer", { from: "root" }).reason, "invalid-rows");
 });
 
 scenario("rows hide from the top, a window start keeps an earlier row, and the last row keeps its minimum below the supported height", () => {

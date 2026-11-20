@@ -1,6 +1,29 @@
 import { chainCells, chainFits, chainRootOf, chainWidth, isSplit, layoutWorkspace, validateSplit } from "./layout.js";
 
 const DEFAULT_CHROME = { navbar: 44, maxRows: 4 };
+
+export class SupermaxConfigurationError extends Error {
+	constructor(problems) {
+		super(`Supermax configuration has impossible splits:\n${problems.map(describeProblem).join("\n")}`);
+		this.name = "SupermaxConfigurationError";
+		this.problems = problems;
+	}
+}
+
+function describeProblem({ destination, validation }) {
+	const rows = validation.rows.filter((row) => !row.ok);
+	if (rows.length === 0) return `- ${destination}: ${validation.reason}`;
+	return rows.map((row) => `- ${destination}, row ${row.row} (${row.title}): ${row.problems.join(", ")}; needs ${row.required}px of ${row.supported}px`).join("\n");
+}
+
+export function validateDestinations(destinations, { minViewportHeight, chrome = {} }) {
+	const model = { chrome: { ...DEFAULT_CHROME, ...chrome }, minViewportHeight, definitionOf: (id) => destinations[id] };
+	const problems = Object.keys(destinations)
+		.filter((id) => isSplit(destinations[id]))
+		.map((id) => ({ destination: id, validation: validateSplit(model, id, null) }))
+		.filter((problem) => !problem.validation.ok);
+	return { ok: problems.length === 0, problems };
+}
 const GENERIC_CELL = { min: 200, max: 320 };
 
 export class Navigator {
@@ -10,6 +33,8 @@ export class Navigator {
 		this.rootDestination = root;
 		this.minViewportHeight = minViewportHeight;
 		this.chrome = { ...DEFAULT_CHROME, ...chrome };
+		const report = validateDestinations(this.destinations, { minViewportHeight, chrome: this.chrome });
+		if (!report.ok) throw new SupermaxConfigurationError(report.problems);
 		this.size = { width: 0, height: 0 };
 		this.reset();
 	}
