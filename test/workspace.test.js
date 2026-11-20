@@ -3,6 +3,7 @@ import { after, before, beforeEach, test } from "node:test";
 import { chromium } from "playwright";
 import { albums, depthCount, depthId, paths } from "../docs/assets/album.js";
 import { appendAction, decodeLog, encodeLog } from "../docs/assets/deeplink.js";
+import { STRIP_TIMING } from "../src/cell-strip.js";
 import { serveDocs } from "./serve-docs.js";
 
 const coast = paths(albums[0]);
@@ -418,7 +419,7 @@ test("a host that shows the canvas keeps cells at their maximum and centres them
 	assert.ok(row.left > 4 && Math.abs(row.left - row.right) < 1, "with the canvas showing equally on both sides");
 });
 
-test("a render during an entrance carries the fold and the flip on instead of dropping them", { skip: PRESENTATION !== "origami" }, async () => {
+test("a render during an entrance carries the fold on instead of dropping it", { skip: PRESENTATION !== "origami" }, async () => {
 	await openDemo(THREE_ROWS);
 	const carried = await page.evaluate(({ row, photo }) => {
 		document.querySelector(`.frame[data-frame="a"] [data-occurrence="${row}"] [data-destination="coast:photo:d"]`).click();
@@ -428,10 +429,10 @@ test("a render during an entrance carries the fold and the flip on instead of dr
 			.map((animation) => animation.effect.target.dataset.occurrence.split("/").pop())
 			.sort();
 	}, { row: coast.row("map"), photo: coast.photo("map", "b") });
-	assert.deepEqual(carried, ["coast:metadata:b", "coast:photo:b", "coast:photo:d"], "the replaced photo turns away, its successor turns in, and the closed metadata folds back");
+	assert.deepEqual(carried, ["coast:metadata:b", "coast:photo:b", "coast:photo:d"], "the replaced photo folds away, its successor folds open, and the closed metadata folds back");
 });
 
-test("a cell that opens by itself is simply there, without a fold, a flip or a growing width", async () => {
+test("a cell that opens by itself is simply there, without a fold or a growing width", async () => {
 	await openDemo(THREE_ROWS);
 	await page.evaluate(() => {
 		window.__autoMotion = new Set();
@@ -449,24 +450,57 @@ test("a cell that opens by itself is simply there, without a fold, a flip or a g
 	assert.deepEqual(await page.evaluate(() => [...window.__autoMotion]), [], "the default Metadata D only moves along with its parent");
 });
 
-test("origami folds a new cell open, folds a closed one back in reverse, and turns a replaced cell over", { skip: PRESENTATION !== "origami" }, async () => {
+test("origami folds a cell open from its parent's edge and away on the far edge, the whole cell fading with the fold", { skip: PRESENTATION !== "origami" }, async () => {
 	await openDemo(THREE_ROWS);
-	const motion = () => page.evaluate(() => document.getAnimations().filter((animation) => animation.effect?.target?.matches?.('.frame[data-frame="a"] .supermax-cell')).map((animation) => ({
-		cell: animation.effect.target.dataset.occurrence.split("/").pop(),
-		leaving: animation.effect.target.hasAttribute("data-supermax-exiting"),
-		direction: animation.effect.getTiming().direction,
-		transforms: animation.effect.getKeyframes().map((frame) => frame.transform).filter(Boolean),
-	})).filter((animation) => animation.transforms.some((transform) => transform.includes("rotate"))));
+	const motion = () => page.evaluate(() => {
+		const cells = [...document.querySelectorAll('.frame[data-frame="a"] .supermax-cell')];
+		return cells.map((cell) => {
+			const animations = document.getAnimations().filter((animation) => animation.effect?.target === cell);
+			const fold = animations.find((animation) => animation.effect.getKeyframes().some((frame) => frame.transform?.includes("rotate")));
+			if (!fold) return null;
+			const fade = animations.find((animation) => animation.effect.getKeyframes().some((frame) => frame.opacity !== undefined));
+			const edge = (frames, folded) => frames.filter(folded).map((frame) => frame.computedOffset);
+			return {
+				cell: cell.dataset.occurrence.split("/").pop(),
+				leaving: cell.hasAttribute("data-supermax-exiting"),
+				origin: cell.style.transformOrigin,
+				easing: fold.effect.getTiming().easing,
+				delay: fold.effect.getTiming().delay,
+				end: fold.effect.getComputedTiming().endTime,
+				transforms: fold.effect.getKeyframes().map((frame) => frame.transform),
+				onEdge: edge(fold.effect.getKeyframes(), (frame) => frame.transform !== "none"),
+				transparent: fade ? edge(fade.effect.getKeyframes(), (frame) => Number(frame.opacity) === 0) : null,
+				fadeTiming: fade ? [fade.effect.getTiming().easing, fade.effect.getTiming().delay, fade.effect.getComputedTiming().endTime] : null,
+				innerFades: document.getAnimations().filter((animation) => cell.contains(animation.effect?.target) && animation.effect.target !== cell && animation.effect.getKeyframes().some((frame) => frame.opacity !== undefined)).length,
+			};
+		}).filter(Boolean);
+	});
+	const wholeCell = (animation, label, easing) => {
+		assert.equal(animation.easing, easing, `${label} has ${easing}`);
+		assert.deepEqual(animation.transparent, animation.onEdge, `${label} is transparent exactly while it stands on edge`);
+		assert.deepEqual(animation.fadeTiming, [animation.easing, animation.delay, animation.end], `${label} fades on the fold's timeline`);
+		assert.equal(animation.innerFades, 0, `${label} fades as one, not element by element`);
+	};
 	await page.click(inFrame("a", '[data-occurrence$="coast:metadata:a"] .metadata-link:not(.album-export)'));
+	const opening = (await motion()).find((animation) => !animation.leaving && animation.cell === "coast:history:a");
+	assert.equal(opening?.origin, "left center", "a new cell folds open from the edge it shares with its parent");
+	assert.equal(opening.transforms[0], "rotateY(90deg)");
+	wholeCell(opening, "the opening cell", "ease-out");
 	await settle();
 	await page.evaluate(() => window.supermaxDemo.dispatch({ type: "close" }, window.supermaxDemo.frames[0].workspace));
-	const closing = await motion();
-	assert.ok(closing.some((animation) => animation.leaving && animation.direction === "reverse" && animation.transforms.includes("rotateY(90deg)")), "the closed cell folds back on its hinge");
+	const closing = (await motion()).find((animation) => animation.leaving && animation.cell === "coast:history:a");
+	assert.equal(closing?.origin, "right center", "a closed cell folds away on its far edge");
+	assert.equal(closing.transforms.at(-1), "rotateY(-90deg)");
+	wholeCell(closing, "the closing cell", "ease-in");
 	await settle();
 	await page.click(inFrame("a", `[data-occurrence="${coast.row("thumbnails")}"] .thumb[data-destination="coast:photo:b"]`));
 	const turning = await motion();
-	assert.ok(turning.some((animation) => animation.leaving && animation.cell === "coast:photo:a" && animation.transforms.at(-1) === "rotateY(180deg)"), "the replaced cell turns away");
-	assert.ok(turning.some((animation) => !animation.leaving && animation.cell === "coast:photo:b" && animation.transforms[0] === "rotateY(-180deg)"), "its successor is on the back");
+	const away = turning.find((animation) => animation.leaving && animation.cell === "coast:photo:a");
+	const back = turning.find((animation) => !animation.leaving && animation.cell === "coast:photo:b");
+	assert.equal(away?.origin, "right center", "the replaced cell folds away on its far edge");
+	assert.equal(back?.origin, "left center", "and its successor folds open from its parent's edge");
+	assert.ok(back.delay >= away.end, "the successor only folds open once the replaced cell is gone");
+	assert.equal(back.end, 2 * STRIP_TIMING.duration, "each half takes a new cell's time");
 	await settle();
 });
 

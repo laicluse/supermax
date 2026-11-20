@@ -1,37 +1,31 @@
 export const HORIZON = 1 - 2 / (1 + Math.sqrt(5));
 
-const EASE = "cubic-bezier(0.2, 0, 0, 1)";
-
-function hinge(element) {
+// A cell folds open from the edge it shares with its parent and folds away on the edge across from it.
+function hinge(element, opening) {
 	const rowRoot = !!element.closest(".supermax-row-chain") && element.parentElement?.firstElementChild === element;
-	return rowRoot ? { origin: "center top", folded: "rotateX(-90deg)" } : { origin: "left center", folded: "rotateY(90deg)" };
+	if (rowRoot) return opening ? { origin: "center top", folded: "rotateX(-90deg)" } : { origin: "center bottom", folded: "rotateX(90deg)" };
+	return opening ? { origin: "left center", folded: "rotateY(90deg)" } : { origin: "right center", folded: "rotateY(-90deg)" };
 }
 
-function unfold(element, timing, direction) {
-	const { origin, folded } = hinge(element);
+// The whole cell fades as one with its fold, so it is fully transparent the moment it stands on edge.
+// An opening cell first takes its room and eases out; a closing one eases in and leaves its room last.
+function fold(element, timing, opening, delay = 0) {
+	const { origin, folded } = hinge(element, opening);
 	element.style.transformOrigin = origin;
-	const options = { ...timing, easing: "linear", direction };
-	const animations = [
-		element.animate([{ transform: folded, opacity: 0, offset: 0 }, { transform: folded, opacity: 0, offset: 0.3, easing: EASE }, { transform: "none", opacity: 1, offset: 1 }], { ...options, composite: "add" }),
-	];
-	const body = element.querySelector(":scope > .supermax-cell-body");
-	if (body) animations.push(body.animate([{ opacity: 0, offset: 0 }, { opacity: 0, offset: 0.55 }, { opacity: 1, offset: 1 }], options));
-	return animations;
-}
-
-function flip(element, timing, from, to) {
-	element.style.transformOrigin = "center center";
-	element.style.backfaceVisibility = "hidden";
-	const animation = element.animate([{ transform: `rotateY(${from}deg)` }, { transform: `rotateY(${to}deg)` }], { ...timing, easing: EASE, composite: "add" });
-	animation.finished.then(() => element.style.removeProperty("backface-visibility"), () => {});
-	return animation;
+	const options = { duration: timing.duration, delay, easing: opening ? "ease-out" : "ease-in", fill: "both" };
+	const flat = { transform: "none", opacity: 1 };
+	const edge = { transform: folded, opacity: 0 };
+	const keyframes = opening ? [{ ...edge, offset: 0 }, { ...edge, offset: 0.3 }, { ...flat, offset: 1 }] : [{ ...flat, offset: 0 }, { ...edge, offset: 0.7 }, { ...edge, offset: 1 }];
+	const only = (property) => keyframes.map((frame) => ({ [property]: frame[property], offset: frame.offset }));
+	return [element.animate(only("transform"), { ...options, composite: "add" }), element.animate(only("opacity"), options)];
 }
 
 export const ORIGAMI_PRESENTATION = Object.freeze({
 	name: "origami",
 	motion: Object.freeze({
-		enter: (element, timing, { replacing } = {}) => (replacing ? flip(element, timing, -180, 0) : unfold(element, timing, "normal")),
-		leave: (element, timing, { replacedBy } = {}) => (replacedBy ? flip(element, timing, 0, 180) : unfold(element, timing, "reverse")),
+		// A replacement keeps its room: the old cell folds away first, then the new one folds open in its place.
+		enter: (element, timing, { replacing } = {}) => fold(element, timing, true, replacing ? timing.duration : 0),
+		leave: (element, timing) => fold(element, timing, false),
 	}),
 	createStrip: null,
 });
