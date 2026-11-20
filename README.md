@@ -143,4 +143,4 @@ corepack pnpm run check
 corepack pnpm run test:browser:fold
 ```
 
-`serve` builds the docs and serves the demo at `http://127.0.0.1:8260` (`PORT` overrides it) with `Cache-Control: no-store`, so a reload always runs the current build; a plain static server lets the browser keep the previous modules. The last line runs the browser suite under the fold presentation; `check` runs it under the default presentation only.
+`serve` builds the docs and serves the demo at `http://127.0.0.1:8260` (`PORT` overrides it) with `Cache-Control: no-store` and every build's modules under a path of their own (`/__build/<revision>/assets/`), so a reload always runs the current build, also in a browser that cached modules from an earlier server; a plain static server lets the browser keep the previous modules. The last line runs the browser suite under the fold presentation; `check` runs it under the default presentation only.

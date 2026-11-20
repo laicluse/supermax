@@ -42,12 +42,21 @@ async function newestChange(directory) {
 	return newest;
 }
 
+async function revision() {
+	return `${startedAt}-${Math.round(await newestChange(docsRoot))}`;
+}
+
+async function livePage(file) {
+	const build = `/__build/${await revision()}/assets/`;
+	return (await readFile(file, "utf8")).replaceAll('"./assets/', `"${build}`).replace("</body>", `${followRevision}</body>`);
+}
+
 export async function serveDocs({ port = 0, live = false } = {}) {
 	const server = createServer(async (request, response) => {
-		const pathname = new URL(request.url, "http://localhost").pathname;
+		let pathname = new URL(request.url, "http://localhost").pathname;
 		if (live && pathname === "/__revision") {
 			response.setHeader("Cache-Control", "no-store");
-			response.end(`${startedAt}:${await newestChange(docsRoot)}`);
+			response.end(await revision());
 			return;
 		}
 		if (pathname === "/blank") {
@@ -55,6 +64,8 @@ export async function serveDocs({ port = 0, live = false } = {}) {
 			response.end(blankPage);
 			return;
 		}
+		const build = live ? pathname.match(/^\/__build\/[\w.-]+(\/.*)$/) : null;
+		if (build) pathname = build[1];
 		const extra = Object.keys(extraRoots).find((prefix) => pathname.startsWith(prefix));
 		const root = extra ? extraRoots[extra] : docsRoot;
 		const relative = normalize(extra ? pathname.slice(extra.length - 1) : (pathname === "/" ? "/index.html" : pathname)).replace(/^(\.\.[/\\])+/, "");
@@ -64,7 +75,7 @@ export async function serveDocs({ port = 0, live = false } = {}) {
 			return;
 		}
 		try {
-			const body = live && file === resolve(docsRoot, "index.html") ? (await readFile(file, "utf8")).replace("</body>", `${followRevision}</body>`) : await readFile(file);
+			const body = live && file === resolve(docsRoot, "index.html") ? await livePage(file) : await readFile(file);
 			response.setHeader("Content-Type", types[extname(file)] ?? "application/octet-stream");
 			response.setHeader("Cache-Control", "no-store");
 			response.end(body);
