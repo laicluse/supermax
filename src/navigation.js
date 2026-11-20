@@ -57,7 +57,6 @@ export class Navigator {
 		this.rowStarts = new Map();
 		this.sizes = { width: new Map(), height: new Map() };
 		this.root = this.createOccurrence(this.rootDestination, null, 0, null);
-		this.focused = this.root.id;
 	}
 
 	resize(size) {
@@ -140,7 +139,6 @@ export class Navigator {
 		}
 		const existing = this.child(parent);
 		if (existing && existing.destination === destinationId) {
-			this.focus(existing.id, { resetReveal: false });
 			if (!this.isAuto(existing)) return { ok: true, noop: true, occurrence: existing };
 			const group = this.promote(existing);
 			return { ok: true, promoted: true, occurrence: existing, group };
@@ -148,7 +146,7 @@ export class Navigator {
 		if (existing) this.closeSubtree(existing);
 		const occurrence = this.createOccurrence(destinationId, parent, 0, null);
 		const group = this.createGroup(occurrence);
-		this.focus(occurrence.id);
+		this.resetReveal(occurrence);
 		this.openDefaults(occurrence, group);
 		return { ok: true, occurrence, group };
 	}
@@ -223,7 +221,6 @@ export class Navigator {
 		this.rowStarts.delete(occurrence.id);
 		this.sizes.width.delete(occurrence.id);
 		this.sizes.height.delete(occurrence.id);
-		if (this.focused === occurrence.id) this.focused = parent ? parent.id : this.root.id;
 		closed.unshift({ id: occurrence.id, title: occurrence.title });
 		return closed;
 	}
@@ -241,18 +238,11 @@ export class Navigator {
 	closeNewestGroup() {
 		const group = this.groups[this.groups.length - 1];
 		if (!group) return { ok: false, reason: "history-empty" };
-		const root = this.get(group.root);
-		const focusAfterClose = root.parent ?? this.root.id;
-		const closed = this.closeSubtree(root);
-		this.focus(focusAfterClose, { resetReveal: false });
-		return { ok: true, closed, title: group.title, focus: this.focused };
+		const closed = this.closeSubtree(this.get(group.root));
+		return { ok: true, closed, title: group.title };
 	}
 
-	focus(occurrenceId, { resetReveal = true } = {}) {
-		const occurrence = this.get(occurrenceId);
-		if (!occurrence) return;
-		this.focused = occurrence.id;
-		if (!resetReveal) return;
+	resetReveal(occurrence) {
 		let current = occurrence;
 		while (current) {
 			this.windowStarts.delete(chainRootOf(this, current).id);
@@ -318,7 +308,6 @@ export class Navigator {
 			if (last.id === occurrenceId) break;
 			closed.push(...this.closeSubtree(last));
 		}
-		this.focus(occurrenceId, { resetReveal: false });
 		return closed;
 	}
 
@@ -384,7 +373,6 @@ export class Navigator {
 			occurrences: [...this.occurrences.values()].map((occurrence) => ({ ...occurrence, children: [...occurrence.children] })),
 			groups: this.groups.map((group) => ({ ...group })),
 			groupSequence: this.groupSequence,
-			focused: this.focused,
 			windowStarts: [...this.windowStarts],
 			rowStarts: [...this.rowStarts],
 			sizes: { width: [...this.sizes.width], height: [...this.sizes.height] },
@@ -396,7 +384,6 @@ export class Navigator {
 		this.occurrences = new Map(snapshot.occurrences.map((occurrence) => [occurrence.id, { ...occurrence, children: [...occurrence.children] }]));
 		this.groups = snapshot.groups.map((group) => ({ ...group }));
 		this.groupSequence = snapshot.groupSequence;
-		this.focused = snapshot.focused;
 		this.windowStarts = new Map(snapshot.windowStarts ?? []);
 		this.rowStarts = new Map(snapshot.rowStarts ?? []);
 		this.sizes = { width: new Map(snapshot.sizes?.width ?? []), height: new Map(snapshot.sizes?.height ?? []) };
@@ -408,7 +395,6 @@ export class Navigator {
 		return {
 			occurrences: [...this.occurrences.keys()],
 			groups: this.groups.map((group) => ({ id: group.id, title: group.title, root: group.root, members: this.membersOf(group) })),
-			focused: this.focused,
 		};
 	}
 }

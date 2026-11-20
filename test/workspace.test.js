@@ -84,7 +84,6 @@ async function boxes(selector) {
 	}));
 }
 
-const activeOccurrence = () => page.evaluate(() => document.activeElement?.closest?.(".supermax-cell")?.dataset.occurrence ?? document.activeElement?.tagName);
 const hiddenRows = (key) => page.locator(inFrame(key, ".supermax-row")).evaluateAll((elements) => elements.map((element) => element.classList.contains("is-hidden")));
 const painted = (selector) => page.locator(selector).evaluate((element) => getComputedStyle(element).visibility === "visible" && element.getBoundingClientRect().width > 0);
 
@@ -97,7 +96,6 @@ test("the start state names the end of history and both frames receive a click",
 	assert.ok(!(await state("b")).occurrences.includes(coast.photo("thumbnails", "a")), "the narrow frame keeps the default as a manual choice");
 	assert.equal((await backButton("a")).hidden, true, "Back stays away while every cell is in view");
 	assert.equal(page.url().split("#")[1], "o:album:coast@albums");
-	assert.equal(await activeOccurrence(), coast.row("thumbnails"), "the click moves focus into the opened album, to the first cell of its top row");
 });
 
 test("an explicit click on auto-open content promotes it here, and the other frame follows the same path", async () => {
@@ -115,7 +113,6 @@ test("frames diverge on what closing the newest group closes and the demo does n
 	await page.click(inFrame("b", `[data-occurrence="${coast.row("thumbnails")}"] .thumb[data-destination="coast:photo:a"]`));
 	assert.deepEqual(await groups("b"), ["Coast", "Photo A"]);
 	assert.deepEqual(await groups("a"), ["Coast", "Photo A"], "the auto-opened photo is promoted in the wide frame");
-	assert.equal(await activeOccurrence(), coast.photo("thumbnails", "a"), "focus follows the opened photo in the narrow frame");
 	await settle();
 	assert.deepEqual([await painted(inFrame("b", `[data-occurrence="${coast.row("thumbnails")}"]`)), await painted(inFrame("b", `[data-occurrence="${coast.photo("thumbnails", "a")}"]`))], [false, true], "the narrow row hides the selector entirely for the photo");
 	await closeNewest("b");
@@ -124,7 +121,6 @@ test("frames diverge on what closing the newest group closes and the demo does n
 	const wide = await state("a");
 	assert.deepEqual(wide.groups.map((group) => group.title), ["Coast"]);
 	assert.ok(!wide.occurrences.includes(coast.metadata("thumbnails", "a")), "the wide frame closed Photo A together with its automatic metadata");
-	assert.equal(await activeOccurrence(), coast.row("thumbnails"), "closing returns focus to the selector of the closed group");
 });
 
 test("the log forgets an open that a later open replaced, with everything under it, but never across a Back step", () => {
@@ -182,13 +178,11 @@ test("the up control names the nearest hidden parent, closes what falls off the 
 	await resize([[960, 640], [420, 640]]);
 	assert.deepEqual(await backButton("a"), { hidden: false, label: "Show Depth 15", text: "‹Depth 15" });
 	const before = { a: await groups("a"), b: await backButton("b"), bGroups: await groups("b"), url: page.url() };
-	await page.focus(inFrame("a", ".supermax-up"));
-	await page.keyboard.press("Enter");
+	await page.click(inFrame("a", ".supermax-up"));
 	await settle();
 	assert.deepEqual(await groups("a"), before.a.slice(0, -1), "Depth 20 closes so Depth 15 fits");
 	assert.equal(page.url(), before.url, "the shared log does not change");
 	assert.deepEqual([await backButton("b"), await groups("b")], [before.b, before.bGroups], "the other frame keeps its window and its cells");
-	assert.equal(await activeOccurrence(), TWENTY_DEEP[14].from + "/depth:15", "the shown cell takes focus");
 	assert.equal((await backButton("a")).label, "Show Depth 14");
 	assert.equal(await page.locator(inFrame("a", ".supermax-title-text")).textContent(), "Depth 19", "the title names the deepest cell still open");
 	assert.equal(await page.locator(inFrame("a", ".supermax-crumb")).last().textContent(), "Depth 18");
@@ -216,11 +210,9 @@ test("Back climbs the newest branch first, then the branch opened before it in a
 	assert.equal((await backButton("a")).label, "Show Thumbnails", "the hidden parent of the newest branch comes back first");
 	await page.click(inFrame("a", ".supermax-up"));
 	await settle();
-	assert.equal(await activeOccurrence(), coast.row("thumbnails"));
 	assert.equal((await backButton("a")).label, "Show Map", "with that branch whole, the branch opened before it climbs next");
 	await page.click(inFrame("a", ".supermax-up"));
 	await settle();
-	assert.equal(await activeOccurrence(), coast.row("map"));
 	assert.equal(await painted(inFrame("a", `[data-occurrence="${coast.row("map")}"]`)), true);
 	assert.equal((await backButton("a")).hidden, true, "with nothing above any branch out of view Back goes away");
 	assert.deepEqual(await groups("a"), ["Coast"], "each step closed only the History A that had pushed its parent out");
@@ -260,8 +252,8 @@ test("a modal sits front and centre in its own viewport and a frustum links it t
 	const faces = await page.locator(inFrame("a", ".supermax-origin.is-modal .supermax-frustum-face")).evaluateAll((elements) => elements.map((element) => element.getAttribute("class").split(" ").pop()));
 	assert.ok(faces.length >= 1 && faces.length <= 2, `only the faces turned towards the viewer are drawn: ${faces.join(", ")}`);
 	assert.equal(await page.locator(inFrame("b", ".supermax-modal")).count(), 0, "the other frame stays clear");
-	await page.keyboard.press("Escape");
-	assert.equal(await page.locator(inFrame("a", ".supermax-modal-layer:not([data-supermax-exiting])")).count(), 0, "Escape closes the modal");
+	await page.click(inFrame("a", ".supermax-modal-close"));
+	assert.equal(await page.locator(inFrame("a", ".supermax-modal-layer:not([data-supermax-exiting])")).count(), 0, "its close control closes the modal");
 	await page.waitForFunction(() => !document.querySelector('.frame[data-frame="a"] .supermax-origin.is-modal'));
 });
 
@@ -410,7 +402,6 @@ test("a modal opens at its preferred size, moves by its header and resizes only 
 	const tall = await resize(0, 2000);
 	const viewport = await page.locator(frame("a")).boundingBox();
 	assert.ok(tall.top + tall.height <= viewport.y + viewport.height - 15, "growing stops at the viewport inset");
-	await page.keyboard.press("Escape");
 });
 
 test("a modal wider than its viewport shrinks to fit inside the inset", async () => {
@@ -421,7 +412,6 @@ test("a modal wider than its viewport shrinks to fit inside the inset", async ()
 	const dialog = await page.locator(inFrame("b", ".supermax-modal")).boundingBox();
 	assert.ok(viewport.width < 640, "the frame is narrower than the preferred width");
 	assert.ok(Math.abs(dialog.x - viewport.x - 16) <= 1 && Math.abs(viewport.x + viewport.width - dialog.x - dialog.width - 16) <= 1, "the dialog keeps the inset on both sides");
-	await page.keyboard.press("Escape");
 });
 
 test("cells stand one gutter apart over the canvas, and rows never run past their split", async () => {
@@ -839,7 +829,6 @@ test("hiding rows and cells keeps navigation, draft and scroll, and the content 
 	assert.deepEqual({ occurrences: after.occurrences, groups: after.groups }, { occurrences: before.occurrences, groups: before.groups }, "hiding rewrites no navigation state");
 	assert.deepEqual(await hiddenRows("a"), [true, true, false], "top rows hide entirely");
 	assert.equal(await painted(inFrame("a", `[data-occurrence="${coast.photo("people", "c")}"]`)), false, "the narrow row hides the photo instead of squeezing it");
-	assert.equal(await activeOccurrence(), coast.metadata("people", "c"), "focus moves to the content that stays in view");
 	assert.equal(await page.inputValue(captionSelector), "Lighthouse at dusk", "the draft survives while its cell is hidden");
 	await resize([[960, 640], [420, 640]]);
 	assert.deepEqual(await hiddenRows("a"), [false, false, false]);
@@ -890,28 +879,12 @@ test("browser back restores the state before the last action, also after a resiz
 	assert.equal(await page.inputValue(captionSelector), "Fog bank");
 });
 
-test("closing the newest group reaches both frames and focus returns to the selector", async () => {
+test("closing the newest group reaches both frames", async () => {
 	await openDemo(THREE_ROWS);
 	await closeNewest("a");
 	assert.deepEqual(await groups("a"), ["Coast", "Photo A", "Photo B"]);
 	assert.deepEqual(await groups("b"), ["Coast", "Photo A", "Photo B"], "the shared log reaches the other frame");
-	assert.equal(await activeOccurrence(), coast.row("people"));
 	assert.equal(page.url().split("#")[1], `${encodeLog(THREE_ROWS)};b`);
-});
-
-test("keyboard opening in the narrow frame keeps focus on the opened content", async () => {
-	await openDemo([open("album:coast", "albums")]);
-	await page.focus(inFrame("b", `[data-occurrence="${coast.row("thumbnails")}"] .thumb[data-destination="coast:photo:a"]`));
-	await page.keyboard.press("Enter");
-	await settle();
-	assert.equal(await activeOccurrence(), coast.photo("thumbnails", "a"), "focus follows the photo although its selector went compact");
-	await resize([[960, 640], [260, 640]]);
-	assert.equal(await page.locator(inFrame("b", `[data-occurrence="${coast.row("thumbnails")}"]`)).evaluate((element) => getComputedStyle(element).visibility), "hidden", "at 260px the selector hides behind a chip");
-	await page.click(inFrame("b", ".supermax-up"));
-	await settle();
-	assert.equal(await activeOccurrence(), coast.row("thumbnails"), "Back focuses the revealed selector");
-	assert.equal(await page.locator(inFrame("b", `[data-occurrence="${coast.photo("thumbnails", "a")}"]`)).count(), 0, "the photo that pushed the selector out closes to make room");
-	assert.ok((await state("a")).occurrences.includes(coast.photo("thumbnails", "a")), "while the other frame keeps it open");
 });
 
 const LONG_CHAIN = [open("album:coast", "albums"), open("coast:history:a", coast.metadata("thumbnails", "a")), open("coast:edit:a:2", coast.history("thumbnails", "a"))];
@@ -940,17 +913,8 @@ test("a peek shows the kept menu's own content without touching history", async 
 	assert.equal(page.url(), urlBefore, "a peek writes no history");
 	await page.mouse.move(5, 5);
 	await page.waitForSelector(inFrame("b", ".supermax-peek"), { state: "detached" });
-	await page.focus(rail);
+	await page.click(rail);
 	await page.waitForSelector(inFrame("b", ".supermax-peek"));
-	await page.keyboard.press("Escape");
-	await page.waitForSelector(inFrame("b", ".supermax-peek"), { state: "detached" });
-	assert.equal(await page.evaluate(() => document.activeElement?.className), "supermax-rail", "Escape returns focus to the rail");
-	await page.keyboard.press("Enter");
-	await page.waitForSelector(inFrame("b", ".supermax-peek"));
-	assert.equal(await page.evaluate(() => document.activeElement?.closest(".supermax-peek") !== null), true, "Enter on the rail opens the peek and moves focus into it");
-	await page.mouse.move(5, 5);
-	await page.waitForTimeout(350);
-	assert.equal(await page.locator(inFrame("b", ".supermax-peek")).count(), 1, "the pointer leaving does not close a peek that holds the keyboard focus");
 	assert.equal(await page.locator(inFrame("a", ".supermax-peek")).count(), 0, "the peek is local to its frame");
 	await page.click(inFrame("b", '.supermax-peek .album-item[data-destination="album:empty"]'));
 	await page.waitForSelector(inFrame("b", ".supermax-peek"), { state: "detached" });
@@ -958,10 +922,10 @@ test("a peek shows the kept menu's own content without touching history", async 
 	assert.deepEqual(await groups("a"), ["Empty album"], "the other frame receives the same action");
 });
 
-test("dividers resize cells and rows within their bounds by pointer and keyboard, and reset to the app preference", async () => {
+test("dividers resize cells and rows within their bounds by pointer, and reset to the app preference", async () => {
 	await openDemo([open("album:coast", "albums")]);
 	const photo = inFrame("a", `[data-occurrence="${coast.photo("thumbnails", "a")}"]`);
-	const divider = inFrame("a", `.supermax-row[data-row="${coast.row("thumbnails")}"] .supermax-divider-handle[aria-label="Resize Photo A"]`);
+	const divider = inFrame("a", `.supermax-row[data-row="${coast.row("thumbnails")}"] .supermax-divider[data-divides="${coast.photo("thumbnails", "a")}"] .supermax-divider-handle`);
 	const widthOf = (selector) => page.locator(selector).evaluate((element) => Math.round(element.getBoundingClientRect().width));
 	const before = await widthOf(photo);
 	const box = await page.locator(divider).boundingBox();
@@ -970,17 +934,14 @@ test("dividers resize cells and rows within their bounds by pointer and keyboard
 	await page.mouse.move(box.x + box.width / 2 + 60, box.y + box.height / 2, { steps: 6 });
 	await page.mouse.up();
 	assert.equal(await widthOf(photo), before + 60, "dragging the divider widens the photo by the drag distance");
-	assert.equal(await page.locator(divider).getAttribute("aria-valuenow"), String(before + 60));
 	assert.equal(await page.locator(inFrame("a", ".supermax-divider.is-sized .supermax-divider-reset")).count(), 1, "a divider with a session size shows its reset control");
-	await page.focus(divider);
-	await page.keyboard.press("ArrowLeft");
-	assert.equal(await widthOf(photo), before + 44, "an arrow key moves the divider by 16px");
-	await page.keyboard.press("End");
-	const max = Number(await page.locator(divider).getAttribute("aria-valuemax"));
-	assert.equal(await widthOf(photo), max, "End reaches the bound and stops there");
-	await page.keyboard.press("ArrowRight");
-	assert.equal(await widthOf(photo), max, "beyond the bound nothing moves and nothing complains");
-	assert.ok(max <= 520, "the bound respects the cell's maximum");
+	const far = await page.locator(divider).boundingBox();
+	await page.mouse.move(far.x + far.width / 2, far.y + far.height / 2);
+	await page.mouse.down();
+	await page.mouse.move(far.x + far.width / 2 + 2000, far.y + far.height / 2, { steps: 6 });
+	await page.mouse.up();
+	const max = await widthOf(photo);
+	assert.ok(max > before + 60 && max <= 520, `dragging past the bound stops at it, within the cell's maximum: ${max}px`);
 	await resize([[900, 640], [420, 640]]);
 	assert.equal(await page.locator(photo).evaluate((element) => element.closest(".supermax-chain").querySelector(".supermax-divider.is-sized") !== null), true, "the session size survives a frame resize");
 	await page.evaluate((from) => window.supermaxDemo.frames[0].workspace.navigate("coast:photo:d", { from }), coast.row("thumbnails"));
@@ -988,21 +949,17 @@ test("dividers resize cells and rows within their bounds by pointer and keyboard
 	assert.equal(await page.locator(inFrame("a", ".supermax-divider.is-sized")).count(), 0, "a replaced cell takes its session size with it");
 	await page.evaluate((from) => window.supermaxDemo.frames[0].workspace.navigate("coast:photo:a", { from }), coast.row("thumbnails"));
 	await settle();
-	const rowDivider = inFrame("a", '.supermax-divider.is-horizontal .supermax-divider-handle[aria-label="Resize Thumbnails"]');
+	const rowDivider = inFrame("a", `.supermax-divider.is-horizontal[data-divides="${coast.row("thumbnails")}"] .supermax-divider-handle`);
 	const rowOf = () => page.locator(inFrame("a", `.supermax-row[data-row="${coast.row("thumbnails")}"]`)).evaluate((element) => Math.round(element.getBoundingClientRect().height));
 	const rowBefore = await rowOf();
-	await page.focus(rowDivider);
-	await page.keyboard.press("ArrowDown");
-	assert.equal(await rowOf(), rowBefore + 16, "a row divider grows its row by keyboard");
 	const rowBox = await page.locator(rowDivider).boundingBox();
 	await page.mouse.move(rowBox.x + 50, rowBox.y + rowBox.height / 2);
 	await page.mouse.down();
 	await page.mouse.move(rowBox.x + 50, rowBox.y + rowBox.height / 2 - 30, { steps: 4 });
 	await page.mouse.up();
-	assert.equal(await rowOf(), rowBefore + 16 - 30, "and by pointer");
-	await page.focus(rowDivider);
-	await page.keyboard.press("Backspace");
-	assert.equal(await rowOf(), rowBefore, "Backspace on the divider restores the app preference");
+	assert.equal(await rowOf(), rowBefore - 30, "a row divider resizes its row by pointer");
+	await page.click(inFrame("a", `.supermax-divider.is-horizontal[data-divides="${coast.row("thumbnails")}"] .supermax-divider-reset`));
+	assert.equal(await rowOf(), rowBefore, "its reset control restores the app preference");
 	assert.equal(await page.locator(inFrame("a", ".supermax-divider.is-sized")).count(), 0);
 	const frameHandle = await page.locator(frame("a")).evaluate((element) => getComputedStyle(element).resize);
 	assert.equal(frameHandle, "both", "the frame handle is the browser's own resize control, not a divider");
@@ -1094,7 +1051,7 @@ test("another viewer is another context, with its own layout for the same destin
 	assert.equal(await defaultOfMetadata(), "coast:history:a", "switching the viewer loads the page with that viewer's layout");
 });
 
-test("a modal knows its source, traps the keyboard, closes before Back and returns focus to a usable place", async () => {
+test("a modal knows its source, makes the cells behind it inert and closes before Back", async () => {
 	await openDemo([open("album:coast", "albums")]);
 	await resize([[1100, 640], [360, 640]]);
 	const modal = inFrame("a", ".supermax-modal-layer:not([data-supermax-exiting]) .supermax-modal");
@@ -1107,18 +1064,9 @@ test("a modal knows its source, traps the keyboard, closes before Back and retur
 	assert.equal(await page.locator(`${modal} .supermax-loading`).textContent(), "Loading Caption for Photo A", "delayed modal content uses the loading state");
 	await settle();
 	assert.equal(await page.locator(`${modal} .viewer-line`).textContent(), "Editing as Ana");
-	const inside = () => page.evaluate(() => document.activeElement?.closest(".supermax-modal") !== null);
-	assert.equal(await inside(), true, "focus moves into the modal");
-	for (let step = 0; step < 6; step += 1) {
-		await page.keyboard.press("Tab");
-		assert.equal(await inside(), true, "Tab cycles inside the modal");
-	}
-	await page.keyboard.press("Shift+Tab");
-	assert.equal(await inside(), true);
 	assert.equal(await page.locator(inFrame("a", ".supermax-body")).getAttribute("inert"), "", "the cells behind the modal are inert");
-	await page.keyboard.press("Escape");
-	assert.equal(await page.locator(modal).count(), 0, "Escape closes the modal");
-	assert.equal(await page.evaluate(() => document.activeElement?.className), "metadata-link caption-edit", "focus returns to the control that opened it");
+	await page.click(`${modal} .supermax-modal-close`);
+	assert.equal(await page.locator(modal).count(), 0, "its close control closes the modal");
 	assert.equal(page.url(), urlBefore, "a modal writes no history");
 	await page.selectOption("[data-delay]", "0");
 	await page.click(`${photoCell("people")} .caption-edit`);
@@ -1128,7 +1076,6 @@ test("a modal knows its source, traps the keyboard, closes before Back and retur
 	assert.equal(await page.locator(modal).count(), 0, "saving closes the modal");
 	assert.equal(await page.locator(`${photoCell("people")} .caption`).inputValue(), "Dunes at dusk", "the modal wrote into its own source cell");
 	assert.equal(await page.locator(`${photoCell("thumbnails")} .caption`).inputValue(), "", "and not into the same photo in another row");
-	assert.equal(await activeOccurrence(), coast.photo("people", "a"));
 	await page.click(`${photoCell("people")} .caption-edit`);
 	await settle();
 	await page.evaluate(() => window.supermaxDemo.frames[0].workspace.openModal({ title: "Second", content: () => ({ element: document.createElement("p") }) }, {}));
@@ -1136,7 +1083,7 @@ test("a modal knows its source, traps the keyboard, closes before Back and retur
 	assert.equal(await page.locator(`${modal} .supermax-modal-title`).textContent(), "Second");
 	const groupsBefore = await groups("a");
 	assert.equal(await page.locator(inFrame("a", ".supermax-up")).isHidden(), true, "with nothing hidden above the window the modal leaves no Show control to compete with its own close");
-	await page.keyboard.press("Escape");
+	await page.click(`${modal} .supermax-modal-close`);
 	assert.equal(await page.locator(modal).count(), 0, "the replacing modal closes like the first");
 	assert.deepEqual(await groups("a"), groupsBefore, "and navigates nothing");
 	await page.click(inFrame("a", `[data-occurrence="${coast.row("map")}"] [data-destination="coast:photo:b"]`));
@@ -1148,28 +1095,25 @@ test("a modal knows its source, traps the keyboard, closes before Back and retur
 	assert.equal(await page.locator(`${modal} .supermax-modal-context`).textContent(), "Its source has closed", "a source closed from elsewhere is named as such");
 	await page.click(`${modal} .supermax-modal-close`);
 	assert.equal(await page.locator(modal).count(), 0);
-	assert.notEqual(await page.evaluate(() => document.activeElement?.tagName), "BODY", "closing without a source still lands on a usable control");
 	await page.click(`${photoCell("people")} .caption-edit`);
 	await settle();
 	await resize([[1100, 400], [360, 640]]);
 	await page.evaluate((row) => window.supermaxDemo.frames[0].workspace.goTo(row), coast.row("thumbnails"));
 	await settle();
 	assert.equal(await page.locator(inFrame("a", `.supermax-row[data-row="${coast.row("people")}"]`)).evaluate((element) => element.classList.contains("is-hidden")), true, "the source row is out of view behind the modal");
-	await page.keyboard.press("Escape");
-	assert.ok(await page.evaluate(() => document.activeElement?.closest(".supermax-cell") !== null), "closing onto a hidden source lands in a visible cell");
+	await page.click(`${modal} .supermax-modal-close`);
+	assert.equal(await page.locator(modal).count(), 0, "a modal whose source is out of view closes like any other");
 });
 
-test("a notice is a bubble in its source cell, moves to the top of the viewport naming a source out of view, and never steals focus", async () => {
+test("a notice is a bubble in its source cell, and moves to the top of the viewport naming a source out of view", async () => {
 	await openDemo([open("album:coast", "albums")]);
 	await resize([[1100, 640], [360, 640]]);
 	const photoA = inFrame("a", `[data-occurrence="${coast.photo("thumbnails", "a")}"]`);
 	const cellNotice = `${photoA} .supermax-cell-notices .supermax-notice`;
-	await page.focus(`${photoA} .caption`);
 	await page.click(`${photoA} .caption-save`);
 	await page.waitForSelector(cellNotice);
 	assert.equal(await page.locator(`${cellNotice} .supermax-notice-text`).textContent(), "Caption saved", "a success notice appears as a bubble in its source cell, without naming it");
 	assert.equal(await page.locator(cellNotice).evaluate((element) => element.classList.contains("is-success")), true);
-	assert.equal(await page.evaluate(() => document.activeElement?.className), "metadata-link caption-save", "the notice takes no focus");
 	const narrowNotice = inFrame("b", ".supermax-notices .supermax-notice");
 	assert.equal(await page.locator(`${narrowNotice} .supermax-notice-text`).textContent(), "Photo A (not open): Caption saved", "where the source is not open the workspace notice names it");
 	assert.equal(await page.locator(`${narrowNotice} .supermax-notice-go`).count(), 0, "and offers no way to reopen a closed source");
@@ -1204,7 +1148,6 @@ test("a notice is a bubble in its source cell, moves to the top of the viewport 
 	await page.click(`${moved} .supermax-notice-go`);
 	await settle();
 	assert.equal(await page.locator(inFrame("a", `.supermax-row[data-row="${coast.row("thumbnails")}"]`)).evaluate((element) => element.classList.contains("is-hidden")), false, "Show brings the row back");
-	assert.equal(await activeOccurrence(), coast.photo("thumbnails", "a"), "and focuses the source");
 	assert.equal(await page.locator(moved).count(), 0, "reaching the source retires the notice");
 	await resize([[1100, 640], [360, 640]]);
 	await page.click(inFrame("a", `[data-occurrence="${coast.row("people")}"] [data-destination="coast:photo:b"]`));
@@ -1234,33 +1177,14 @@ test("a notice is a bubble in its source cell, moves to the top of the viewport 
 	assert.equal(await page.locator(`${exportNotice} .supermax-notice-go`).count(), 0, "a source that is in view needs no Show control");
 	await page.click(`${photoA} .caption-edit`);
 	await settle();
-	assert.equal(await page.locator(`${inFrame("a", ".supermax-notices")} .supermax-notice.is-action .supermax-notice-text`).textContent(), "Metadata A: Export of Coast is ready", "a modal moves bubbles to the top, where the keyboard can reach them, naming their source");
-	assert.equal(await page.evaluate(() => document.activeElement?.closest(".supermax-modal") !== null), true, "the modal keeps focus");
-	const trapped = () => page.evaluate(() => { const active = document.activeElement; const frame = active?.closest('.frame[data-frame="a"]'); return !!frame && !!(active.closest(".supermax-modal") || active.closest(".supermax-notices")); });
-	const cycle = await page.evaluate(() => { const frame = document.querySelector('.frame[data-frame="a"]'); const selector = "a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex='-1'])"; return [...frame.querySelector(".supermax-modal").querySelectorAll(selector), ...frame.querySelector(".supermax-notices").querySelectorAll(selector)].filter((element) => element.offsetParent !== null).length; });
-	const startedAt = await page.evaluate(() => document.activeElement?.className);
-	let reachedNotice = false;
-	for (let step = 0; step < cycle; step += 1) {
-		await page.keyboard.press("Tab");
-		assert.equal(await trapped(), true, `Tab press ${step + 1} stays inside the modal or its notices`);
-		reachedNotice = reachedNotice || await page.evaluate(() => document.activeElement?.closest(".supermax-notice") !== null);
-	}
-	assert.equal(reachedNotice, true, "one full cycle visits the notice");
-	assert.equal(await page.evaluate(() => document.activeElement?.className), startedAt, "and returns to where it started");
-	for (let step = 0; step < cycle; step += 1) {
-		await page.keyboard.press("Shift+Tab");
-		assert.equal(await trapped(), true, `Shift+Tab press ${step + 1} stays inside the modal or its notices`);
-	}
-	assert.equal(await page.evaluate(() => document.activeElement?.className), startedAt, "Shift+Tab cycles the same ring backwards");
-	await page.focus(`${exportNotice} .supermax-notice-dismiss`);
-	await page.keyboard.press("Escape");
-	assert.equal(await page.locator(exportNotice).count(), 0, "Escape on a notice dismisses that notice");
+	assert.equal(await page.locator(`${inFrame("a", ".supermax-notices")} .supermax-notice.is-action .supermax-notice-text`).textContent(), "Metadata A: Export of Coast is ready", "a modal moves bubbles to the top, out from under it, naming their source");
+	await page.click(`${exportNotice} .supermax-notice-dismiss`);
+	assert.equal(await page.locator(exportNotice).count(), 0, "dismissing a notice above a modal removes that notice");
 	assert.equal(await page.locator(inFrame("a", ".supermax-modal")).count(), 1, "and leaves the modal open");
-	assert.equal(await page.evaluate(() => document.activeElement?.closest(".supermax-modal") !== null), true, "with focus back inside it");
 	await page.evaluate((source) => window.supermaxDemo.frames[0].workspace.notify({ id: "under-modal", scope: "cell", source, kind: "error", message: "Still here" }), coast.photo("thumbnails", "a"));
 	const underModal = inFrame("a", '.supermax-notices [data-notice="under-modal"]');
 	assert.equal(await page.locator(`${underModal} .supermax-notice-text`).textContent(), "Photo A: Still here", "a notice raised while a modal hides its source names it");
-	await page.keyboard.press("Escape");
+	await page.click(inFrame("a", ".supermax-modal-close"));
 	assert.equal(await page.locator(`${photoA} .supermax-cell-notices [data-notice="under-modal"] .supermax-notice-text`).textContent(), "Still here", "closing the modal returns the notice to its cell");
 	await page.click(`${photoA} [data-notice="under-modal"] .supermax-notice-dismiss`);
 	await page.click(inFrame("a", `[data-occurrence="${coast.metadata("thumbnails", "a")}"] .album-export`));
@@ -1277,11 +1201,8 @@ test("a second presentation replaces motion and surface while behaviour, interru
 	assert.deepEqual(await workspaceClass(), [`supermax-presentation-${PRESENTATION}`], "the page starts in the requested presentation, origami by default");
 	await page.selectOption("[data-presentation]", "origami");
 	await settle();
-	await page.focus(inFrame("a", `[data-occurrence="${coast.photo("map", "b")}"] .caption`));
-	const focusedBefore = await activeOccurrence();
 	const before = { state: await state("a"), layout: await page.evaluate(() => JSON.stringify(window.supermaxDemo.frames[0].workspace.layout)) };
 	await page.evaluate(() => window.supermaxDemo.frames[0].workspace.setPresentation(window.supermaxDemo.presentations.fold));
-	assert.equal(await activeOccurrence(), focusedBefore, "switching keeps keyboard focus on the same cell");
 	await page.selectOption("[data-presentation]", "fold");
 	await settle();
 	assert.deepEqual(await workspaceClass(), ["supermax-presentation-fold"], "switching marks the workspace for the override's surface");
@@ -1295,7 +1216,7 @@ test("a second presentation replaces motion and surface while behaviour, interru
 	await opened();
 	assert.ok(await page.evaluate(() => document.getAnimations().some((animation) => animation.effect?.target?.closest?.(".supermax-cell") && String(animation.effect.getKeyframes?.()[0]?.transform ?? "").includes("rotateY"))), "the fold animates the entering cell with a rotation");
 	await page.click(inFrame("a", `[data-occurrence="${coast.row("thumbnails")}"] .thumb[data-destination="coast:photo:c"]`));
-	const divider = inFrame("a", `.supermax-row[data-row="${coast.row("thumbnails")}"] .supermax-divider-handle[aria-label="Resize Photo C"]`);
+	const divider = inFrame("a", `.supermax-row[data-row="${coast.row("thumbnails")}"] .supermax-divider[data-divides="${coast.photo("thumbnails", "c")}"] .supermax-divider-handle`);
 	await page.waitForSelector(divider);
 	const box = await page.locator(divider).boundingBox();
 	await page.mouse.move(box.x + 4, box.y + 100);
@@ -1309,7 +1230,6 @@ test("a second presentation replaces motion and surface while behaviour, interru
 	assert.equal(await page.locator(inFrame("a", `[data-occurrence="${coast.photo("thumbnails", "d")}"]`)).count(), 0, "the replaced cell is gone");
 	assert.equal(await page.locator(inFrame("a", ".supermax-divider.is-sized")).count(), 1, "a drag during the animation still stored its size");
 	assert.equal(changes, 2, "two clicks are two change events, no more");
-	assert.equal(await activeOccurrence(), coast.photo("thumbnails", "c"), "focus follows the last opened cell");
 	await page.emulateMedia({ reducedMotion: "reduce" });
 	await page.click(inFrame("a", `[data-occurrence="${coast.row("thumbnails")}"] .thumb[data-destination="coast:photo:a"]`));
 	assert.equal(await page.evaluate(() => document.getAnimations().length), 0, "reduced motion skips the fold entirely");
@@ -1342,16 +1262,14 @@ test("a twenty-cell chain stays navigable in both presentations", async () => {
 	assert.match(spec.text[3], /^width \d+ px$/);
 	await page.selectOption("[data-presentation]", "fold");
 	await settle();
-	await page.focus(inFrame("a", ".supermax-up"));
-	await page.keyboard.press("Enter");
+	await page.click(inFrame("a", ".supermax-up"));
 	await settle();
-	assert.equal((await groups("a")).length, 19, "the keyboard up step closes Depth 20 to show Depth 15");
+	assert.equal((await groups("a")).length, 19, "Show closes Depth 20 to show Depth 15");
 	assert.equal(await page.locator(inFrame("a", `[data-occurrence="${TWENTY_DEEP[19].from}/depth:20"]`)).count(), 0);
 	await page.evaluate((source) => window.supermaxDemo.frames[0].workspace.notify({ id: "deep-three", scope: "cell", source, kind: "action", message: "Look here", action: { label: "Ok", run() {} } }), "albums/depth:1/depth:2/depth:3");
 	await page.click(inFrame("a", '.supermax-notices [data-notice="deep-three"] .supermax-notice-go'));
 	await settle();
 	assert.equal(await page.locator(inFrame("a", '[data-occurrence="albums/depth:1/depth:2/depth:3"]')).evaluate((element) => getComputedStyle(element).visibility === "visible" && element.getBoundingClientRect().width > 0), true, "Show reveals a cell hidden far to the left");
-	assert.equal(await activeOccurrence(), "albums/depth:1/depth:2/depth:3", "and focuses it");
 	assert.equal(await page.locator(inFrame("a", '[data-notice="deep-three"]')).count(), 0, "the notice retires once its source is reached");
 	assert.ok((await page.locator(inFrame("a", '[data-occurrence^="albums/depth:1"]')).evaluateAll((elements) => elements.filter((element) => getComputedStyle(element).visibility === "visible" && element.getBoundingClientRect().width > 0).length)) > 1, "Show moves the window only as far as it must, keeping neighbours in view");
 	await closeNewest("a");
@@ -1365,7 +1283,7 @@ test("a twenty-cell chain stays navigable in both presentations", async () => {
 	assert.equal(await page.locator(inFrame("a", ".supermax-cell")).count(), 1, "only the root remains");
 });
 
-test("a layout that failed is asked for again on the next attempt, also from the keyboard", async () => {
+test("a layout that failed is asked for again on the next attempt", async () => {
 	await openDemo([open("album:coast", "albums")]);
 	await resize([[1100, 640], [360, 640]]);
 	await page.selectOption("[data-fail]", "manifest");
@@ -1374,8 +1292,7 @@ test("a layout that failed is asked for again on the next attempt, also from the
 	await settle();
 	assert.ok(!(await state("a")).occurrences.includes(coast.photo("people", "b")));
 	await page.selectOption("[data-fail]", "");
-	await page.focus(thumb);
-	await page.keyboard.press("Enter");
+	await page.click(thumb);
 	await settle();
 	assert.equal(await page.locator(inFrame("a", `[data-occurrence="${coast.metadata("people", "b")}"] .viewer-line`)).textContent(), "Viewing as Ana");
 });
@@ -1407,24 +1324,6 @@ test("a layout that fails leaves the workspace as it was, with Retry at its sour
 	assert.deepEqual(await groups("a"), ["Coast", "Photo B"]);
 	await page.click(inFrame("a", ".supermax-crumb:has-text('Coast')"));
 	await settle();
-	assert.equal(await activeOccurrence(), coast.row("thumbnails"), "a crumb in the title context goes to that ancestor, here into the album's top row");
-	await page.evaluate(() => {
-		const workspace = window.supermaxDemo.frames[0].workspace;
-		workspace.upRequests = 0;
-		const original = workspace.requestUp.bind(workspace);
-		workspace.requestUp = () => { workspace.upRequests += 1; return original(); };
-	});
-	await page.focus(inFrame("a", `[data-occurrence="${coast.photo("people", "b")}"] .caption`));
-	await page.keyboard.press("Alt+ArrowLeft");
-	assert.equal(await page.evaluate(() => window.supermaxDemo.frames[0].workspace.upRequests), 0, "inside a text field Alt+ArrowLeft stays a text shortcut");
-	await resize([[420, 640], [360, 640]]);
-	const target = await page.evaluate(() => window.supermaxDemo.frames[0].workspace.upDestination?.id ?? null);
-	assert.ok(target, "the narrower frame hides a cell to the left");
-	await page.focus(`${cell}`);
-	await page.keyboard.press("Alt+ArrowLeft");
-	await settle();
-	assert.equal(await activeOccurrence(), target, "Alt+ArrowLeft on a cell is Back");
-	assert.deepEqual(await groups("a"), ["Coast", "Photo B"], "and closes nothing");
 });
 
 test("the demo's Speed control plays every animation ten times slower and keeps that in the URL", async () => {
@@ -1447,7 +1346,7 @@ test("reset restores both frames and clears the URL", async () => {
 	await page.click("[data-reset]");
 	await page.waitForFunction(() => !location.hash);
 	for (const key of ["a", "b"]) {
-		assert.deepEqual(await state(key), { occurrences: ["albums"], groups: [], focused: "albums" }, `frame ${key}`);
+		assert.deepEqual(await state(key), { occurrences: ["albums"], groups: [] }, `frame ${key}`);
 		assert.equal((await backButton(key)).hidden, true);
 	}
 });
@@ -1468,13 +1367,12 @@ test("hostile deeplinks are rejected without breaking the page", async () => {
 	assert.equal(page.url().split("#")[1], "o:album:coast@albums;b", "only applied actions survive in the URL");
 });
 
-test("history restore that removes the focused cell hands focus to visible content", async () => {
+test("history restore names where the application now is", async () => {
 	await openDemo([open("album:coast", "albums")]);
 	await page.click(inFrame("b", `[data-occurrence="${coast.row("map")}"] .pin[data-destination="coast:photo:b"]`));
-	await page.focus(inFrame("b", `[data-occurrence="${coast.photo("map", "b")}"] .caption`));
+	await page.waitForFunction(() => location.hash.includes("photo:b"));
 	await page.goBack();
 	await page.waitForFunction(() => !location.hash.includes("photo:b"));
-	assert.equal(await activeOccurrence(), coast.row("map"), "focus moved to the selector that remains");
 	assert.equal(await page.locator(inFrame("b", ".supermax-title-text")).textContent(), "Coast", "the title names where the application now is, the album");
 });
 
@@ -1541,12 +1439,8 @@ test("destroy removes the shell, its listener and its properties", async () => {
 	const result = await page.evaluate(() => {
 		const workspace = window.supermaxDemo.frames[0].workspace;
 		const element = workspace.element;
-		const before = workspace.navigator.focused;
 		workspace.destroy();
-		const probe = document.createElement("button");
-		element.append(probe);
-		probe.focus();
-		return { children: element.childElementCount - 1, classes: element.className, cells: workspace.cells.size, navbarProperty: element.style.getPropertyValue("--supermax-navbar"), focusUnchanged: workspace.navigator.focused === before };
+		return { children: element.childElementCount, classes: element.className, cells: workspace.cells.size, navbarProperty: element.style.getPropertyValue("--supermax-navbar") };
 	});
-	assert.deepEqual(result, { children: 0, classes: "frame-workspace", cells: 0, navbarProperty: "", focusUnchanged: true });
+	assert.deepEqual(result, { children: 0, classes: "frame-workspace", cells: 0, navbarProperty: "" });
 });

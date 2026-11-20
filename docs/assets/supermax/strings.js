@@ -8,7 +8,6 @@ export const DEFAULT_STRINGS = Object.freeze({
 	loading: (title) => `Loading ${title}`,
 	loadFailed: (title) => `${title} could not load.`,
 	retry: () => "Retry",
-	resize: (title) => `Resize ${title}`,
 	resetSize: (title) => `Reset size of ${title}`,
 	closeModal: (title) => `Close ${title}`,
 	modalFrom: (title) => `From ${title}`,

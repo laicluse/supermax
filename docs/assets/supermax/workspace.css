@@ -254,7 +254,7 @@
 }
 .supermax-divider.is-vertical .supermax-divider-reset { left: -7px; top: 6px; }
 .supermax-divider.is-horizontal .supermax-divider-reset { top: -7px; right: 6px; }
-.supermax-divider:hover .supermax-divider-reset, .supermax-divider:focus-within .supermax-divider-reset { opacity: 1; }
+.supermax-divider:hover .supermax-divider-reset { opacity: 1; }
 
 .supermax-notices {
 	position: fixed;

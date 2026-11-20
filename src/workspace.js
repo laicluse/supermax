@@ -44,24 +44,13 @@ export class Workspace extends EventTarget {
 		this.leavingCells = new Map();
 		this.chains = new Map();
 		this.rows = new Map();
-		this.rendering = false;
-		this.pendingFocus = null;
 		this.notices = new NoticeBoard(this);
 		this.modalHost = new ModalHost(this);
 		this.peeks = new PeekController(this);
 		this.dividers = new DividerLayer(this);
 		this.reducedMotion = this.document.defaultView.matchMedia("(prefers-reduced-motion: reduce)");
-		this.onFocusIn = (event) => this.followFocus(event.target);
 		this.buildChrome();
 		this.element.classList.add(`supermax-presentation-${this.presentation.name}`);
-		this.element.addEventListener("focusin", this.onFocusIn);
-		this.onKeydown = (event) => {
-			if (event.key === "ArrowLeft" && event.altKey && !event.ctrlKey && !event.metaKey && !event.target.closest?.("input, textarea, select, [contenteditable]")) {
-				event.preventDefault();
-				this.requestUp();
-			}
-		};
-		this.element.addEventListener("keydown", this.onKeydown);
 		this.observer = new this.document.defaultView.ResizeObserver(() => this.measure());
 		this.observer.observe(element);
 		this.measure();
@@ -126,7 +115,6 @@ export class Workspace extends EventTarget {
 		if (this.modal) this.closeModal("navigation");
 		const closed = this.navigator.showByClosing(target.id);
 		this.render({ animate: true });
-		this.focusCell(target.id);
 		this.dispatchEvent(new CustomEvent("up", { detail: { shown: target.id, closed } }));
 		return { ok: true, destination: target.id, closed };
 	}
@@ -135,14 +123,12 @@ export class Workspace extends EventTarget {
 		this.closePeek();
 		if (this.modal) this.closeModal("navigation");
 		if (this.onIntent) return this.onIntent(action, this);
-		return this.apply(action, { focus: true });
+		return this.apply(action);
 	}
 
 	setPresentation(presentation) {
 		const next = normalizePresentation(presentation);
 		if (next.name === this.presentation.name && next.motion === this.presentation.motion && next.source === this.presentation.source) return;
-		const activeElement = this.document.activeElement;
-		const focused = activeElement?.closest?.(".supermax-cell")?.dataset.occurrence ?? null;
 		this.closePeek();
 		this.element.classList.remove(`supermax-presentation-${this.presentation.name}`);
 		this.presentation = next;
@@ -154,8 +140,6 @@ export class Workspace extends EventTarget {
 		this.chains.clear();
 		this.dividers.clear();
 		if (this.rendered) this.render({ animate: false });
-		if (activeElement?.isConnected && this.element.contains(activeElement)) activeElement.focus({ preventScroll: true });
-		else if (focused) this.focusCell(focused);
 		this.dispatchEvent(new CustomEvent("presentation", { detail: { name: next.name } }));
 	}
 
@@ -209,15 +193,12 @@ export class Workspace extends EventTarget {
 		const occurrence = this.navigator.get(occurrenceId);
 		if (!occurrence) return false;
 		this.navigator.bringIntoView(occurrenceId);
-		this.navigator.focus(occurrenceId, { resetReveal: false });
 		this.render({ animate: true });
 		const target = this.findCell(occurrenceId);
 		if (target?.compact) {
 			this.peeks.open(occurrenceId);
-			this.peeks.focus();
 			return true;
 		}
-		this.focusCell(occurrenceId);
 		return target?.full ?? false;
 	}
 
@@ -239,13 +220,12 @@ export class Workspace extends EventTarget {
 		entry.slot.mount(occurrence.title, () => this.content(occurrence, definition, this), () => this.cells.get(occurrence.id) === entry);
 	}
 
-	apply(action, { animate = true, focus = false } = {}) {
+	apply(action, { animate = true } = {}) {
 		const result = this.run(action);
 		if (result.ok && result.occurrence) this.navigator.bringIntoView(result.occurrence.id);
 		this.render({ animate });
 		if (!result.ok) this.dispatchEvent(new CustomEvent("rejected", { detail: { action, result } }));
 		this.dispatchEvent(new CustomEvent("change", { detail: { action, result } }));
-		if (focus) this.focusAfter(action, result);
 		return result;
 	}
 
@@ -271,46 +251,6 @@ export class Workspace extends EventTarget {
 		return true;
 	}
 
-	focusAfter(action, result) {
-		if (!result.ok) return;
-		if (action.type === "close") this.focusCell(result.focus);
-		else if (result.occurrence) this.focusCell(result.occurrence.id);
-	}
-
-	focusCell(occurrenceId) {
-		const target = this.visibleCellFor(occurrenceId);
-		const entry = target ? this.cells.get(target) : null;
-		if (!entry) return;
-		if (target !== this.navigator.focused) {
-			this.navigator.focus(target, { resetReveal: false });
-			this.renderNavbar();
-		}
-		const focusable = (this.findCell(target)?.compact ? entry.rail : null) ?? entry.element;
-		this.programmaticFocus = true;
-		focusable.focus({ preventScroll: true });
-		this.programmaticFocus = false;
-	}
-
-	visibleCellFor(occurrenceId) {
-		let current = this.navigator.get(occurrenceId);
-		while (current) {
-			const cell = this.findCell(current.id);
-			if (cell?.inView) return this.contentCellIn(cell);
-			const chain = this.findChain(chainRootOf(this.navigator, current).id);
-			const inView = chain ? chain.cells.filter((candidate) => candidate.inView) : [];
-			if (inView.length > 0) return this.contentCellIn(inView.find((candidate) => !candidate.kept) ?? inView[0]);
-			current = current.parent ? this.navigator.get(current.parent) : null;
-		}
-		return null;
-	}
-
-	contentCellIn(cell) {
-		if (!cell.rows) return cell.occurrence;
-		const row = cell.rows.rows.find((candidate) => candidate.inView);
-		const first = row?.chain ? row.chain.cells.find((candidate) => candidate.inView && !candidate.kept) : null;
-		return first ? this.contentCellIn(first) : cell.occurrence;
-	}
-
 	findChain(chainRootId) {
 		return this.layout?.chains.get(chainRootId) ?? null;
 	}
@@ -323,49 +263,29 @@ export class Workspace extends EventTarget {
 		return this.layout?.rows.get(rowRootId) ?? null;
 	}
 
-	followFocus(target) {
-		if (this.rendering || target.closest?.(".supermax-navbar")) return;
-		const cell = target.closest?.(".supermax-cell");
-		if (!cell || !this.element.contains(cell) || cell.classList.contains("is-split")) return;
-		const occurrenceId = cell.dataset.occurrence;
-		if (occurrenceId === this.navigator.focused || !this.navigator.get(occurrenceId)) return;
-		this.navigator.focus(occurrenceId, { resetReveal: false });
-		this.render({ animate: true });
-	}
-
 	render({ animate = true } = {}) {
-		this.rendering = true;
 		this.wasRendered = this.rendered;
 		this.rendered = true;
-		this.activeAtRender = this.document.activeElement;
-		let layout;
-		try {
-			layout = this.navigator.layout();
-			this.layout = layout;
-			this.upDestination = this.navigator.upTarget(layout);
-			const animating = animate && !this.reducedMotion.matches;
-			this.animating = animating;
-			const rootViewport = this.renderChain(layout.chain, this.body, animating);
-			rootViewport.style.height = `${layout.overflow ? layout.contentHeight : layout.chain.height}px`;
-			rootViewport.style.width = layout.overflowX ? `${layout.chain.contentWidth}px` : "";
-			this.body.classList.toggle("is-overflow", layout.overflow);
-			this.body.classList.toggle("is-overflow-x", layout.overflowX);
-			this.element.classList.toggle("is-below-minimum", layout.belowMinimum);
-			this.pruneClosed();
-			this.refreshContent();
-			this.renderNavbar();
-			this.modalHost.render();
-			this.notices.render();
-		} finally {
-			this.rendering = false;
-		}
+		const layout = this.navigator.layout();
+		this.layout = layout;
+		this.upDestination = this.navigator.upTarget(layout);
+		const animating = animate && !this.reducedMotion.matches;
+		this.animating = animating;
+		const rootViewport = this.renderChain(layout.chain, this.body, animating);
+		rootViewport.style.height = `${layout.overflow ? layout.contentHeight : layout.chain.height}px`;
+		rootViewport.style.width = layout.overflowX ? `${layout.chain.contentWidth}px` : "";
+		this.body.classList.toggle("is-overflow", layout.overflow);
+		this.body.classList.toggle("is-overflow-x", layout.overflowX);
+		this.element.classList.toggle("is-below-minimum", layout.belowMinimum);
+		this.pruneClosed();
+		this.refreshContent();
+		this.renderNavbar();
+		this.modalHost.render();
+		this.notices.render();
 		this.dispatchEvent(new CustomEvent("render", { detail: { layout } }));
 		this.placeHorizon();
 		this.scheduleOrigins();
 		Promise.all([...this.chains.values()].map((entry) => entry.strip.finished)).then(() => this.scheduleOrigins());
-		const target = this.pendingFocus;
-		this.pendingFocus = null;
-		if (target) this.focusCell(target);
 	}
 
 	placeHorizon() {
@@ -466,7 +386,6 @@ export class Workspace extends EventTarget {
 			still: !!cell.rows,
 		}));
 		for (const cell of chain.cells) this.peeks.apply(cell);
-		this.protectFocus(entries.filter((cell) => !cell.visible).map((cell) => cell.element));
 		entry.strip.update(entries, { animate: animating, arrive: created && this.wasRendered && animating });
 		entry.strip.strip.style.marginLeft = `${chain.spare * ALIGN[this.navigator.spareSpace]}px`;
 		for (const cell of chain.cells) {
@@ -504,12 +423,6 @@ export class Workspace extends EventTarget {
 		return items;
 	}
 
-	protectFocus(elements, target = this.navigator.focused) {
-		const active = this.activeAtRender;
-		if (!active || this.pendingFocus || !elements.some((element) => element.contains(active))) return;
-		this.pendingFocus = this.navigator.get(target) ? target : this.navigator.focused;
-	}
-
 	mountCell(occurrenceId) {
 		let entry = this.cells.get(occurrenceId);
 		if (entry) return entry.element;
@@ -523,7 +436,6 @@ export class Workspace extends EventTarget {
 		const definition = this.navigator.definitionOf(occurrence.destination);
 		const element = this.create("section", "supermax-cell");
 		element.dataset.occurrence = occurrenceId;
-		element.tabIndex = -1;
 		element.setAttribute("aria-label", occurrence.title);
 		const body = this.create("div", "supermax-cell-body");
 		let header = null;
@@ -563,7 +475,6 @@ export class Workspace extends EventTarget {
 			entry.element.classList.toggle("is-hidden", !row.visible);
 			const leading = row === cell.rows.rows.find((candidate) => candidate.visible);
 			entry.element.classList.toggle("is-leading", leading);
-			if (!row.visible) this.protectFocus([entry.chain]);
 			entry.chain.inert = !row.visible;
 			entry.chain.style.visibility = row.visible ? "" : "hidden";
 			if (row.visible) {
@@ -591,7 +502,6 @@ export class Workspace extends EventTarget {
 		for (const [occurrenceId, entry] of this.cells) {
 			if (this.navigator.get(occurrenceId)) continue;
 			if (this.peek?.occurrence === occurrenceId) this.closePeek();
-			this.protectFocus([entry.element], entry.parent);
 			this.cells.delete(occurrenceId);
 			this.leavingCells.set(occurrenceId, entry);
 			if (entry.element.classList.contains("is-split")) this.dividers.dispose(entry.body.firstElementChild);
@@ -646,11 +556,8 @@ export class Workspace extends EventTarget {
 		this.notices.clear();
 		this.dividers.clear();
 		this.layout = null;
-		this.pendingFocus = null;
-		this.element.removeEventListener("keydown", this.onKeydown);
 		this.element.classList.remove("has-modal", "is-below-minimum");
 		this.observer.disconnect();
-		this.element.removeEventListener("focusin", this.onFocusIn);
 		this.document.defaultView.removeEventListener("resize", this.onViewportChange);
 		this.document.removeEventListener("scroll", this.onViewportChange, true);
 		if (this.originFrame) this.document.defaultView.cancelAnimationFrame(this.originFrame);

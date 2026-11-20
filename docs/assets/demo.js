@@ -593,7 +593,7 @@ class Session {
 		this.replaying = null;
 		this.intents = (this.intents ?? 0) + 1;
 		if (action.type === "open" && !this.declares(action.destination)) return this.dispatchWhenPrepared(action, origin, this.intents);
-		const originResult = origin.apply(action, { focus: true });
+		const originResult = origin.apply(action);
 		const results = [originResult, ...this.frames.filter((frame) => frame.workspace !== origin).map((frame) => this.follow(frame.workspace, action, origin, originResult))];
 		if (results.some((result) => result.ok && !result.noop)) {
 			this.log = results.every((result) => result.ok) ? appendAction(this.log, action) : [...this.log, action];
@@ -622,7 +622,7 @@ class Session {
 	}
 
 	follow(workspace, action, origin, originResult) {
-		if (action.type !== "open" || !originResult.ok || !originResult.occurrence) return workspace.apply(action, { focus: false });
+		if (action.type !== "open" || !originResult.ok || !originResult.occurrence) return workspace.apply(action);
 		const path = [];
 		for (let current = originResult.occurrence; current?.parent; current = origin.navigator.get(current.parent)) path.unshift(current);
 		for (const step of path.slice(0, -1)) {
@@ -630,7 +630,7 @@ class Session {
 		}
 		const existing = workspace.navigator.get(originResult.occurrence.id);
 		if (existing && !originResult.noop && !originResult.promoted) workspace.navigator.closeSubtree(existing);
-		return workspace.apply(action, { focus: false });
+		return workspace.apply(action);
 	}
 
 	record(mode) {

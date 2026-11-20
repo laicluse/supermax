@@ -29,7 +29,7 @@ export class NoticeBoard {
 			if (this.ids.has(id)) return null;
 			this.ids.add(id);
 		}
-		const notice = { id: id ?? `notice-${(this.serial += 1)}`, scope, source, sourceTitle, kind, message, action, element: null, host: null, timer: null, remaining: duration ?? (kind === "success" ? 4000 : null), startedAt: null, hovered: false, focused: false };
+		const notice = { id: id ?? `notice-${(this.serial += 1)}`, scope, source, sourceTitle, kind, message, action, element: null, host: null, timer: null, remaining: duration ?? (kind === "success" ? 4000 : null), startedAt: null, hovered: false };
 		this.notices.set(notice.id, notice);
 		this.place(notice);
 		this.resume(notice);
@@ -42,10 +42,8 @@ export class NoticeBoard {
 		if (!notice) return false;
 		this.notices.delete(noticeId);
 		this.pause(notice);
-		const hadFocus = notice.element.contains(this.workspace.document.activeElement);
 		this.leave(notice.element);
 		this.workspace.scheduleOrigins();
-		if (hadFocus) this.focusAfter(notice);
 		this.workspace.dispatchEvent(new CustomEvent("notice", { detail: { id: noticeId, state } }));
 		return true;
 	}
@@ -90,16 +88,6 @@ export class NoticeBoard {
 		}
 		const height = element.offsetHeight;
 		element.animate([{ opacity: 1, transform: "none", marginBottom: "0px" }, { opacity: 0, transform: "translateY(-24px)", marginBottom: `${-height}px` }], { duration: 180, easing: DISAPPEAR.easing, fill: "forwards" }).finished.then(gone, gone);
-	}
-
-	focusAfter(notice) {
-		const workspace = this.workspace;
-		if (workspace.modal) { workspace.modalHost.focus(); return; }
-		const target = notice.source && workspace.navigator.get(notice.source) ? workspace.visibleCellFor(notice.source) : null;
-		if (target) { workspace.focusCell(target); return; }
-		const next = this.region.querySelector(".supermax-notice-dismiss");
-		if (next) { next.focus({ preventScroll: true }); return; }
-		workspace.upButton.focus({ preventScroll: true });
 	}
 
 	hostFor(notice, sourceCell) {
@@ -175,17 +163,12 @@ export class NoticeBoard {
 			element.append(holder);
 		}
 		element.append(text, controls, close);
-		element.addEventListener("keydown", (event) => { if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); this.dismiss(notice.id); } });
 		notice.hovered = false;
-		notice.focused = false;
 		element.addEventListener("pointerenter", () => this.hold(notice, "hovered", true));
 		element.addEventListener("pointerleave", () => this.hold(notice, "hovered", false));
-		element.addEventListener("focusin", () => this.hold(notice, "focused", true));
-		element.addEventListener("focusout", (event) => { if (!element.contains(event.relatedTarget)) this.hold(notice, "focused", false); });
 		if (sourceOccurrence) notice.sourceTitle = sourceOccurrence.title;
 		Object.assign(notice, { element, host, named, sourceOpen: !!sourceOccurrence, reachable });
 		if (previous) {
-			const hadFocus = previous.contains(workspace.document.activeElement);
 			const container = previous.parentElement;
 			if (container === host) previous.replaceWith(element);
 			else {
@@ -193,8 +176,7 @@ export class NoticeBoard {
 				this.tidy(container);
 				host.append(element);
 			}
-			if (hadFocus) close.focus({ preventScroll: true });
-			else this.resume(notice);
+			this.resume(notice);
 		} else {
 			host.append(element);
 			this.enter(notice);
@@ -214,7 +196,7 @@ export class NoticeBoard {
 	hold(notice, key, held) {
 		notice[key] = held;
 		this.workspace.scheduleOrigins();
-		if (notice.hovered || notice.focused) this.pause(notice);
+		if (notice.hovered) this.pause(notice);
 		else this.resume(notice);
 	}
 

@@ -1,5 +1,3 @@
-import { focusables } from "./focus.js";
-
 export class PeekController {
 	constructor(workspace) {
 		this.workspace = workspace;
@@ -23,7 +21,6 @@ export class PeekController {
 		const definition = workspace.navigator.definitionOf(occurrence.destination);
 		const overlay = workspace.create("div", "supermax-peek");
 		overlay.setAttribute("role", "dialog");
-		overlay.tabIndex = -1;
 		overlay.setAttribute("aria-label", workspace.strings.peekDialog(occurrence.title));
 		const header = workspace.create("header", "supermax-peek-title");
 		header.append(workspace.document.createTextNode(occurrence.title));
@@ -31,7 +28,7 @@ export class PeekController {
 		close.type = "button";
 		close.setAttribute("aria-label", workspace.strings.closePeek());
 		close.textContent = "×";
-		close.addEventListener("click", () => { this.close(); this.focusRail(entry); });
+		close.addEventListener("click", () => this.close());
 		header.append(close);
 		overlay.append(header, entry.body);
 		const host = workspace.element.getBoundingClientRect();
@@ -44,16 +41,6 @@ export class PeekController {
 		overlay.style.height = `${rail.height}px`;
 		overlay.addEventListener("pointerenter", () => this.cancelTimer());
 		overlay.addEventListener("pointerleave", () => this.scheduleClose());
-		overlay.addEventListener("keydown", (event) => {
-			if (event.key !== "Escape") return;
-			event.stopPropagation();
-			this.close();
-			this.focusRail(entry);
-		});
-		overlay.addEventListener("focusout", (event) => {
-			if (!event.relatedTarget || overlay.contains(event.relatedTarget) || event.relatedTarget === entry.rail) return;
-			this.close();
-		});
 		workspace.element.append(overlay);
 		this.current = { occurrence: occurrenceId, overlay, entry };
 		entry.rail.setAttribute("aria-expanded", "true");
@@ -73,10 +60,7 @@ export class PeekController {
 
 	scheduleClose() {
 		this.cancelTimer();
-		this.timer = this.view.setTimeout(() => {
-			if (this.current && this.current.overlay.contains(this.workspace.document.activeElement)) return;
-			this.close();
-		}, 200);
+		this.timer = this.view.setTimeout(() => this.close(), 200);
 	}
 
 	scheduleOpen(occurrenceId) {
@@ -89,25 +73,12 @@ export class PeekController {
 		this.timer = null;
 	}
 
-	focus() {
-		if (!this.current) return;
-		const target = focusables(this.current.overlay).find((candidate) => !candidate.classList.contains("supermax-peek-close")) ?? this.current.overlay.querySelector(".supermax-peek-close");
-		target?.focus({ preventScroll: true });
-	}
-
-	focusRail(entry) {
-		this.workspace.programmaticFocus = true;
-		entry.rail.focus({ preventScroll: true });
-		this.workspace.programmaticFocus = false;
-	}
-
 	apply(cell) {
 		const workspace = this.workspace;
 		const entry = workspace.cells.get(cell.occurrence);
 		if (!entry.rail) return;
 		const definition = workspace.navigator.definitionOf(workspace.navigator.get(cell.occurrence).destination);
 		if (this.current?.occurrence === cell.occurrence && !cell.compact) this.close();
-		if (cell.compact && !entry.element.classList.contains("is-compact")) workspace.protectFocus([entry.body], cell.occurrence);
 		entry.element.classList.toggle("is-compact", cell.compact);
 		entry.body.style.width = cell.compact ? `${definition.min}px` : "";
 		entry.rail.inert = !cell.compact;
@@ -125,11 +96,6 @@ export class PeekController {
 		rail.append(workspace.document.createTextNode(occurrence.title));
 		rail.addEventListener("click", (event) => {
 			const open = this.current?.occurrence === occurrence.id;
-			if (event.detail === 0) {
-				if (!open) this.open(occurrence.id);
-				this.focus();
-				return;
-			}
 			if (event.pointerType === "touch" && open) this.close();
 			else if (!open) this.open(occurrence.id);
 		});
@@ -138,16 +104,6 @@ export class PeekController {
 			this.scheduleOpen(occurrence.id);
 		});
 		rail.addEventListener("pointerleave", () => this.scheduleClose());
-		rail.addEventListener("focus", () => { if (!workspace.programmaticFocus) this.open(occurrence.id); });
-		rail.addEventListener("keydown", (event) => {
-			if (event.key === "Escape") this.close();
-			if (event.key === "ArrowRight" && this.current?.occurrence === occurrence.id) { event.preventDefault(); this.focus(); }
-		});
-		rail.addEventListener("blur", (event) => {
-			if (this.current?.occurrence !== occurrence.id) return;
-			if (event.relatedTarget && this.current.overlay.contains(event.relatedTarget)) return;
-			this.close();
-		});
 		compact.append(rail);
 		const extra = definition.compact.content?.(occurrence, workspace);
 		if (extra) compact.append(extra);
