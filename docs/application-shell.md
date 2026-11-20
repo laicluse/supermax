@@ -88,7 +88,7 @@ Use these as starting ranges in pixels, then verify against real content:
 | Media or working surface | 480 | 1200 | Visual comparison benefits from width |
 | Canvas or world | 480 | 1600 | May consume remaining space; often zoomable |
 
-Height is content semantics too. A cell whose content needs the full height, such as an attachment, a document or a working surface, declares `placement: "beside-split"`; opened from a cell in a row it then stands beside the split instead of inside the row (see "Breaking out of a row"). A row's `minHeight` and `maxHeight` describe what its own content needs, never the needs of what opens from it.
+Height is content semantics too. A cell whose content needs the full height, such as an attachment, a document or a working surface, declares `placement: "beside-split"`; opened from a cell in a row it then stands beside the split instead of inside the row (see "Breaking out of a row"). A row's `minHeight` and `maxHeight` describe what its own content needs, never the needs of what opens from it. Content that scales with its width, such as a chart, declares `aspectRatio` on its destination; the row holding it then asks no more height than the content shows at its cell's width, and the elastic row below takes the rest ([README](../README.md#aspect-ratio)).
 
 Do not copy these numbers mechanically. A dense data table may need more width than a list; a short inspector may need less than a document. If every cell receives the same bounds, the information architecture has not been expressed in the layout.
 

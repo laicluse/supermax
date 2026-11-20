@@ -4,6 +4,7 @@
 import { overflowMode, foldSize, overflowProblems } from "./overflow.js";
 import { definitionFor, resizeBounds, rowDefinitions, selectVariants } from "./variants.js";
 import { CellCollection, DEFAULT_CURVE } from "./cell-collection.js";
+import { aspectHeight } from "./aspect.js";
 
 export const ELASTIC = "*";
 export function isSplit(definition) {
@@ -125,6 +126,7 @@ export function validateSplit(model, definitionId, parentOccurrence) {
 		if (!rowDefinition) problems.push("unknown-row-destination");
 		if (rowDefinition && isSplit(rowDefinition)) problems.push("split-row");
 		if (rowDefinition && isBesideSplit(rowDefinition)) problems.push("beside-split-on-row");
+		if (rowDefinition?.aspectRatio != null && row.maxHeight === ELASTIC) problems.push("aspect-ratio-on-elastic-row");
 		if (seen.has(row.destination)) problems.push("duplicate-row-destination");
 		seen.add(row.destination);
 		if (row.minHeight > heightBounds(row).reach) problems.push("row-min-exceeds-max");
@@ -486,10 +488,38 @@ function layoutChain(model, chainRoot, width, height, containerInView) {
 	};
 }
 
+// allow-comment: the height at which the row's cells that declare an aspectRatio show their content whole at the widths they get, the tallest of them; cell widths never depend on the row's height, so this needs no second pass. Hidden and folded cells show nothing and ask nothing.
+function fitHeightOf(model, root, width) {
+	const cells = chainCells(model, root);
+	if (!cells.some((occurrence) => definitionFor(model, occurrence).aspectRatio != null)) return null;
+	const { allocation, fold } = allocateChain(model, cells, width);
+	let fit = null;
+	allocation.cells.forEach((cell, index) => {
+		const definition = definitionFor(model, cells[index]);
+		if (definition.aspectRatio == null || !cell.visible || fold.has(cell.config.id)) return;
+		fit = Math.max(fit ?? 0, aspectHeight(definition, cell.actual, headerOf(model, definition)));
+	});
+	return fit === null ? null : Math.ceil(fit);
+}
+
+// allow-comment: a fit height is a second ceiling beside maxHeight, never below minHeight; a session size above it stays stored and returns when the row widens.
+function fitBounds(bounds, fit) {
+	if (fit === null || bounds.elastic) return bounds;
+	const ceiling = Math.max(bounds.min, fit);
+	return { ...bounds, max: Math.min(bounds.max, ceiling), reach: Math.min(bounds.reach, ceiling), preferred: bounds.preferred === null ? null : Math.min(bounds.preferred, ceiling) };
+}
+
+// allow-comment: the divider travels through every form of the row, so its fit ceiling caps the range of all forms together, never the selected form alone.
+function resizeCeiling(range, fit) {
+	return fit === null ? range.max : Math.max(range.min, Math.min(range.max, fit));
+}
+
 function layoutRows(model, split, width, height, containerInView) {
 	const definition = rowDefinitions(model, split);
 	const owners = model.definitionOf(split.destination).rows;
 	const roots = definition.map((row, index) => model.get(split.children[index]));
+	const fits = roots.map((root, index) => root && definition[index].maxHeight !== ELASTIC ? fitHeightOf(model, root, width) : null);
+	const boundsAt = (index) => fitBounds(heightBounds(definition[index]), fits[index]);
 	const budget = Math.max(0, height);
 	const required = definition.reduce((sum, row) => sum + row.minHeight, 0);
 	const belowKeptRow = (index) => definition.slice(0, index).some((row) => overflowMode(row) === "keep");
@@ -499,7 +529,7 @@ function layoutRows(model, split, width, height, containerInView) {
 		const active = activeRow(model, split, roots);
 		const activeIndex = roots.findIndex((root) => root.id === active);
 		const folded = new Set(rowFolds(activeIndex));
-		const bounds = shown.map((index) => folded.has(index) ? { min: foldSize(definition[index]), max: foldSize(definition[index]), preferred: null, session: null } : { ...heightBounds(definition[index]), session: model.sizeOf(roots[index].id, "height") });
+		const bounds = shown.map((index) => folded.has(index) ? { min: foldSize(definition[index]), max: foldSize(definition[index]), preferred: null, session: null } : { ...boundsAt(index), session: model.sizeOf(roots[index].id, "height") });
 		const configs = shown.map((index, position) => ({ id: roots[index].id, title: roots[index].title, keep: overflowMode(definition[index]) === "keep" || folded.has(index) || index >= Math.max(0, activeIndex), ...sessionBounds(bounds[position], null, false) }));
 		const allocation = distributeSessions(configs, bounds, budget, null, model.curve ?? DEFAULT_CURVE);
 		return { byId: new Map(allocation.cells.map((cell) => [cell.config.id, cell])), folded };
@@ -527,8 +557,9 @@ function layoutRows(model, split, width, height, containerInView) {
 			inView: containerInView && visible,
 			minHeight: definition[index].minHeight,
 			maxHeight: heightBounds(definition[index]).reach,
+			fitHeight: fits[index],
 			resizeMin: resizeBounds(owners[index], "height").min,
-			resizeMax: resizeBounds(owners[index], "height").max,
+			resizeMax: resizeCeiling(resizeBounds(owners[index], "height"), fits[index]),
 			chain: visible ? layoutChain(model, root, width, folded ? definition[index].minHeight : rowHeight, containerInView && !folded) : null,
 		};
 	});

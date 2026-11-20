@@ -3,13 +3,14 @@
 
 import { overflowProblems } from "./overflow.js";
 import { variantProblems } from "./variants.js";
+import { aspectProblems } from "./aspect.js";
 export const LAYOUT_HEADER = "Supermax-Layout";
 export const LAYOUT_SCHEMA = 2;
 
 const REQUIRED = ["title", "min", "max", "preferred", "defaultChild"];
 const REQUIRED_SPLIT = ["title", "rows"];
 const WIDTH = ["min", "max", "preferred"];
-const FIELDS = new Set([...REQUIRED, "overflow", "rows", "zoomable", "placement", "header", "variants", "menu"]);
+const FIELDS = new Set([...REQUIRED, "overflow", "rows", "zoomable", "placement", "header", "variants", "menu", "aspectRatio", "aspectInset"]);
 const ROW_FIELDS = new Set(["destination", "minHeight", "maxHeight", "preferredHeight", "overflow", "variants"]);
 
 export class SupermaxLayoutError extends Error {
@@ -40,6 +41,8 @@ export function layoutOf(definition) {
 		preferred: definition.preferred ?? null,
 		...(definition.overflow ? { overflow: structuredClone(definition.overflow) } : {}),
 		...(definition.variants ? { variants: structuredClone(definition.variants) } : {}),
+		...(definition.aspectRatio != null ? { aspectRatio: definition.aspectRatio } : {}),
+		...(definition.aspectInset != null ? { aspectInset: structuredClone(definition.aspectInset) } : {}),
 		rows: null,
 		defaultChild: definition.defaultChild ?? null,
 		...(definition.zoomable ? { zoomable: true } : {}),
@@ -69,7 +72,7 @@ function problemsOf(id, declaration) {
 	if (typeof declaration.title !== "string" || declaration.title.trim().length === 0) problems.push("invalid-title");
 	if (declaration.rows != null) {
 		if (REQUIRED_SPLIT.some((key) => !Object.hasOwn(declaration, key))) problems.push("missing-field");
-		if (WIDTH.some((key) => declaration[key] != null) || declaration.defaultChild != null || declaration.overflow?.mode === "fold" || declaration.variants != null) problems.push("split-with-width");
+		if (WIDTH.some((key) => declaration[key] != null) || declaration.defaultChild != null || declaration.overflow?.mode === "fold" || declaration.variants != null || declaration.aspectRatio != null || declaration.aspectInset != null) problems.push("split-with-width");
 		const rows = declaration.rows;
 		const badHeight = (row) => (row.maxHeight === ELASTIC ? !(size(row.preferredHeight) && row.preferredHeight >= row.minHeight) : !size(row.maxHeight) || row.minHeight > row.maxHeight);
 		const badRow = (row) => !row || variantProblems(row, "height").length > 0 || typeof row.destination !== "string" || Object.keys(row).some((key) => !ROW_FIELDS.has(key)) || !size(row.minHeight) || badHeight(row) || overflowProblems(row, row.minHeight).length > 0;
@@ -84,6 +87,7 @@ function problemsOf(id, declaration) {
 	else if (declaration.preferred != null && (!size(declaration.preferred) || declaration.preferred < declaration.min || (!elastic && declaration.preferred > declaration.max))) problems.push("invalid-preferred");
 	if (declaration.defaultChild != null && (typeof declaration.defaultChild !== "string" || declaration.defaultChild.length === 0 || declaration.defaultChild === id)) problems.push("invalid-default");
 	if (declaration.placement != null && declaration.placement !== "beside-split") problems.push("invalid-placement");
+	problems.push(...aspectProblems(declaration));
 	return problems;
 }
 

@@ -1,0 +1,16 @@
+const length = (value) => Number.isFinite(value) && value >= 0;
+
+export function aspectProblems(definition) {
+	const { aspectRatio, aspectInset } = definition;
+	if (aspectRatio == null && aspectInset == null) return [];
+	if (Array.isArray(definition.rows) || !(Number.isFinite(aspectRatio) && aspectRatio > 0)) return ["invalid-aspect-ratio"];
+	if (aspectInset == null) return [];
+	if (typeof aspectInset !== "object" || Array.isArray(aspectInset) || Object.keys(aspectInset).some((key) => !["width", "height"].includes(key)) || Object.values(aspectInset).some((value) => !length(value))) return ["invalid-aspect-inset"];
+	return [];
+}
+
+// allow-comment: the height at which content of this ratio shows whole at a cell width, plus the parts that do not scale: the cell's title bar and the host's own inset, such as a toolbar or padding.
+export function aspectHeight(definition, width, header) {
+	const inset = definition.aspectInset ?? {};
+	return header + (inset.height ?? 0) + Math.max(0, width - (inset.width ?? 0)) / definition.aspectRatio;
+}

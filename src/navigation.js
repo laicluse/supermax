@@ -1,6 +1,7 @@
 import { overflowProblems } from "./overflow.js";
 import { DEFAULT_CURVE } from "./cell-collection.js";
 import { variantProblems } from "./variants.js";
+import { aspectProblems } from "./aspect.js";
 import { ELASTIC, breakoutOf, chainCells, chainFits, chainRootOf, chainWidth, isBesideSplit, isSplit, layoutWorkspace, rowSplitOf, validateSplit } from "./layout.js";
 import { sameLayout, validateDeclarationSet } from "./layout-declaration.js";
 
@@ -36,6 +37,7 @@ export function validateDestinations(destinations, { minViewportHeight, chrome =
 		if (!isSplit(definition) && definition.max !== ELASTIC && definition.preferred != null && (!Number.isFinite(definition.preferred) || definition.preferred < definition.min || definition.preferred > definition.max)) problems.push({ destination: id, reason: "invalid-preferred" });
 		if (destinations[id].compact != null) problems.push({ destination: id, reason: "unsupported-compact" });
 		if (Object.hasOwn(definition, "height")) problems.push({ destination: id, reason: "unsupported-height" });
+		for (const reason of aspectProblems(definition)) problems.push({ destination: id, reason });
 		if (destinations[id].placement != null && (!isBesideSplit(destinations[id]) || isSplit(destinations[id]))) problems.push({ destination: id, reason: "invalid-placement" });
 		if (isSplit(destinations[id]) && ["min", "max", "preferred"].some((key) => destinations[id][key] != null)) problems.push({ destination: id, reason: "split-with-width" });
 		if (destinations[id].header != null && destinations[id].header !== "title") problems.push({ destination: id, reason: "invalid-header" });
@@ -60,6 +62,8 @@ export class Navigator {
 		this.spareSpace = spareSpace;
 		this.context = context;
 		this.destinations = Object.assign(Object.create(null), destinations);
+		// allow-comment: a runtime setter changes a destination the host or a server declared; a later declaration of the same destination compares against what was declared, not against the runtime change.
+		this.declared = Object.create(null);
 		this.rootDestination = root;
 		this.minViewportHeight = minViewportHeight;
 		this.chrome = { ...DEFAULT_CHROME, ...chrome };
@@ -128,6 +132,24 @@ export class Navigator {
 		return Object.hasOwn(this.destinations, id) ? this.destinations[id] : null;
 	}
 
+	setAspectRatio(destinationId, aspectRatio, { inset = null } = {}) {
+		const definition = this.definitionOf(destinationId);
+		if (!definition) throw new TypeError(`Unknown destination: ${destinationId}`);
+		const { aspectRatio: _ratio, aspectInset: _inset, ...rest } = definition;
+		const updated = aspectRatio == null && inset == null ? rest : { ...rest, aspectRatio, ...(inset == null ? {} : { aspectInset: structuredClone(inset) }) };
+		const problems = aspectProblems(updated).map((reason) => ({ destination: destinationId, reason }));
+		const model = Object.create(this);
+		model.definitionOf = (id) => id === destinationId ? updated : this.definitionOf(id);
+		for (const id of Object.keys(this.destinations)) {
+			if (!isSplit(this.destinations[id])) continue;
+			const validation = validateSplit(model, id, null);
+			if (!validation.ok) problems.push({ destination: id, validation });
+		}
+		if (problems.length) throw new SupermaxConfigurationError(problems);
+		this.declared[destinationId] ??= definition;
+		this.destinations[destinationId] = updated;
+	}
+
 	setVariants(destinationId, variants, { row = null } = {}) {
 		const definition = this.definitionOf(destinationId);
 		if (!definition) throw new TypeError(`Unknown destination: ${destinationId}`);
@@ -136,6 +158,7 @@ export class Navigator {
 		const problems = variantProblems({ ...owner, variants }, row === null ? "width" : "height");
 		if (problems.length) throw new SupermaxConfigurationError(problems.map((reason) => ({ destination: destinationId, reason })));
 		const next = variants == null ? undefined : structuredClone(variants);
+		this.declared[destinationId] ??= definition;
 		if (row === null) this.destinations[destinationId] = { ...definition, variants: next };
 		else {
 			const updated = { ...definition, rows: definition.rows.map((member) => member === owner ? { ...member, variants: next } : member) };
@@ -152,11 +175,11 @@ export class Navigator {
 		if (problems.length === 0 && set.context !== this.context) problems.push({ destination: set.root, reason: "declaration-context" });
 		const added = [];
 		for (const [id, declaration] of problems.length === 0 ? Object.entries(set.destinations) : []) {
-			const existing = this.definitionOf(id);
+			const existing = this.declared[id] ?? this.definitionOf(id);
 			if (!existing) added.push(id);
 			else if (!sameLayout(existing, declaration)) problems.push({ destination: id, reason: "declaration-mismatch" });
 		}
-		const merged = { ...this.destinations, ...set.destinations };
+		const merged = { ...set.destinations, ...this.destinations };
 		const model = { chrome: this.chrome, minViewportHeight: this.minViewportHeight, definitionOf: (id) => merged[id] ?? null };
 		for (const id of problems.length === 0 ? added : []) {
 			if (!isSplit(merged[id])) continue;

@@ -38,7 +38,7 @@
     "build:docs": "node scripts/build-docs.mjs",
     "check:docs": "node scripts/build-docs.mjs --check",
     "serve": "node scripts/serve-demo.mjs",
-    "test:node": "node test/smoke.test.js && node test/variants.test.js && node test/navigation.test.js && node test/reachability.test.js && node test/layout-declaration.test.js && node test/edge-drag.test.js && node --test test/resize-allocation.test.js test/unfold.test.js test/root-split.test.js",
+    "test:node": "node test/smoke.test.js && node test/variants.test.js && node test/navigation.test.js && node test/reachability.test.js && node test/layout-declaration.test.js && node test/edge-drag.test.js && node --test test/resize-allocation.test.js test/unfold.test.js test/root-split.test.js test/aspect-ratio.test.js",
     "test:bun": "bun test/smoke.test.js && bun test/navigation.test.js && bun test/layout-declaration.test.js",
     "test:browser": "node test/cell-strip.test.js && node test/serve-demo.test.js && node --test --test-concurrency=1 test/renderer.test.js test/divider-drag.test.js test/variants-browser.test.js test/variant-gutters.test.js test/cell-gutters.test.js test/fold-label.test.js test/fold-stability.test.js test/folding.test.js test/workspace.test.js test/workspace-package.test.js test/retention.test.js test/chain-scroll.test.js test/cell-sweep.test.js",
     "test:browser:fold": "SUPERMAX_PRESENTATION=fold node --test --test-concurrency=1 test/workspace.test.js",

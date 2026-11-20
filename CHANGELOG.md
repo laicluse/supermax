@@ -11,6 +11,9 @@ Start with [Migrating from v1 to v2](docs/migrating-to-v2.md). A dependency vers
 
 ### Workspace composition
 
+- A destination can declare `aspectRatio` for content that scales with its width, such as a chart. A split row holding it asks no more height than the content shows at its cell's width, so a narrower window or a cell opened beside it gives that row's height to the elastic row below. The ratio is a second ceiling beside `maxHeight` and never goes below `minHeight`; the layout row reports it as `fitHeight`. `aspectInset` keeps a toolbar or padding that does not scale out of the ratio, and `setAspectRatio` switches both when the content changes form. See [Aspect ratio](README.md#aspect-ratio).
+- A server that declares a destination again after `setVariants` or `setAspectRatio` changed it is compared with its own earlier declaration, and new splits in that response are checked against the runtime value. The repeat used to fail with `declaration-mismatch`.
+
 - A following split yields preferred width to a resized column while keeping its row content visible at the declared minimums. A wide list no longer stops at the split’s preferred width.
 
 - A divider defines only its preceding cell or row; earlier allocations stay put and later content shares the remaining room normally. Fixed or stationary gutters no longer resize a different column or enter the active resize state. Reset clears only the size belonging to that gutter.

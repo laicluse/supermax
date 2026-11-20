@@ -312,6 +312,11 @@ export class Workspace extends EventTarget {
 		this.render({ animate });
 	}
 
+	setAspectRatio(destination, aspectRatio, { inset = null, animate = true } = {}) {
+		this.navigator.setAspectRatio(destination, aspectRatio, { inset });
+		this.render({ animate });
+	}
+
 	setSizes(sizes, axis = "width", { animate = false } = {}) {
 		for (const [occurrenceId, size] of sizes) this.navigator.setSize(occurrenceId, size, axis);
 		this.render({ animate });
