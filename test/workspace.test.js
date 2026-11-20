@@ -485,7 +485,7 @@ test("cells stand one gutter apart over the canvas, and rows never run past thei
 			radius: getComputedStyle(root.querySelector(".supermax-up")).borderRadius,
 		};
 	});
-	assert.equal(geometry.canvas, "rgb(0, 0, 0)", "the canvas is black in light mode");
+	assert.equal(geometry.canvas, "rgb(221, 221, 221)", "the canvas takes the colour the host sets in --supermax-canvas");
 	assert.deepEqual(Object.fromEntries(geometry.gutters), {
 		albums: "0px",
 		"album:coast": "0px",
@@ -1254,7 +1254,7 @@ test("renders that follow within the settle window move each room once, by the n
 });
 
 const departureOf = (selector) => page.locator(selector).evaluate((cell) => {
-	const animation = cell.getAnimations().find((candidate) => candidate.effect.getKeyframes().some((frame) => String(frame.transform ?? "").includes("rotate")));
+	const animation = cell.getAnimations().find((candidate) => candidate.effect.getKeyframes().some((frame) => frame.transform !== undefined));
 	return animation ? { delay: animation.effect.getTiming().delay, rate: animation.playbackRate, state: animation.playState, to: animation.effect.getKeyframes().at(-1).transform } : null;
 });
 
@@ -1868,6 +1868,27 @@ test("a second presentation replaces motion and surface while behaviour, interru
 	await page.selectOption("[data-presentation]", PRESENTATION);
 });
 
+test("veil replaces a cell without turning it, keeps its surface and lifts the new content after the old has fallen", async () => {
+	await openDemo([open("album:coast", "albums")]);
+	await page.selectOption("[data-presentation]", "veil");
+	await settle();
+	await page.evaluate(() => window.supermaxDemo.prepare("coast:photo:b"));
+	await page.click(inFrame("a", `[data-occurrence="${coast.row("thumbnails")}"] .thumb[data-destination="coast:photo:b"]`));
+	const replacing = await folds("a");
+	const surfaces = await page.locator(inFrame("a", ".supermax-cell")).first().evaluate((cell) => [getComputedStyle(cell, "::after").backgroundColor, getComputedStyle(cell).backgroundColor]);
+	await settle();
+	assert.equal(surfaces[0], surfaces[1], "the veil has the cell's own surface colour, so a cell never turns the canvas colour");
+	assert.ok(replacing.length > 0 && replacing.every((fold) => fold.first === "none"), `no cell turns or travels: ${JSON.stringify(replacing)}`);
+	const leaving = replacing.filter((fold) => fold.leaving);
+	const arriving = replacing.filter((fold) => !fold.leaving).sort((first, second) => first.delay - second.delay);
+	assert.ok(leaving.length > 0 && leaving.every((fold) => fold.duration === TIMING.veilFall && fold.easing === "cubic-bezier(0.4, 0, 1, 1)"), "the old content falls quickly and accelerating");
+	assert.ok(arriving.every((fold) => fold.duration > TIMING.veilFall && fold.easing === "cubic-bezier(0, 0, 0.2, 1)"), "the new content lifts slower than the old fell, decelerating");
+	assert.equal(arriving[0].delay, TIMING.veilFall, "the new content lifts as soon as the old has fallen, so the two never show at once");
+	assert.deepEqual(arriving.map((fold) => fold.cell), ["coast:photo:b", "coast:metadata:b"], "and lifts in reading order");
+	assert.equal(arriving[1].delay - arriving[0].delay, TIMING.stagger, "one stagger apart");
+	await page.selectOption("[data-presentation]", PRESENTATION);
+});
+
 test("a twenty-cell chain stays navigable in both presentations", async () => {
 	await openDemo(TWENTY_DEEP);
 	await resize([[960, 640], [420, 640]]);
@@ -1977,8 +1998,10 @@ test("the demo's Speed control slows every time Supermax and the demo keep, and 
 	await page.evaluate(() => window.supermaxDemo.prepare("coast:photo:b"));
 	await page.click(inFrame("a", `[data-occurrence="${coast.row("thumbnails")}"] .thumb[data-destination="coast:photo:b"]`));
 	const replacing = await folds("a");
-	assert.ok(replacing.length > 0 && replacing.every((fold) => fold.duration === STRIP_TIMING.duration * SLOW), `every fold lasts ${SLOW} times longer: ${JSON.stringify(replacing)}`);
-	assert.ok(replacing.filter((fold) => !fold.leaving).every((fold) => fold.delay === STRIP_TIMING.duration * SLOW), "and a replacement waits that much longer for the old cells");
+	const [falls, lifts] = PRESENTATION === "veil" ? [[TIMING.veilFall], [TIMING.veilLift, TIMING.veilLiftLarge]] : [[STRIP_TIMING.duration], [STRIP_TIMING.duration, STRIP_TIMING.duration]];
+	const within = (value, [low, high = low]) => value >= low * SLOW && value <= high * SLOW;
+	assert.ok(replacing.length > 0 && replacing.every((fold) => within(fold.duration, fold.leaving ? falls : lifts)), `every fold lasts ${SLOW} times longer: ${JSON.stringify(replacing)}`);
+	assert.ok(replacing.filter((fold) => !fold.leaving).every((fold) => within(fold.delay, [falls[0], falls[0] + TIMING.staggerLimit])), "and a replacement waits that much longer for the old cells");
 	await settle();
 	await page.evaluate(() => window.supermaxDemo.setNetwork({ delay: "400" }));
 	await page.click(inFrame("a", `[data-occurrence="${coast.row("thumbnails")}"] .thumb[data-destination="coast:photo:c"]`));

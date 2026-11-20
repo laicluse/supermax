@@ -7,6 +7,7 @@ export { TIMING, TimeScale } from "./motion.js";
 export { Navigator, SupermaxConfigurationError, validateDestinations } from "./navigation.js";
 export { Workspace } from "./workspace.js";
 export { ORIGAMI_PRESENTATION, HORIZON } from "./origami.js";
+export { VEIL_PRESENTATION } from "./veil.js";
 export { validateSplit } from "./layout.js";
 export { DEFAULT_STRINGS } from "./strings.js";
 export { defaultNoticeIcon } from "./icons.js";

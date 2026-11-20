@@ -1,10 +1,10 @@
-import { Navigator, ORIGAMI_PRESENTATION, TimeScale, Workspace, layoutHashOf, readLayout } from "./supermax/index.js";
+import { Navigator, ORIGAMI_PRESENTATION, TimeScale, VEIL_PRESENTATION, Workspace, layoutHashOf, readLayout } from "./supermax/index.js";
 import { albums, depthCount, depthId, destinations, edits, embeddedDestinations, ids, minViewportHeight, paths, remoteContent } from "./album.js";
 import { appendAction, decodeLog, encodeLog } from "./deeplink.js";
 import { foldPresentation } from "./presentation-fold.js";
 import { serve } from "./api.js";
 
-const presentations = { origami: ORIGAMI_PRESENTATION, fold: foldPresentation };
+const presentations = { origami: ORIGAMI_PRESENTATION, veil: VEIL_PRESENTATION, fold: foldPresentation };
 
 // The demo's own waits, in milliseconds at time scale 1.
 const DEMO_TIMING = Object.freeze({ hover: 100, waiting: 700, network: { least: 100, spread: 600, quick: 400, slow: 1500 } });

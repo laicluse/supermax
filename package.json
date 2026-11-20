@@ -20,6 +20,7 @@
   "files": [
     "src",
     "docs/application-shell.md",
+    "docs/research/cell-transitions.md",
     "docs/migrating-to-v2.md",
     "docs/assets/captures",
     "CHANGELOG.md",
@@ -34,6 +35,7 @@
     "test:bun": "bun test/smoke.test.js && bun test/navigation.test.js && bun test/layout-declaration.test.js",
     "test:browser": "node test/cell-strip.test.js && node test/serve-demo.test.js && node --test --test-concurrency=1 test/workspace.test.js test/workspace-package.test.js",
     "test:browser:fold": "SUPERMAX_PRESENTATION=fold node --test --test-concurrency=1 test/workspace.test.js",
+    "test:browser:veil": "SUPERMAX_PRESENTATION=veil node --test --test-concurrency=1 test/workspace.test.js",
     "test": "npm run check:docs && npm run test:node && npm run test:browser",
     "check": "npm run test && npm run test:bun",
     "bench:transitions": "node bench/transitions.mjs"

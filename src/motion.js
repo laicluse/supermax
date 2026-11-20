@@ -11,9 +11,17 @@ export const TIMING = Object.freeze({
 	frustum: 260,
 	spin: 900,
 	handle: 120,
+	veilFall: 100,
+	veilLift: 160,
+	veilLiftLarge: 240,
+	veilLag: 60,
+	stagger: 30,
+	staggerLimit: 90,
+	travel: 140,
+	travelLimit: 260,
 });
 
-export const EASING = Object.freeze({ appear: "ease-out", disappear: "ease-in", room: "cubic-bezier(0.25, 0.1, 0.25, 1)" });
+export const EASING = Object.freeze({ appear: "ease-out", disappear: "ease-in", room: "cubic-bezier(0.25, 0.1, 0.25, 1)", lift: "cubic-bezier(0, 0, 0.2, 1)", fall: "cubic-bezier(0.4, 0, 1, 1)" });
 
 export const APPEAR = Object.freeze({ duration: TIMING.stroke, easing: EASING.appear });
 export const DISAPPEAR = Object.freeze({ duration: TIMING.stroke, easing: EASING.disappear });

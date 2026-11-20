@@ -535,7 +535,7 @@ export class Workspace extends EventTarget {
 		this.titleText.textContent = info.title;
 	}
 
-	renderChain(chain, host, animating, { inRow = false } = {}) {
+	renderChain(chain, host, animating, { inRow = false, row = 0 } = {}) {
 		let entry = this.chains.get(chain.root);
 		const created = !entry;
 		if (created) {
@@ -551,6 +551,7 @@ export class Workspace extends EventTarget {
 			width: cell.width,
 			visible: cell.visible,
 			axis: inRow && index === 0 ? "row" : "chain",
+			row,
 			still: !!cell.rows,
 			follow: cell.rows ? () => this.reachOfRows(this.cells.get(cell.occurrence) ?? this.leavingCells.get(cell.occurrence)) : undefined,
 		}));
@@ -629,7 +630,7 @@ export class Workspace extends EventTarget {
 	renderRows(cell, animating, strip) {
 		const host = this.cells.get(cell.occurrence).body.firstElementChild;
 		host.style.justifyContent = JUSTIFY[this.navigator.spareSpace];
-		for (const row of cell.rows.rows) {
+		for (const [rowIndex, row] of cell.rows.rows.entries()) {
 			let entry = this.rows.get(row.occurrence);
 			if (!entry) {
 				const element = this.create("div", "supermax-row");
@@ -651,7 +652,7 @@ export class Workspace extends EventTarget {
 			else entry.chain.style.visibility = "hidden";
 			if (row.visible) {
 				this.sizeRowChain(entry, entry.paper);
-				this.renderChain(row.chain, entry.chain, animating, { inRow: true });
+				this.renderChain(row.chain, entry.chain, animating, { inRow: true, row: rowIndex });
 				this.followRow(entry, row.occurrence, this.chains.get(row.chain.root)?.strip);
 			}
 		}

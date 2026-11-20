@@ -15,6 +15,7 @@ Start with [Migrating from v1 to v2](docs/migrating-to-v2.md). A dependency vers
 ### Added
 
 - Navigator and Workspace provide a branching cell shell, layout declarations, Show, compact rails, dividers, loading content, overlays, presentations and a shared time scale.
+- `VEIL_PRESENTATION` opens, closes and replaces cells by lifting and lowering a veil in the cell's own surface colour, without rotating or travelling, for workspaces with large cells. Presentation poses may carry `duration`, `easing` and `delay`, and a motion may set `follow: false` and `travel(pixels)`.
 
 ### Retained
 
