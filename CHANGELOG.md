@@ -1,6 +1,6 @@
 # Changelog
 
-## 2.0.0 (unreleased)
+## 2.0.0 (2026-11-20)
 
 Start with [Migrating from v1 to v2](docs/migrating-to-v2.md). A dependency version bump alone does not migrate the host's behavior, and adopting the new Workspace is a separate choice.
 
@@ -75,4 +75,4 @@ Start with [Migrating from v1 to v2](docs/migrating-to-v2.md). A dependency vers
 
 - `CellCollection`, `CellProxy` and `CellStrip` remain exported for hosts that retain their existing renderer, subject to the compatibility changes above.
 
-The package manifest's version is not evidence of a published release. This entry and the migration guide are prepared for a future v2 release; publication and release metadata are separate steps.
+2.0.0 is the `master` branch on GitHub. It is not on the npm registry; install it from a git reference as the README describes.
