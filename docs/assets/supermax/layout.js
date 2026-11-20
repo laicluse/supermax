@@ -250,8 +250,28 @@ function sessionBounds(base, session, hard) {
 	return { min: hard ? size : base.min, max: size, preferred: size, ask: hard ? size : base.ask ?? base.min, elastic: !!base.elastic };
 }
 
-function sessionsHold(bounds, budget) {
-	return bounds.reduce((sum, bound) => sum + (bound.session === null ? bound.min : Math.min(bound.reach ?? bound.max, Math.max(bound.min, bound.session))), 0) <= budget;
+function distributeSessions(configs, bounds, budget, anchor, curve) {
+	const distribute = (members) => snapAllocation(new CellCollection(members, curve, "min").distribute(budget, anchor));
+	const minimum = (bound) => Math.min(bound.min, bound.steps?.[0] ?? bound.min);
+	if (bounds.reduce((sum, bound) => sum + bound.min, 0) > budget) return distribute(configs.map((config, index) => ({ ...config, ...sessionBounds(bounds[index], bounds[index].session, false) })));
+	let allocation = distribute(configs);
+	const sized = [...configs];
+	for (const [index, bound] of bounds.entries()) {
+		if (bound.session === null || configs[index].id === anchor) continue;
+		let before = 0;
+		for (let prefix = 0; prefix < index; prefix += 1) {
+			const size = allocation.cells[prefix].actual;
+			before += size;
+			sized[prefix] = { ...sized[prefix], min: size, max: size, elastic: false };
+		}
+		const after = bounds.slice(index + 1).reduce((sum, next) => sum + minimum(next), 0);
+		const maximum = Math.max(minimum(bound), Math.min(bound.reach ?? bound.max, budget - before - after));
+		const size = Math.min(maximum, Math.max(minimum(bound), bound.session));
+		sized[index] = { ...configs[index], min: size, max: size, elastic: false };
+		for (let suffix = index + 1; suffix < sized.length; suffix += 1) sized[suffix] = { ...sized[suffix], min: minimum(bounds[suffix]) };
+		allocation = distribute(sized);
+	}
+	return allocation;
 }
 
 function zoomAnchors(model) {
@@ -331,12 +351,11 @@ function allocateChain(model, cells, width) {
 		if (fold.has(unit.occurrence.id)) return { min: floorOf(unit), max: floorOf(unit), preferred: null, session: null };
 		return { ...unit.own, min: Math.min(floorOf(unit), unit.own.max), session: model.sizeOf(unit.occurrence.id, "width") };
 	});
-	const hard = sessionsHold(bounds, width);
 	const configs = members.map((unit, index) => {
-		const config = { id: unit.occurrence.id, title: unit.occurrence.title, keep: unit.keep, ...sessionBounds(bounds[index], bounds[index].session, hard) };
+		const config = { id: unit.occurrence.id, title: unit.occurrence.title, keep: unit.keep, ...sessionBounds(bounds[index], null, false) };
 		return unit.occurrence.id === anchor ? { ...config, zoomable: true, elastic: true } : config;
 	});
-	const sharing = snapAllocation(new CellCollection(configs, model.curve ?? DEFAULT_CURVE, "min").distribute(width, anchor));
+	const sharing = distributeSessions(configs, bounds, width, anchor, model.curve ?? DEFAULT_CURVE);
 	preserveFoldAllocation(model, cells, bounds, sharing, fold);
 	const byId = new Map(sharing.cells.map((cell) => [cell.config.id, cell]));
 	const allocation = { ...sharing, cells: cells.map((occurrence) => byId.get(occurrence.id) ?? { config: { id: occurrence.id, title: occurrence.title }, actual: 0, visible: false }) };
@@ -480,8 +499,8 @@ function layoutRows(model, split, width, height, containerInView) {
 		const activeIndex = roots.findIndex((root) => root.id === active);
 		const folded = new Set(rowFolds(activeIndex, !!focus));
 		const bounds = shown.map((index) => folded.has(index) ? { min: foldSize(definition[index]), max: foldSize(definition[index]), preferred: null, session: null } : { ...heightBounds(definition[index]), session: model.sizeOf(roots[index].id, "height") });
-		const hard = sessionsHold(bounds, budget);
-		const allocation = snapAllocation(new CellCollection(shown.map((index, position) => ({ id: roots[index].id, title: roots[index].title, keep: overflowMode(definition[index]) === "keep" || folded.has(index) || index >= Math.max(0, activeIndex), ...sessionBounds(bounds[position], bounds[position].session, hard) })), model.curve ?? DEFAULT_CURVE, "min").distribute(budget, null));
+		const configs = shown.map((index, position) => ({ id: roots[index].id, title: roots[index].title, keep: overflowMode(definition[index]) === "keep" || folded.has(index) || index >= Math.max(0, activeIndex), ...sessionBounds(bounds[position], null, false) }));
+		const allocation = distributeSessions(configs, bounds, budget, null, model.curve ?? DEFAULT_CURVE);
 		return { byId: new Map(allocation.cells.map((cell) => [cell.config.id, cell])), folded };
 	};
 	const allocation = allocate();

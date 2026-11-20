@@ -285,7 +285,8 @@ export class CellStrip {
 					const revealed = !old && !this.follows();
 					const neighbourOpens = arriving.includes(next[next.indexOf(entry) + 1]);
 					const surviving = entry.visible && !entry.folded && !entry.departing && !neighbourOpens;
-					const anchoredLeft = revealed || ((to > from || surviving) && old && !old.overlay && Math.abs(left - old.currentRect) + STILL < Math.abs(left + to - old.currentRect - from));
+					// allow-comment: a split's rows lay out from its left edge and move on their own timeline, so its room grows and shrinks at the right; sliding the split under a fixed right edge would bare the canvas beside the rows.
+					const anchoredLeft = revealed || entry.still || ((to > from || surviving) && old && !old.overlay && Math.abs(left - old.currentRect) + STILL < Math.abs(left + to - old.currentRect - from));
 					if (anchoredLeft || entry.follows) this.geometry.push(animateGeometry(box, [{ width: `${from}px`, marginRight: "0px" }, { width: `${to}px`, marginRight: "0px" }], delay));
 					else this.geometry.push(animateGeometry(box, [{ marginRight: `${from - card}px` }, { marginRight: `${to - card}px` }], delay));
 					if (entry.follows) this.geometry.push(animateGeometry(entry.element, [{ width: `${from}px` }, { width: `${to}px` }], delay));

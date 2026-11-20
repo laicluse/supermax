@@ -217,6 +217,10 @@
 	height: 8px;
 	cursor: row-resize;
 }
+.supermax-divider.is-fixed {
+	cursor: default;
+	pointer-events: none;
+}
 .supermax-divider-handle {
 	position: absolute;
 	inset: 0;

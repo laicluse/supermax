@@ -1843,7 +1843,7 @@ test("a long chain leaves the host's responsive albums menu at its declared mini
 	assert.equal(await page.locator(`${menu} .album-item-icon`).first().isVisible(), true, "the icons remain usable at the supported minimum height");
 });
 
-test("a dragged divider follows the pointer while every cell in its chain gives way within its own bounds, and resets to the app preference", async () => {
+test("a dragged divider sizes its preceding cell and resets its preference", async () => {
 	await openDemo([open("album:coast", "albums")]);
 	await resize([[1200, 640], [420, 640]]);
 	const thumbnails = inFrame("a", `[data-occurrence="${coast.row("thumbnails")}"]`);

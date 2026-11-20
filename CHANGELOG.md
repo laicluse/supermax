@@ -6,6 +6,10 @@ Start with [Migrating from v1 to v2](docs/migrating-to-v2.md). A dependency vers
 
 ### Workspace composition
 
+- A following split yields preferred width to a resized column while keeping its row content visible at the declared minimums. A wide list no longer stops at the split’s preferred width.
+
+- A divider defines only its preceding cell or row; earlier allocations stay put and later content shares the remaining room normally. Fixed or stationary gutters no longer resize a different column or enter the active resize state. Reset clears only the size belonging to that gutter.
+
 - Independent splits can follow full-height cells along the root chain, retaining their own row windows and correct path sync and zoom. The guides document `Navigator.startRows()` for the initial task row.
 - A fold between two full cells or rows opens toward the neighbour that yields. Its handle, hinge and drag direction follow that moving gutter, where a drag used to grow the fold away from a handle left on the other edge.
 - Starting or cancelling a fold drag no longer restyles the content inside the cells it trades. The shell keeps its cell gutter and paper widths from inheriting into content, leaves `inert` alone until the drag settles, and relies on `inert` instead of `pointer-events` for a folded body. With about 52000 elements in a folding cell, the first drag frame dropped from 146 to 89 ms and the cancel from 145 ms to below 50 ms; the rest is the content's own layout and paint.

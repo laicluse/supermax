@@ -1,28 +1,8 @@
-// allow-comment: an edge between two neighbours follows the pointer as far as the min and max of every part on both sides allow, the parts nearest the edge giving way first; the far side fills toward the end of the room before canvas shows.
 export function followEdge(parts, edge, target, room) {
-	const left = parts.slice(0, edge + 1);
-	const right = parts.slice(edge + 1);
-	const total = (list) => list.reduce((sum, entry) => sum + entry.size, 0);
-	const current = total(left);
-	const growth = left.reduce((sum, entry) => sum + Math.max(0, entry.max - entry.size), 0);
-	const shrink = left.reduce((sum, entry) => sum + Math.max(0, entry.size - entry.min), 0);
-	const roomRight = room - current - right.reduce((sum, entry) => sum + entry.min, 0);
-	const wanted = Math.round(target) - current;
-	const move = wanted > 0 ? Math.min(wanted, growth, Math.max(0, roomRight)) : -Math.min(-wanted, shrink);
-	const sizes = new Map();
-	spread([...left].reverse(), move, sizes);
-	const far = room - current - move - total(right);
-	spread(right, far < 0 ? far : Math.min(far, right.reduce((sum, entry) => sum + Math.max(0, entry.max - entry.size), 0)), sizes);
-	return sizes;
-}
-
-function spread(nearestFirst, amount, sizes) {
-	let remaining = amount;
-	for (const entry of nearestFirst) {
-		if (remaining === 0) break;
-		const step = remaining > 0 ? Math.min(remaining, Math.max(0, entry.max - entry.size)) : -Math.min(-remaining, Math.max(0, entry.size - entry.min));
-		if (step === 0) continue;
-		sizes.set(entry.id, entry.size + step);
-		remaining -= step;
-	}
+	const entry = parts[edge];
+	const before = parts.slice(0, edge).reduce((sum, part) => sum + part.size, 0);
+	const after = parts.slice(edge + 1).reduce((sum, part) => sum + part.min, 0);
+	const maximum = Math.max(entry.min, Math.min(entry.max, room - before - after));
+	const size = Math.min(maximum, Math.max(entry.min, Math.round(target) - before));
+	return new Map(size === entry.size ? [] : [[entry.id, size]]);
 }
