@@ -82,7 +82,7 @@ export function boundsOf(model, occurrence, resizing = false) {
 		bounds.preferred = Math.max(bounds.preferred, preferred);
 		bounds.ask = Math.max(bounds.ask, ask);
 		bounds.max = Math.max(bounds.max, max);
-		bounds.reach = Math.max(bounds.reach, elastic ? Infinity : max);
+		bounds.reach = Math.max(bounds.reach, cells.reduce((sum, cell) => sum + widthBounds(cell).reach, 0));
 		bounds.elastic ||= elastic;
 	});
 	const length = Math.max(...rowSteps.map((steps) => steps.length));
@@ -323,9 +323,12 @@ function allocateChain(model, cells, width) {
 	if (settled.total > width) settled = settleChain(model, cells, width, protectedIndex, minDemand, true);
 	const { fold, units, floorOf } = settled;
 	const members = units.filter((unit) => !unit.hidden);
-	const bounds = members.map((unit) => {
+	// allow-comment: a split the user sized hands that width to its rows: the newest cell of a row takes what its row was given, up to where its next form takes over, as if the divider were its own.
+	const split = chainRootOf(model, cells[0]).parent;
+	const sizedRow = !!split && model.sizeOf(split, "width") !== null;
+	const bounds = members.map((unit, index) => {
 		if (fold.has(unit.occurrence.id)) return { min: floorOf(unit), max: floorOf(unit), preferred: null, session: null };
-		return { ...unit.own, min: Math.min(floorOf(unit), unit.own.max), session: model.sizeOf(unit.occurrence.id, "width") };
+		return { ...unit.own, min: Math.min(floorOf(unit), unit.own.max), session: model.sizeOf(unit.occurrence.id, "width") ?? (sizedRow && index === members.length - 1 ? width : null) };
 	});
 	const configs = members.map((unit, index) => {
 		const config = { id: unit.occurrence.id, title: unit.occurrence.title, keep: unit.keep, ...sessionBounds(bounds[index], null, false) };

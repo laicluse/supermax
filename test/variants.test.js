@@ -167,6 +167,19 @@ const bounded = new Navigator({ root: "home", minViewportHeight: 80, destination
 bounded.resize({ width: 140, height: 400 }); bounded.open("split");
 assert.equal(bounded.layout().cells.get("home/split").resizeMax, 300, "a split divider can reach richer forms inside its rows");
 
+const between = new Navigator({ root: "home", minViewportHeight: 80, destinations: {
+	home: { title: "Home", min: 20, max: 20 },
+	tail: { title: "Tail", min: 200, preferred: 200, max: "*" },
+	split: { title: "Split", rows: [{ destination: "one", minHeight: 40, maxHeight: 100 }, { destination: "two", minHeight: 40, preferredHeight: 100, maxHeight: "*" }] },
+	one: { title: "One", min: 40, preferred: 300, max: 300, variants: [{ id: "wide", when: { minWidth: 180 } }, { id: "narrow", min: 40, preferred: 100, max: 179 }] },
+	two: { title: "Two", min: 40, preferred: 300, max: 300, variants: [{ id: "wide", when: { minWidth: 180 } }, { id: "narrow", min: 40, preferred: 100, max: 179 }] },
+} });
+between.resize({ width: 420, height: 400 }); between.open("split");
+for (const size of [120, 150, 179]) {
+	between.setSize("home/split", size);
+	assert.deepEqual(["home/split", "home/split/one", "home/split/two"].map((id) => between.layout().cells.get(id).width), [size, size, size], `a dragged split holds ${size}px between the forms of its row cells`);
+}
+
 // allow-comment: a smaller form on its own is what allocation sees of it: its bounds up to its preference.
 const materialized = (owner, form) => {
 	const merged = { ...owner, ...form };
