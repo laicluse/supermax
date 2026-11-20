@@ -4,6 +4,8 @@ import { CellCollection, CellProxy } from "../src/cell-collection.js";
 const packageApi = await import("@laicluse/supermax");
 assert.equal(packageApi.CellCollection, CellCollection);
 assert.equal(packageApi.CellProxy, CellProxy);
+assert.equal(typeof packageApi.CellStrip, "function");
+assert.equal(globalThis.Supermax.CellStrip, packageApi.CellStrip);
 assert.equal(globalThis.Supermax.CellCollection, CellCollection);
 assert.equal(globalThis.Supermax.CellProxy, CellProxy);
 

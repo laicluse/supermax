@@ -133,4 +133,4 @@ export class CellCollection {
 	}
 }
 
-globalThis.Supermax = { CellCollection, CellProxy };
+globalThis.Supermax = { ...globalThis.Supermax, CellCollection, CellProxy };
