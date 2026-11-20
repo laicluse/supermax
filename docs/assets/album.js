@@ -84,6 +84,19 @@ export function paths(album) {
 	return { album: albumPath, row, photo, metadata, history, edit };
 }
 
+export const remoteKinds = new Set(["metadata", "history", "edit"]);
+
+export function localDestinations() {
+	const all = destinations();
+	return Object.fromEntries(Object.entries(all).filter(([, definition]) => !remoteKinds.has(definition.data.kind)));
+}
+
+export function hintFor(id) {
+	const definition = destinations()[id];
+	if (!definition) return null;
+	return { title: definition.title, min: definition.min, max: definition.max, preferred: definition.preferred };
+}
+
 export function destinations() {
 	const result = { albums: { title: "Albums", ...widths.albums, data: { kind: "albums" } } };
 	for (const album of albums) {
@@ -104,7 +117,7 @@ export function destinations() {
 		}
 		for (const photo of album.photos) {
 			result[key.photo(photo)] = { title: photo.title, ...widths.photo, defaultChild: key.metadata(photo), data: { kind: "photo", album, photo } };
-			result[key.metadata(photo)] = { title: `Metadata ${photo.id.toUpperCase()}`, ...widths.metadata, data: { kind: "metadata", album, photo } };
+			result[key.metadata(photo)] = { title: `Metadata ${photo.id.toUpperCase()}`, ...widths.metadata, defaultChild: key.history(photo), data: { kind: "metadata", album, photo } };
 			result[key.history(photo)] = { title: `History ${photo.id.toUpperCase()}`, ...widths.history, data: { kind: "history", album, photo } };
 			for (const edit of edits) {
 				result[key.edit(photo, edit)] = { title: `${edit.title} (${photo.id.toUpperCase()})`, ...widths.edit, data: { kind: "edit", album, photo, edit } };

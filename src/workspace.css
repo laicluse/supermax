@@ -91,6 +91,32 @@
 	flex: none;
 }
 .supermax-cell-body { flex: 1; min-height: 0; overflow: auto; }
+.supermax-loading, .supermax-error { padding: 12px; font-size: 13px; color: var(--supermax-muted, #5c6b7a); display: flex; flex-direction: column; gap: 8px; }
+.supermax-loading { flex-direction: row; align-items: center; }
+.supermax-loading-mark {
+	width: 14px;
+	height: 14px;
+	border: 2px solid var(--supermax-line, #d6dde5);
+	border-top-color: var(--supermax-accent, #0b6bcb);
+	border-radius: 50%;
+	animation: supermax-spin 900ms linear infinite;
+}
+@media (prefers-reduced-motion: reduce) { .supermax-loading-mark { animation: none; border-top-color: var(--supermax-line, #d6dde5); border-style: dashed; } }
+@keyframes supermax-spin { to { transform: rotate(360deg); } }
+.supermax-error strong { color: var(--supermax-warn, #b4261b); }
+.supermax-error-detail { margin: 0; }
+.supermax-retry {
+	align-self: flex-start;
+	padding: 6px 12px;
+	border: 1px solid var(--supermax-warn, #b4261b);
+	border-radius: 999px;
+	background: var(--supermax-surface, #ffffff);
+	color: var(--supermax-warn, #b4261b);
+	font: inherit;
+	font-size: 13px;
+	cursor: pointer;
+}
+.supermax-retry:hover, .supermax-retry:focus-visible { background: var(--supermax-warn, #b4261b); color: var(--supermax-surface, #ffffff); outline: 2px solid var(--supermax-warn, #b4261b); outline-offset: 2px; }
 .supermax-collapse {
 	margin-left: auto;
 	flex: none;

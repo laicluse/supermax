@@ -25,6 +25,7 @@ try {
 		await page.goto(`${server.url}/#${capture.hash}`);
 		await page.waitForSelector(".supermax-workspace");
 		if (capture.sizes) await page.evaluate((sizes) => window.supermaxDemo.resize(sizes), capture.sizes);
+		await page.waitForFunction(() => window.supermaxDemo.pending === 0 && !document.querySelector(".supermax-cell.is-loading"));
 		await page.waitForTimeout(400);
 		const path = resolve(outputDir, `${capture.name}.png`);
 		await page.locator(".frames").screenshot({ path });

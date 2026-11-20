@@ -30,9 +30,10 @@ export class Workspace extends EventTarget {
 		this.measure();
 	}
 
-	create(tag, className) {
+	create(tag, className, text) {
 		const node = this.document.createElement(tag);
-		node.className = className;
+		if (className) node.className = className;
+		if (text != null) node.textContent = text;
 		return node;
 	}
 
@@ -69,8 +70,8 @@ export class Workspace extends EventTarget {
 		this.render({ animate: false });
 	}
 
-	navigate(destination, { from } = {}) {
-		return this.intent({ type: "open", destination, from });
+	navigate(destination, { from, hint } = {}) {
+		return this.intent(hint ? { type: "open", destination, from, hint } : { type: "open", destination, from });
 	}
 
 	requestBack() {
@@ -168,7 +169,88 @@ export class Workspace extends EventTarget {
 	run(action) {
 		return action.type === "back"
 			? this.navigator.back()
-			: this.navigator.open(action.destination, { from: action.from });
+			: this.navigator.open(action.destination, { from: action.from, hint: action.hint ?? null });
+	}
+
+	define(id, definition) {
+		const result = this.navigator.define(id, definition);
+		for (const [occurrenceId, entry] of this.cells) {
+			const occurrence = this.navigator.get(occurrenceId);
+			if (occurrence?.destination !== id) continue;
+			if (entry.header) entry.header.firstChild.textContent = occurrence.title;
+			entry.element.setAttribute("aria-label", occurrence.title);
+			if (entry.provisional) this.mountContent(entry, occurrence);
+		}
+		this.render({ animate: true });
+		return result;
+	}
+
+	mountContent(entry, occurrence) {
+		const definition = this.navigator.destination(occurrence.destination);
+		entry.generation += 1;
+		const generation = entry.generation;
+		entry.handle.dispose?.();
+		entry.handle = {};
+		entry.provisional = !!definition.provisional;
+		entry.element.classList.toggle("is-provisional", entry.provisional);
+		if (entry.provisional) {
+			this.showLoading(entry, occurrence.title);
+			return;
+		}
+		let outcome;
+		try {
+			outcome = this.content(occurrence, definition, this) ?? {};
+		} catch (error) {
+			this.showError(entry, occurrence, error);
+			return;
+		}
+		const pending = typeof outcome?.then === "function" ? outcome : outcome.pending;
+		if (!pending) {
+			this.settleContent(entry, outcome);
+			return;
+		}
+		this.showLoading(entry, occurrence.title);
+		pending.then(
+			(handle) => { if (entry.generation === generation && this.cells.get(occurrence.id) === entry) this.settleContent(entry, handle ?? {}); },
+			(error) => { if (entry.generation === generation && this.cells.get(occurrence.id) === entry) this.showError(entry, occurrence, error); },
+		);
+	}
+
+	settleContent(entry, handle) {
+		entry.handle = handle;
+		entry.element.classList.remove("is-loading", "is-error");
+		entry.body.replaceChildren(...(handle.element ? [handle.element] : []));
+		handle.update?.(this.navigator.get(entry.element.dataset.occurrence), this);
+		this.dispatchEvent(new CustomEvent("content", { detail: { occurrence: entry.element.dataset.occurrence, state: "loaded" } }));
+	}
+
+	showLoading(entry, title) {
+		entry.element.classList.add("is-loading");
+		entry.element.classList.remove("is-error");
+		const box = this.create("div", "supermax-loading");
+		box.setAttribute("role", "status");
+		box.setAttribute("aria-live", "polite");
+		box.append(this.create("span", "supermax-loading-mark"), this.document.createTextNode(`Loading ${title}`));
+		entry.body.replaceChildren(box);
+		this.dispatchEvent(new CustomEvent("content", { detail: { occurrence: entry.element.dataset.occurrence, state: "loading" } }));
+	}
+
+	showError(entry, occurrence, error) {
+		entry.element.classList.add("is-error");
+		entry.element.classList.remove("is-loading");
+		const box = this.create("div", "supermax-error");
+		box.setAttribute("role", "alert");
+		box.append(this.create("strong", null, ""), this.document.createTextNode(""));
+		box.firstChild.textContent = `${occurrence.title} could not load.`;
+		const detail = this.create("p", "supermax-error-detail");
+		detail.textContent = error?.message ?? String(error);
+		const retry = this.create("button", "supermax-retry");
+		retry.type = "button";
+		retry.textContent = "Retry";
+		retry.addEventListener("click", () => this.mountContent(entry, this.navigator.get(occurrence.id)));
+		box.append(detail, retry);
+		entry.body.replaceChildren(box);
+		this.dispatchEvent(new CustomEvent("content", { detail: { occurrence: occurrence.id, state: "error", error } }));
 	}
 
 	apply(action, { animate = true, focus = false } = {}) {
@@ -531,7 +613,6 @@ export class Workspace extends EventTarget {
 		element.setAttribute("aria-label", occurrence.title);
 		const body = this.create("div", "supermax-cell-body");
 		let header = null;
-		let handle = {};
 		if (isSplit(definition)) {
 			element.classList.add("is-split");
 			body.append(this.create("div", "supermax-rows"));
@@ -539,13 +620,12 @@ export class Workspace extends EventTarget {
 			header = this.create("header", "supermax-cell-title");
 			header.textContent = occurrence.title;
 			element.append(header);
-			handle = this.content(occurrence, definition, this) ?? {};
-			if (handle.element) body.append(handle.element);
 		}
 		element.append(body);
-		entry = { element, body, header, handle, parent: occurrence.parent, rail: null, collapseButton: null };
+		entry = { element, body, header, handle: {}, parent: occurrence.parent, rail: null, collapseButton: null, generation: 0, provisional: false };
 		if (!isSplit(definition) && definition.compact) this.mountCompact(entry, occurrence, definition);
 		this.cells.set(occurrenceId, entry);
+		if (!isSplit(definition)) this.mountContent(entry, occurrence);
 		return element;
 	}
 

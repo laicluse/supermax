@@ -71,6 +71,10 @@ body {
 	cursor: pointer;
 }
 .scenario:hover, .reset:hover { border-color: var(--accent); }
+.field { display: flex; justify-content: space-between; align-items: center; gap: 8px; font-size: 13px; }
+.field select { font: inherit; font-size: 13px; padding: 4px 6px; border: 1px solid var(--line); border-radius: 6px; background: var(--card); }
+.requests { font-size: 12px; color: var(--muted); min-height: 1.2em; }
+.viewer-line { margin: 0 0 8px; font-size: 12px; color: var(--muted); }
 .reset { font-weight: 600; }
 
 .stage { overflow: auto; scrollbar-gutter: stable; }

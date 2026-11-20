@@ -268,6 +268,60 @@ scenario("a dragged size is a session preference inside min and max, and rows fo
 	assert.deepEqual(instance.layout(), instance.layout(), "the layout stays a pure function with sizes applied");
 });
 
+scenario("a hinted or lazy destination opens provisionally and completes when its definition arrives", () => {
+	const instance = model(1000, 500);
+	openGallery(instance);
+	assert.equal(instance.open("remote:a", { from: item("list", "a") }).reason, "unknown-destination", "without a hint and without lazy mode an unknown id is refused");
+	const hinted = instance.open("remote:a", { from: item("list", "a"), hint: { title: "Remote A", min: 120, max: 240 } });
+	assert.equal(hinted.ok, true);
+	assert.equal(instance.destination("remote:a").provisional, true);
+	assert.equal(instance.get(`${item("list", "a")}/remote:a`).title, "Remote A");
+	assert.deepEqual(titles(instance), ["Gallery", "Remote A"]);
+	assert.deepEqual([instance.layout().chain.cells[1].rows.rows[0].chain.cells[2].min, instance.layout().chain.cells[1].rows.rows[0].chain.cells[2].max], [120, 240], "the hint sizes the placeholder cell");
+	const group = instance.groupOf(instance.get(`${item("list", "a")}/remote:a`)).id;
+	instance.open("item:b", { from: row("grid") });
+	const result = instance.define("remote:a", { title: "Remote A!", min: 150, max: 260, defaultChild: "detail:b" });
+	assert.deepEqual(result.completed, [`${item("list", "a")}/remote:a`]);
+	assert.equal(instance.get(`${item("list", "a")}/remote:a`).title, "Remote A!", "the definition updates the open occurrence in place");
+	assert.equal(instance.occurrences.size, [...instance.occurrences.keys()].length, "no second occurrence for the same opening");
+	const late = instance.get(`${item("list", "a")}/remote:a/detail:b`);
+	assert.ok(late, "the late default opened");
+	assert.equal(late.group, group, "and joined the group that started the navigation, not the newer one");
+	assert.deepEqual(titles(instance), ["Gallery", "Remote A!", "Item B"], "Back order is unchanged by the late arrival");
+	assert.equal(instance.layout().chain.cells[1].rows.rows[0].chain.cells[2].min, 150, "a hint mismatch is repaired in place");
+
+	const gone = model(1000, 500);
+	openGallery(gone);
+	gone.open("remote:b", { from: item("tags", "a"), hint: { title: "Remote B", min: 100, max: 200 } });
+	gone.back();
+	const after = gone.define("remote:b", { title: "Remote B", min: 100, max: 200, defaultChild: "detail:c" });
+	assert.deepEqual(after.completed, [], "a definition arriving after Back opens nothing");
+	assert.ok(!gone.get(`${item("tags", "a")}/remote:b`), "the closed group does not return");
+
+	const chosen = model(1000, 500);
+	openGallery(chosen);
+	chosen.open("remote:c", { from: item("tags", "a"), hint: { title: "Remote C", min: 100, max: 200 } });
+	chosen.open("detail:b", { from: `${item("tags", "a")}/remote:c` });
+	chosen.define("remote:c", { title: "Remote C", min: 100, max: 200, defaultChild: "detail:c" });
+	assert.equal(chosen.child(chosen.get(`${item("tags", "a")}/remote:c`)).destination, "detail:b", "an explicit selection beats a late default");
+
+	const lazy = new Navigator({ destinations: { ...destinations }, root: "root", minViewportHeight, chrome, lazy: true });
+	lazy.resize({ width: 1000, height: 500 });
+	lazy.open("gallery", { from: "root" });
+	const generic = lazy.open("remote:d", { from: item("list", "a") });
+	assert.equal(generic.ok, true, "in lazy mode an unknown id opens a generic loading cell");
+	assert.equal(lazy.destination("remote:d").min, 200);
+});
+
+scenario("default chains are finite and do not repeat a destination already in the chain", () => {
+	const loopy = new Navigator({ destinations: { ...destinations, "loop:a": { title: "Loop A", min: 100, max: 200, defaultChild: "loop:b" }, "loop:b": { title: "Loop B", min: 100, max: 200, defaultChild: "loop:a" } }, root: "root", minViewportHeight, chrome });
+	loopy.resize({ width: 2000, height: 500 });
+	loopy.open("gallery", { from: "root" });
+	loopy.open("loop:a", { from: item("list", "a") });
+	const chain = loopy.layout().chain.cells[1].rows.rows[0].chain.cells.map((cell) => cell.title);
+	assert.deepEqual(chain.slice(-2), ["Loop A", "Loop B"], "the chain stops where a destination would repeat");
+});
+
 scenario("the focus title carries its ancestors as context", () => {
 	const wide = model(1000);
 	openGallery(wide);

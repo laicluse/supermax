@@ -4,11 +4,13 @@
 import { chainCells, chainRootOf, chainWidth, isSplit, layoutWorkspace, validateSplit } from "./layout.js";
 
 const DEFAULT_CHROME = { navbar: 44, rowTab: 32, maxRows: 4, maxCompact: 2 };
+const GENERIC_CELL = { min: 200, max: 320 };
 
 export class Navigator {
-	constructor({ destinations, root, minViewportHeight, chrome = {} }) {
+	constructor({ destinations, root, minViewportHeight, chrome = {}, lazy = false }) {
 		if (!Number.isFinite(minViewportHeight)) throw new TypeError("minViewportHeight must be a finite number of pixels");
 		this.destinations = destinations;
+		this.lazy = lazy;
 		this.rootDestination = root;
 		this.minViewportHeight = minViewportHeight;
 		this.chrome = { ...DEFAULT_CHROME, ...chrome };
@@ -33,6 +35,40 @@ export class Navigator {
 
 	destination(id) {
 		return Object.hasOwn(this.destinations, id) ? this.destinations[id] : null;
+	}
+
+	define(id, definition) {
+		const previous = this.destination(id);
+		this.destinations[id] = { ...definition, provisional: false };
+		const completed = [];
+		for (const occurrence of this.occurrences.values()) {
+			if (occurrence.destination !== id) continue;
+			occurrence.title = definition.title;
+			const group = this.groupOf(occurrence);
+			if (!previous?.provisional || !group) continue;
+			if (group.root === occurrence.id) group.title = definition.title;
+			this.openDefaults(occurrence, group);
+			completed.push(occurrence.id);
+		}
+		for (const occurrence of [...this.occurrences.values()]) {
+			const parentDefinition = this.destination(occurrence.destination);
+			if (parentDefinition?.defaultChild !== id || parentDefinition.provisional || occurrence.children[0]) continue;
+			const group = this.groupOf(occurrence);
+			if (!group) continue;
+			const before = occurrence.children.length;
+			this.openDefaults(occurrence, group);
+			if (occurrence.children.length > before) completed.push(occurrence.children[0]);
+		}
+		return { previous, completed };
+	}
+
+	provisional(id, hint) {
+		const definition = { title: hint?.title ?? id, min: hint?.min ?? GENERIC_CELL.min, max: hint?.max ?? GENERIC_CELL.max, provisional: true };
+		if (hint?.preferred) definition.preferred = hint.preferred;
+		if (hint?.defaultChild) definition.defaultChild = hint.defaultChild;
+		if (definition.min > definition.max) definition.max = definition.min;
+		this.destinations[id] = definition;
+		return definition;
 	}
 
 	get(id) {
@@ -73,10 +109,11 @@ export class Navigator {
 		return occurrence;
 	}
 
-	open(destinationId, { from } = {}) {
+	open(destinationId, { from, hint = null } = {}) {
 		const parent = this.get(from ?? this.root.id);
 		if (!parent) return { ok: false, reason: "source-closed", source: from };
-		const definition = this.destination(destinationId);
+		let definition = this.destination(destinationId);
+		if (!definition && typeof destinationId === "string" && destinationId.length > 0 && (hint || this.lazy)) definition = this.provisional(destinationId, hint);
 		if (!definition) return { ok: false, reason: "unknown-destination", destination: destinationId };
 		if (isSplit(this.destination(parent.destination))) return { ok: false, reason: "split-source", source: parent.id };
 		if (isSplit(definition)) {
@@ -126,12 +163,16 @@ export class Navigator {
 	openDefaults(occurrence, group) {
 		const definition = this.destination(occurrence.destination);
 		if (isSplit(definition)) {
-			const rowRoots = definition.rows.map((row, index) => this.createOccurrence(row.destination, occurrence, index, group));
-			rowRoots.forEach((rowRoot) => this.openDefaults(rowRoot, group));
+			if (occurrence.children.length === 0) {
+				const rowRoots = definition.rows.map((row, index) => this.createOccurrence(row.destination, occurrence, index, group));
+				rowRoots.forEach((rowRoot) => this.openDefaults(rowRoot, group));
+			}
 			return;
 		}
+		if (definition.provisional || occurrence.children[0]) return;
 		const candidate = definition.defaultChild;
 		if (!candidate || !this.destination(candidate)) return;
+		if (chainCells(this, chainRootOf(this, occurrence)).some((cell) => cell.destination === candidate)) return;
 		if (isSplit(this.destination(candidate)) && !validateSplit(this, candidate, occurrence).ok) return;
 		if (!this.fits(occurrence, candidate)) return;
 		const child = this.createOccurrence(candidate, occurrence, 0, group);

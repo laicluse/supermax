@@ -61,7 +61,9 @@ The workspace element needs a height of its own; the workspace fills it, observe
 
 `navigate(destination, { from })` and `requestBack()` are intents. Without `onIntent` the workspace applies them itself, moves keyboard focus to the opened content or to the selector a Back returned to, and returns the result. With `onIntent(action, workspace)` your layer decides what happens: call `apply(action, { focus })` on every workspace that should follow, with `focus: true` on the one that received the click. That is how the demo drives two workspaces from one click. `replay(actions)` rebuilds a workspace from a list of actions and renders once; `restore(snapshot)` puts back a `navigator.snapshot()` and returns false when the snapshot names destinations that no longer exist. The workspace emits `rejected` when the model refused an action, `change` after every action, and `render` with the computed layout.
 
-The navigation contract (groups, Back, auto-opening, validation, deep links) is written down in the [application-shell guide](docs/application-shell.md).
+A destination may also declare `compact: { min, content? }` (a narrow rail with a peek, see the guide), `preferred` (its share when the chain has room beyond every minimum; dividers between cells let the user override it for the session), and an action may carry a `hint` so a destination opens before its definition has loaded; `workspace.define(id, definition)` completes it in place. The `content` callback may return `{ pending }` with a promise for a cell that loads, with built-in loading and error states and a Retry control.
+
+The navigation contract (groups, Back, auto-opening, validation, deep links, compact cells, sizes, loading) is written down in the [application-shell guide](docs/application-shell.md).
 
 ## Demo
 

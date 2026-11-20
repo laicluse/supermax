@@ -1,10 +1,9 @@
 import { Navigator, Workspace } from "./supermax/index.js";
-import { albums, destinations, edits, ids, minViewportHeight, paths } from "./album.js";
+import { albums, edits, hintFor, ids, localDestinations, minViewportHeight, paths, remoteKinds } from "./album.js";
 import { decodeLog, encodeLog } from "./deeplink.js";
 
-const definitions = destinations();
 const coast = paths(albums[0]);
-definitions.albums.compact = { min: 48, content: renderAlbumIcons };
+const open = (destination, from, hint = null) => (hint ? { type: "open", destination, from, hint } : { type: "open", destination, from });
 
 const frames = [
 	{ key: "a", name: "Frame A", width: 960, height: 640 },
@@ -18,7 +17,6 @@ const sizePresets = [
 	{ label: "Below minimum B", sizes: [[960, 640], [420, 300]] },
 ];
 
-const open = (destination, from) => ({ type: "open", destination, from });
 const scenarios = [
 	{ label: "Open the Coast album", actions: [open("album:coast", "albums")] },
 	{
@@ -31,7 +29,12 @@ const scenarios = [
 	},
 	{
 		label: "Click metadata that is already open",
-		actions: [open("album:coast", "albums"), open("coast:metadata:a", coast.photo("thumbnails", "a"))],
+		actions: [open("album:coast", "albums"), open("coast:metadata:a", coast.photo("thumbnails", "a"), hintFor("coast:metadata:a"))],
+	},
+	{
+		label: "Slow metadata, then a failing history",
+		network: { delay: "1500", fail: "" },
+		actions: [open("album:coast", "albums"), open("coast:photo:c", coast.row("people"))],
 	},
 	{
 		label: "Replace Photo A by B in one row",
@@ -39,11 +42,11 @@ const scenarios = [
 	},
 	{
 		label: "Long chain: history and one edit",
-		actions: [open("album:coast", "albums"), open("coast:history:a", coast.metadata("thumbnails", "a")), open("coast:edit:a:2", coast.history("thumbnails", "a"))],
+		actions: [open("album:coast", "albums"), open("coast:history:a", coast.metadata("thumbnails", "a"), { title: "History A" }), open("coast:edit:a:2", coast.history("thumbnails", "a"), hintFor("coast:edit:a:2"))],
 	},
 	{
 		label: "Collapse photo and history in that chain",
-		actions: [open("album:coast", "albums"), open("coast:history:a", coast.metadata("thumbnails", "a")), open("coast:edit:a:2", coast.history("thumbnails", "a"))],
+		actions: [open("album:coast", "albums"), open("coast:history:a", coast.metadata("thumbnails", "a"), { title: "History A" }), open("coast:edit:a:2", coast.history("thumbnails", "a"), hintFor("coast:edit:a:2"))],
 		local: (frame) => [coast.photo("thumbnails", "a"), coast.history("thumbnails", "a")].forEach((id) => frame.workspace.navigator.collapse(id, true)),
 	},
 	{
@@ -85,7 +88,17 @@ function renderAlbumIcons(occurrence, workspace) {
 }
 
 function renderContent(occurrence, definition, workspace) {
-	return renderers[definition.data.kind](occurrence, definition.data, workspace);
+	const kind = definition.data?.kind;
+	if (remoteKinds.has(kind)) {
+		return { pending: session.fetchContent(occurrence.destination).then((content) => renderers[kind](occurrence, definition.data, workspace, content)) };
+	}
+	return renderers[kind](occurrence, definition.data, workspace);
+}
+
+function prefetchOnHover(button, id) {
+	let timer = null;
+	button.addEventListener("pointerenter", () => { timer = setTimeout(() => session.fetchManifest(id), 100); });
+	button.addEventListener("pointerleave", () => clearTimeout(timer));
 }
 
 function renderAlbums(occurrence, data, workspace) {
@@ -189,7 +202,8 @@ function renderPhoto(occurrence, data, workspace) {
 	caption.rows = 2;
 	const link = element("button", "metadata-link", "Metadata");
 	link.type = "button";
-	link.addEventListener("click", () => workspace.navigate(key.metadata(photo), { from: occurrence.id }));
+	link.addEventListener("click", () => workspace.navigate(key.metadata(photo), { from: occurrence.id, hint: hintFor(key.metadata(photo)) }));
+	prefetchOnHover(link, key.metadata(photo));
 	const actions = element("div", "photo-actions");
 	actions.append(caption, link);
 	host.append(picture, actions);
@@ -205,10 +219,11 @@ function renderPhoto(occurrence, data, workspace) {
 	};
 }
 
-function renderMetadata(occurrence, data, workspace) {
+function renderMetadata(occurrence, data, workspace, content) {
 	const { album, photo } = data;
 	const key = ids(album);
 	const host = element("div", "metadata");
+	host.append(element("p", "viewer-line", `Viewing as ${content.viewer}`));
 	const list = element("dl");
 	for (const [term, value] of [["Date", photo.date], ["Place", photo.place], ["Tags", photo.tags], ["Album", album.title]]) {
 		list.append(element("dt", null, term), element("dd", null, value));
@@ -216,7 +231,7 @@ function renderMetadata(occurrence, data, workspace) {
 	host.append(list);
 	const link = element("button", "metadata-link", "Edit history");
 	link.type = "button";
-	link.addEventListener("click", () => workspace.navigate(key.history(photo), { from: occurrence.id }));
+	link.addEventListener("click", () => workspace.navigate(key.history(photo), { from: occurrence.id, hint: { title: `History ${photo.id.toUpperCase()}` } }));
 	host.append(link);
 	const notes = element("ol", "history");
 	for (let index = 1; index <= 24; index += 1) notes.append(element("li", null, `Note ${index}: adjusted exposure by ${(index % 5) - 2} stops`));
@@ -238,7 +253,8 @@ function renderHistory(occurrence, data, workspace) {
 		const button = element("button", "edit-item", edit.title);
 		button.type = "button";
 		button.dataset.destination = key.edit(photo, edit);
-		button.addEventListener("click", () => workspace.navigate(key.edit(photo, edit), { from: occurrence.id }));
+		button.addEventListener("click", () => workspace.navigate(key.edit(photo, edit), { from: occurrence.id, hint: hintFor(key.edit(photo, edit)) }));
+		prefetchOnHover(button, key.edit(photo, edit));
 		item.append(button);
 		host.append(item);
 		return button;
@@ -252,10 +268,10 @@ function renderHistory(occurrence, data, workspace) {
 	};
 }
 
-function renderEdit(occurrence, data) {
+function renderEdit(occurrence, data, workspace, content) {
 	const { edit, photo } = data;
 	const host = element("div", "edit");
-	host.append(element("h4", null, edit.title), element("p", null, edit.note));
+	host.append(element("p", "viewer-line", `Viewing as ${content.viewer}`), element("h4", null, edit.title), element("p", null, edit.note));
 	const note = element("textarea", "caption");
 	note.rows = 2;
 	note.placeholder = "Reviewer note";
@@ -267,9 +283,108 @@ function renderEdit(occurrence, data) {
 class Session {
 	constructor() {
 		this.log = [];
+		this.requests = [];
+		this.inflight = new Map();
+		this.replaying = null;
+		this.controls = {
+			delay: document.querySelector("[data-delay]"),
+			fail: document.querySelector("[data-fail]"),
+			context: document.querySelector("[data-context]"),
+			requests: document.querySelector("[data-requests]"),
+		};
+		this.controls.context.addEventListener("change", () => this.setContext(this.controls.context.value));
 		this.frames = frames.map((frame) => this.buildFrame(frame));
 		window.addEventListener("popstate", (event) => this.arrive(event.state));
 		this.arrive(history.state);
+	}
+
+	get context() {
+		return this.controls.context.value;
+	}
+
+	get pending() {
+		return this.inflight.size + (this.replaying ? 1 : 0);
+	}
+
+	apiUrl(kind, id) {
+		const params = new URLSearchParams({ context: this.context });
+		if (Number(this.controls.delay.value) > 0) params.set("delay", this.controls.delay.value);
+		if (this.controls.fail.value) params.set("fail", this.controls.fail.value);
+		return `/api/${kind}/${encodeURIComponent(id)}?${params}`;
+	}
+
+	request(kind, id) {
+		const context = this.context;
+		const key = `${kind}|${context}|${id}`;
+		if (this.inflight.has(key)) return this.inflight.get(key);
+		const url = this.apiUrl(kind, id);
+		this.requests.push({ kind, id, context, url });
+		this.controls.requests.textContent = `${this.requests.length} request${this.requests.length === 1 ? "" : "s"}, last: ${kind} ${id}`;
+		const promise = fetch(url)
+			.then(async (response) => {
+				if (!response.ok) throw new Error(`${kind} for ${id} answered ${response.status}`);
+				const payload = await response.json();
+				if (this.context !== context) throw new Error(`${kind} for ${id} arrived for viewer ${context}, now viewing as ${this.context}`);
+				return payload;
+			})
+			.finally(() => { if (this.inflight.get(key) === promise) this.inflight.delete(key); });
+		this.inflight.set(key, promise);
+		return promise;
+	}
+
+	fetchManifest(id) {
+		if (this.frames.every((frame) => frame.workspace.navigator.destination(id) && !frame.workspace.navigator.destination(id).provisional)) return Promise.resolve(null);
+		return this.request("manifest", id).then((manifest) => {
+			for (const frame of this.frames) frame.workspace.define(id, manifest);
+			this.completeDefaults();
+			this.record("replace");
+			return manifest;
+		}, () => null);
+	}
+
+	fetchContent(id) {
+		return this.request("content", id);
+	}
+
+	completeDefaults() {
+		const waits = [];
+		for (const frame of this.frames) {
+			const model = frame.workspace.navigator;
+			for (const occurrence of model.occurrences.values()) {
+				const definition = model.destination(occurrence.destination);
+				if (definition?.provisional) waits.push(this.fetchManifest(occurrence.destination));
+				else if (definition?.defaultChild && !model.destination(definition.defaultChild) && !occurrence.children[0]) waits.push(this.fetchManifest(definition.defaultChild));
+			}
+		}
+		return waits;
+	}
+
+	async settleDefaults() {
+		for (let round = 0; round < 12; round += 1) {
+			const waits = this.completeDefaults();
+			if (waits.length === 0) return;
+			await Promise.all(waits);
+		}
+	}
+
+	setContext(context) {
+		this.controls.context.value = context;
+		this.inflight.clear();
+		const remote = new Set();
+		for (const frame of this.frames) {
+			const workspace = frame.workspace;
+			for (const [occurrenceId, entry] of workspace.cells) {
+				const occurrence = workspace.navigator.get(occurrenceId);
+				const definition = occurrence && workspace.navigator.destination(occurrence.destination);
+				if (!definition || !remoteKinds.has(definition.data?.kind)) continue;
+				remote.add(occurrence.destination);
+				workspace.mountContent(entry, occurrence);
+			}
+		}
+		for (const id of remote) {
+			this.request("manifest", id).then((manifest) => { for (const frame of this.frames) frame.workspace.define(id, manifest); }, () => null);
+		}
+		this.completeDefaults();
 	}
 
 	buildFrame(frame) {
@@ -289,8 +404,11 @@ class Session {
 		readout.append(element("strong", null, frame.name), size, limit, rejection);
 		wrapper.append(box, readout);
 		document.querySelector("[data-frames]").append(wrapper);
+		const definitions = localDestinations();
+		definitions.albums.compact = { min: 48, content: renderAlbumIcons };
 		const model = new Navigator({ destinations: definitions, root: "albums", minViewportHeight });
 		const workspace = new Workspace(root, { navigator: model, content: renderContent, onIntent: (action, origin) => this.dispatch(action, origin) });
+		workspace.addEventListener("change", () => this.completeDefaults());
 		workspace.addEventListener("rejected", (event) => {
 			rejection.hidden = false;
 			rejection.textContent = describeRejection(event.detail, model);
@@ -313,6 +431,7 @@ class Session {
 			this.log.push(action);
 			this.record("push");
 		}
+		this.completeDefaults();
 		return originResult;
 	}
 
@@ -330,11 +449,28 @@ class Session {
 		this.replay(decodeLog(location.hash), { mode: "replace" });
 	}
 
-	replay(log, { mode = "push" } = {}) {
-		const results = this.frames.map((frame) => frame.workspace.replay(log));
-		this.log = log.filter((action, index) => results.some((frameResults) => frameResults[index].ok && !frameResults[index].noop));
+	async replay(log, { mode = "push" } = {}) {
+		const token = Symbol("replay");
+		this.replaying = token;
+		for (const frame of this.frames) frame.workspace.replay([]);
+		const kept = [];
+		for (const action of log) {
+			await this.settleDefaults();
+			if (this.replaying !== token) return;
+			const results = this.frames.map((frame) => frame.workspace.apply(action, { animate: false }));
+			if (results.some((result) => result.ok && !result.noop)) kept.push(action);
+		}
+		await this.settleDefaults();
+		if (this.replaying !== token) return;
+		this.replaying = null;
+		this.log = kept;
 		const unchanged = encodeLog(this.log) === location.hash.replace(/^#/, "");
 		this.record(mode === "push" && unchanged ? "replace" : mode);
+	}
+
+	setNetwork({ delay, fail }) {
+		if (delay !== undefined) this.controls.delay.value = delay;
+		if (fail !== undefined) this.controls.fail.value = fail;
 	}
 
 	reset() {
@@ -357,7 +493,7 @@ function describeRejection({ action, result }, model) {
 	switch (result.reason) {
 		case "source-closed": return `Rejected here: ${titleOf(action.from)} is closed in this frame.`;
 		case "split-source": return `Rejected: ${titleOf(action.from)} owns its rows; nothing opens next to them.`;
-		case "unknown-destination": return `Rejected: ${action.destination} is not a destination.`;
+		case "unknown-destination": return `Rejected: ${action.destination} is not a destination here.`;
 		case "invalid-rows": {
 			const row = result.validation.rows.find((candidate) => !candidate.ok);
 			if (!row) return `Rejected: ${result.validation.reason.replace(/-/g, " ")}.`;
@@ -377,6 +513,7 @@ for (const scenario of scenarios) {
 	const button = element("button", "scenario", scenario.label);
 	button.type = "button";
 	button.addEventListener("click", () => {
+		session.setNetwork(scenario.network ?? { delay: "0", fail: "" });
 		session.replay(scenario.actions.map((action) => ({ ...action })));
 		if (scenario.local) session.frames.forEach((frame) => { scenario.local(frame); frame.workspace.render({ animate: false }); });
 	});
