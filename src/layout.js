@@ -61,12 +61,13 @@ export function boundsOf(model, occurrence, resizing = false) {
 		const rowChain = root ? chainCells(model, root) : [{ destination: row.destination }];
 		const cells = rowChain.map((cell) => widthDefinition(model, cell, resizing));
 		const newest = cells[cells.length - 1];
-		const keptBefore = (count) => cells.slice(0, count).reduce((sum, cell) => sum + (overflowMode(cell) === "keep" ? cell.min : overflowMode(cell) === "hide" ? 0 : foldSize(cell)), 0);
+		const modes = cells.map((cell, cellIndex) => pressureMode(model, root ? rowChain[cellIndex] : { parent: occurrence.id }, cell));
+		const keptBefore = (count) => cells.slice(0, count).reduce((sum, cell, cellIndex) => sum + (modes[cellIndex] === "keep" ? cell.min : modes[cellIndex] === "hide" ? 0 : foldSize(cell)), 0);
 		const active = root ? activeCell(model, root, rowChain) : rowChain.at(-1)?.id;
 		const activeIndex = Math.max(0, rowChain.findIndex((cell) => cell.id === active));
 		const protectedMin = cells.reduce((sum, cell, cellIndex) => {
-			if (overflowMode(cell) === "keep" || cellIndex === activeIndex || (cellIndex > activeIndex && overflowMode(cell) === "hide")) return sum + cell.min;
-			return sum + (overflowMode(cell) === "hide" && cellIndex < activeIndex ? 0 : foldSize(cell));
+			if (modes[cellIndex] === "keep" || cellIndex === activeIndex || (cellIndex > activeIndex && modes[cellIndex] === "hide")) return sum + cell.min;
+			return sum + (modes[cellIndex] === "hide" && cellIndex < activeIndex ? 0 : foldSize(cell));
 		}, 0);
 		const steps = cells.map((cell, dropped) => Math.max(protectedMin, keptBefore(dropped) + cells.slice(dropped).reduce((sum, member) => sum + member.min, 0)));
 		rowSteps.push(steps);
@@ -185,6 +186,22 @@ function unfoldedIn(model, cells) {
 	return new Set((model.unfolded ?? []).filter((entry) => entry.scope === root.id).map((entry) => entry.occurrence));
 }
 
+function belowKept(model, occurrence) {
+	let below = occurrence;
+	for (let above = occurrence.parent ? model.get(occurrence.parent) : null; above; below = above, above = above.parent ? model.get(above.parent) : null) {
+		const definition = definitionFor(model, above);
+		if (overflowMode(definition) === "keep") return true;
+		const row = isSplit(definition) ? above.children?.indexOf(below.id) ?? -1 : -1;
+		if (row >= 0 && rowDefinitions(model, above).slice(0, row + 1).some((candidate) => overflowMode(candidate) === "keep")) return true;
+	}
+	return false;
+}
+
+function pressureMode(model, occurrence, definition) {
+	if (overflowMode(definition) === "keep") return "keep";
+	return belowKept(model, occurrence) ? "fold" : "hide";
+}
+
 function foldPass(model, cells, width, demandOf, held) {
 	const root = chainRootOf(model, cells[0]);
 	const active = activeCell(model, root, cells);
@@ -193,7 +210,7 @@ function foldPass(model, cells, width, demandOf, held) {
 	const chosen = chooseFolds(cells.length, cells.findIndex((cell) => cell.id === active), (index) => unfolded.has(cells[index].id), required, width, (index) => {
 		const definition = definitionFor(model, cells[index]);
 		if (held.has(cells[index].id)) return null;
-		return isSplit(definition) || overflowMode(definition) !== "fold" ? null : demandOf(model, cells[index]) - foldSize(definition);
+		return isSplit(definition) || pressureMode(model, cells[index], definition) !== "fold" ? null : demandOf(model, cells[index]) - foldSize(definition);
 	});
 	return new Map(chosen.map((index) => [cells[index].id, foldSize(definitionFor(model, cells[index]))]));
 }
@@ -472,7 +489,8 @@ function layoutRows(model, split, width, height, containerInView) {
 	const roots = definition.map((row, index) => model.get(split.children[index]));
 	const budget = Math.max(0, height);
 	const required = definition.reduce((sum, row) => sum + row.minHeight, 0);
-	const rowFolds = (activeIndex) => chooseFolds(roots.length, activeIndex, () => false, required, budget, (index) => overflowMode(definition[index]) !== "fold" ? null : definition[index].minHeight - foldSize(definition[index]));
+	const belowKeptRow = (index) => definition.slice(0, index).some((row) => overflowMode(row) === "keep");
+	const rowFolds = (activeIndex) => chooseFolds(roots.length, activeIndex, () => false, required, budget, (index) => overflowMode(definition[index]) === "keep" || !(belowKeptRow(index) || belowKept(model, roots[index])) ? null : definition[index].minHeight - foldSize(definition[index]));
 	const allocate = () => {
 		const shown = roots.map((root, index) => index);
 		const active = activeRow(model, split, roots);

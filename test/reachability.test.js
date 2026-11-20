@@ -21,15 +21,15 @@ assert.throws(() => new Navigator({ root: "split", minViewportHeight: 100, desti
 
 function conversation() {
 	const model = new Navigator({ root: "inbox", minViewportHeight: 360, destinations: {
-		inbox: { title: "Inbox", min: 200, max: 300, overflow: { mode: "hide" } },
+		inbox: { title: "Inbox", min: 200, max: 300 },
 		conversation: { title: "Conversation", header: "title", rows: [
-			{ destination: "messages", minHeight: 200, maxHeight: "*", preferredHeight: 201, overflow: { mode: "hide" } },
-			{ destination: "attachments", minHeight: 200, maxHeight: 200, overflow: { mode: "hide" } },
+			{ destination: "messages", minHeight: 200, maxHeight: "*", preferredHeight: 201 },
+			{ destination: "attachments", minHeight: 200, maxHeight: 200 },
 		] },
-		messages: { title: "Messages", min: 300, max: "*", preferred: 600, overflow: { mode: "hide" } },
-		attachments: { title: "Attachments", min: 200, max: 400, overflow: { mode: "hide" } },
-		attachment: { title: "Attachment", min: 300, max: 500, placement: "beside-split", overflow: { mode: "hide" } },
-		note: { title: "Note", min: 150, max: 200, overflow: { mode: "hide" } },
+		messages: { title: "Messages", min: 300, max: "*", preferred: 600 },
+		attachments: { title: "Attachments", min: 200, max: 400 },
+		attachment: { title: "Attachment", min: 300, max: 500, placement: "beside-split" },
+		note: { title: "Note", min: 150, max: 200 },
 	} });
 	model.resize({ width: 500, height: 360 });
 	model.open("conversation", { from: "inbox" });
@@ -63,7 +63,7 @@ function conversation() {
 {
 	const model = new Navigator({ root: "root", minViewportHeight: 100, destinations: {
 		root: { title: "Root", min: 100, max: 100 },
-		parent: { title: "Parent", min: 100, max: 100, overflow: { mode: "hide" } },
+		parent: { title: "Parent", min: 100, max: 100 },
 		detail: { title: "Detail", min: 100, max: "*", preferred: 100, zoomable: true },
 	} });
 	model.resize({ width: 100, height: 100 });
@@ -169,7 +169,7 @@ function verifyRoutes(model, context) {
 	verifyRoutes(model, "restored stale selections");
 }
 
-for (const count of [2, 3, 6, 20]) for (const overflow of [undefined, { mode: "hide" }, { mode: "fold", size: 8 }]) for (const keep of [false, true]) {
+for (const count of [2, 3, 6, 20]) for (const overflow of [undefined, { mode: "fold", size: 8 }]) for (const keep of [false, true]) {
 	const destinations = Object.fromEntries(Array.from({ length: count }, (_, index) => [`cell${index}`, { title: `Cell ${index}`, min: 20 + index % 3 * 30, max: index === count - 1 ? "*" : 120, preferred: 100, overflow: keep && index === 0 ? { mode: "keep" } : overflow, zoomable: true }]));
 	const model = new Navigator({ root: "cell0", minViewportHeight: 200, destinations });
 	let from = "cell0";
@@ -192,12 +192,12 @@ for (const count of [2, 3, 6, 20]) for (const overflow of [undefined, { mode: "h
 
 for (let mask = 0; mask < 8; mask += 1) for (const rowCount of [2, 3, 4]) {
 	const destinations = {
-		menu: { title: "Menu", min: 40, max: 40, overflow: { mode: "keep" } },
-		split: { title: "Split", header: "title", rows: Array.from({ length: rowCount }, (_, index) => ({ destination: `row${index}`, minHeight: 80, maxHeight: index === 0 ? "*" : 180, preferredHeight: index === 0 ? 180 : undefined, overflow: mask & 1 ? { mode: "hide" } : undefined })) },
-		item: { title: "Item", min: 80, max: "*", preferred: 160, overflow: mask & 2 ? { mode: "hide" } : undefined, zoomable: true },
-		breakout: { title: "Breakout", min: 100, max: 200, placement: "beside-split", overflow: mask & 4 ? { mode: "hide" } : undefined, zoomable: true },
+		menu: { title: "Menu", min: 40, max: 40, overflow: mask & 1 ? { mode: "keep" } : undefined },
+		split: { title: "Split", header: "title", rows: Array.from({ length: rowCount }, (_, index) => ({ destination: `row${index}`, minHeight: 80, maxHeight: index === 0 ? "*" : 180, preferredHeight: index === 0 ? 180 : undefined })) },
+		item: { title: "Item", min: 80, max: "*", preferred: 160, overflow: mask & 2 ? { mode: "fold", size: 8 } : undefined, zoomable: true },
+		breakout: { title: "Breakout", min: 100, max: 200, placement: "beside-split", overflow: mask & 4 ? { mode: "fold", size: 8 } : undefined, zoomable: true },
 	};
-	for (let index = 0; index < rowCount; index += 1) destinations[`row${index}`] = { title: `Row ${index}`, min: 80, max: 160, overflow: mask & 2 ? { mode: "hide" } : undefined };
+	for (let index = 0; index < rowCount; index += 1) destinations[`row${index}`] = { title: `Row ${index}`, min: 80, max: 160, overflow: mask & 2 ? { mode: "fold", size: 8 } : undefined };
 	const model = new Navigator({ root: "menu", minViewportHeight: 200, destinations });
 	model.open("split", { from: "menu" });
 	for (let index = 0; index < rowCount; index += 1) model.open("item", { from: `menu/split/row${index}` });
@@ -219,8 +219,7 @@ for (let seed = 1; seed <= 24; seed += 1) {
 	const random = (count) => { state = (Math.imul(state, 1664525) + 1013904223) >>> 0; return state % count; };
 	const model = conversation();
 	for (const definition of Object.values(model.destinations)) {
-		if (definition.rows) definition.rows.forEach((row) => { row.overflow = random(2) ? { mode: "hide" } : undefined; });
-		else { definition.overflow = random(2) ? { mode: "hide" } : undefined; definition.zoomable = true; }
+		if (!definition.rows) { definition.overflow = random(4) ? undefined : { mode: "keep" }; definition.zoomable = true; }
 	}
 	const snapshots = [model.snapshot()];
 	for (let step = 0; step < 60; step += 1) {

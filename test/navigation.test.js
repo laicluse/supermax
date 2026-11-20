@@ -6,31 +6,31 @@ import { scenario } from "./scenario.js";
 
 class Navigator extends BaseNavigator {
 	constructor(options) {
-		const destinations = Object.fromEntries(Object.entries(options.destinations).map(([id, definition]) => [id, definition.rows ? { ...definition, rows: Array.isArray(definition.rows) ? definition.rows.map((row) => row && typeof row === "object" ? { ...row, overflow: row.overflow ?? { mode: "hide" } } : row) : definition.rows } : { ...definition, overflow: definition.overflow ?? { mode: "hide" } }]));
-		super({ ...options, destinations });
+		super(options);
 	}
 }
 
-scenario("ordinary cells and rows fold by default while hide excludes them", () => {
-	const horizontal = (mode) => {
-		const model = new BaseNavigator({ root: "mode", minViewportHeight: 300, destinations: {
-			mode: { title: "Mode", min: 48, max: 48, overflow: { mode: "keep" } },
-			selector: { title: "Selector", min: 180, max: 180, ...(mode ? { overflow: { mode } } : {}) },
+scenario("a cell or row folds below a kept cell and leaves the window where none is kept above it", () => {
+	const chain = (kept) => {
+		const model = new BaseNavigator({ root: "first", minViewportHeight: 300, destinations: {
+			first: { title: "First", min: 48, max: 48, ...(kept ? { overflow: { mode: "keep" } } : {}) },
+			selector: { title: "Selector", min: 180, max: 180 },
 			content: { title: "Content", min: 270, max: "*", preferred: 320 },
 		} });
 		model.resize({ width: 340, height: 300 });
-		model.open("selector", { from: "mode" });
-		model.open("content", { from: "mode/selector" });
-		return model.layout().chain.cells[1];
+		model.open("selector", { from: "first" });
+		model.open("content", { from: "first/selector" });
+		return model.layout().chain.cells;
 	};
-	assert.equal(horizontal().folded, true);
-	assert.equal(horizontal().width, 0);
-	assert.equal(horizontal("hide").folded, false);
-	const vertical = (mode) => {
+	assert.deepEqual(chain(true).map((cell) => cell.folded), [false, true, false], "below a kept cell, the cell that gives way folds");
+	assert.equal(chain(true)[1].width, 0);
+	assert.deepEqual(chain(false).map((cell) => cell.folded), [false, false, false], "with no kept cell above, nothing folds");
+	assert.deepEqual(chain(false).map((cell) => cell.inView), [false, false, true], "the cells that give way leave the window instead");
+	const rows = (kept) => {
 		const model = new BaseNavigator({ root: "home", minViewportHeight: 300, destinations: {
-			home: { title: "Home", min: 40, max: 40, overflow: { mode: "keep" } },
+			home: { title: "Home", min: 40, max: 40, ...(kept ? { overflow: { mode: "keep" } } : {}) },
 			split: { title: "Split", rows: [
-				{ destination: "summary", minHeight: 170, maxHeight: 170, ...(mode ? { overflow: { mode } } : {}) },
+				{ destination: "summary", minHeight: 170, maxHeight: 170 },
 				{ destination: "detail", minHeight: 250, maxHeight: "*", preferredHeight: 280 },
 			] },
 			summary: { title: "Summary", min: 280, max: 280 },
@@ -40,9 +40,35 @@ scenario("ordinary cells and rows fold by default while hide excludes them", () 
 		model.open("split", { from: "home" });
 		return model.layout().chain.cells[1].rows.rows[0];
 	};
-	assert.equal(vertical().folded, true);
-	assert.equal(vertical().height, 0);
-	assert.equal(vertical("hide").folded, false);
+	assert.equal(rows(true).folded, true, "below a kept cell, the row that gives way folds");
+	assert.equal(rows(true).height, 0);
+	assert.equal(rows(false).folded, false, "with no kept cell above, the row does not fold");
+	const inRow = (kept) => {
+		const model = new BaseNavigator({ root: "home", minViewportHeight: 300, destinations: {
+			home: { title: "Home", min: 40, max: 40 },
+			split: { title: "Split", rows: [
+				{ destination: "a", minHeight: 150, maxHeight: "*", preferredHeight: 150, ...(kept ? { overflow: { mode: "keep" } } : {}) },
+				{ destination: "b", minHeight: 150, maxHeight: 150 },
+			] },
+			a: { title: "A", min: 100, max: 100 },
+			b: { title: "B", min: 100, max: 100 },
+			x: { title: "X", min: 100, max: 100 },
+			y: { title: "Y", min: 100, max: "*", preferred: 100 },
+		} });
+		model.resize({ width: 100, height: 300 });
+		model.open("split", { from: "home" });
+		for (const row of ["a", "b"]) {
+			model.open("x", { from: `home/split/${row}` });
+			model.open("y", { from: `home/split/${row}/x` });
+		}
+		return ["a", "b"].map((row) => model.layout().chains.get(`home/split/${row}`).cells.map((cell) => cell.folded));
+	};
+	assert.deepEqual(inRow(true), [[true, true, false], [true, true, false]], "inside a kept row and in the rows below it, the cells that give way fold");
+	assert.deepEqual(inRow(false), [[false, false, false], [false, false, false]], "with no kept row, the cells of a row leave its window");
+});
+
+scenario("a destination cannot ask to leave the window without a fold", () => {
+	assert.throws(() => new BaseNavigator({ root: "list", minViewportHeight: 300, destinations: { list: { title: "List", min: 200, max: "*", preferred: 200, overflow: { mode: "hide" } } } }), /invalid-overflow/);
 });
 
 function model(width = 1000, height = 500) {
@@ -241,12 +267,12 @@ scenario("a window start never strands later cells in a row", () => {
 	assert.equal(narrow.windowStarts.get(row("list")), row("list"), "closing a group keeps the window anchor");
 });
 
-scenario("a split exposes the full width of a protected nonfoldable row", () => {
+scenario("a split exposes the full width of a protected row that has no kept cell above it", () => {
 	const instance = new BaseNavigator({ root: "menu", minViewportHeight: 300, destinations: {
-		menu: { title: "Menu", min: 40, max: 40, overflow: { mode: "keep" } },
+		menu: { title: "Menu", min: 40, max: 40 },
 		split: { title: "Split", rows: [{ destination: "list", minHeight: 200, maxHeight: "*", preferredHeight: 250 }] },
-		list: { title: "List", min: 200, max: 200, overflow: { mode: "hide" } },
-		item: { title: "Item", min: 200, max: "*", preferred: 200, overflow: { mode: "hide" } },
+		list: { title: "List", min: 200, max: 200 },
+		item: { title: "Item", min: 200, max: "*", preferred: 200 },
 	} });
 	instance.resize({ width: 300, height: 300 });
 	instance.open("split", { from: "menu" });
@@ -254,7 +280,7 @@ scenario("a split exposes the full width of a protected nonfoldable row", () => 
 	instance.startWindow("menu/split/list", "menu/split/list");
 	const layout = instance.layout();
 	assert.deepEqual(layout.chains.get("menu/split/list").cells.map((cell) => cell.visible), [true, true]);
-	assert.ok(layout.chain.contentWidth >= 440, "the outer scroll range includes the complete nested row");
+	assert.ok(layout.chain.contentWidth >= 400, "the outer scroll range includes the complete nested row");
 });
 
 scenario("Up reaches every cell hidden above the window, newest branch first, never what lies after it", () => {
@@ -269,7 +295,7 @@ scenario("Up reaches every cell hidden above the window, newest branch first, ne
 	assert.equal(narrow.upTarget(), null, "the item now after the window is not a target");
 	narrow.open("item:b", { from: row("grid") });
 	narrow.bringIntoView(item("grid", "b"));
-	assert.equal(narrow.upTarget(), null, "a row that stays fully visible needs no Back target");
+	assert.deepEqual(narrow.upTarget(), { id: row("grid"), title: "Grid" }, "below the kept root, the row cell that folded beside its item is the next target");
 	assert.deepEqual(titles(narrow), ["Gallery", "Item A", "Item B"], "finding a target closes nothing");
 
 	const chain = new Navigator({ destinations: { elsewhere, menu: { title: "Menu", min: 100, max: 100, overflow: { mode: "keep" } }, a: { title: "A", min: 100, max: 100, defaultChild: "b" }, b: { title: "B", min: 100, max: 100, defaultChild: "c" }, c: { title: "C", min: 100, max: 100 } }, root: "menu", minViewportHeight, chrome });
@@ -327,7 +353,7 @@ scenario("a revealed outer chain does not change which defaults open", () => {
 	assert.equal(revealed.windowStarts.has("root"), false, "an opening resets the reveal anchor of every chain above it");
 });
 
-scenario("a kept cell stays at its declared minimum while other cells give way", () => {
+scenario("a kept cell stays at its declared minimum while the cells below it fold", () => {
 	const set = {
 		elsewhere,
 		menu: { title: "Menu", min: 100, max: 100, overflow: { mode: "keep" }, defaultChild: "a" },
@@ -341,13 +367,13 @@ scenario("a kept cell stays at its declared minimum while other cells give way",
 	const cells = () => instance.layout().chain.cells.map((cell) => (cell.folded ? "folded" : cell.visible ? "full" : "gone"));
 	assert.deepEqual(cells(), ["full", "full", "full", "full"]);
 	instance.resize({ width: 320, height: 500 });
-	assert.deepEqual(cells(), ["full", "gone", "full", "full"], "the kept cell keeps its full minimum while another cell gives way");
+	assert.deepEqual(cells(), ["full", "folded", "full", "full"], "the kept cell keeps its full minimum while a cell below it folds");
 	instance.resize({ width: 220, height: 500 });
-	assert.deepEqual(cells(), ["full", "gone", "gone", "full"]);
+	assert.deepEqual(cells(), ["full", "folded", "folded", "full"]);
 	instance.resize({ width: 120, height: 500 });
-	assert.deepEqual(cells(), ["full", "gone", "gone", "full"], "the kept cell stays at its minimum even when the frame overflows");
+	assert.deepEqual(cells(), ["full", "folded", "folded", "full"], "the kept cell stays at its minimum even when the frame overflows");
 	instance.startWindow("menu", "menu/a");
-	assert.deepEqual(cells(), ["full", "full", "full", "full"], "a window start keeps every later nonfoldable cell reachable through overflow");
+	assert.deepEqual(cells(), ["full", "full", "folded", "folded"], "a window start leaves every later cell reachable through its fold");
 	instance.startWindow("menu", null);
 	instance.resize({ width: 110, height: 500 });
 	assert.deepEqual([instance.layout().overflowX, Math.round(instance.layout().chain.contentWidth)], [true, 200], "the kept cell and newest cell retain their minima when the frame cannot fit both");
@@ -896,7 +922,7 @@ scenario("sync names a path into a row: the next id after a split is one of its 
 	const into = chain.sync([...root, "metadata", "messages"]);
 	assert.equal(into.ok, true, "a sync may name a row of the split and go on inside it");
 	assert.deepEqual(into.opened, [`${split.id}/metadata/messages`], "and reports what it opened");
-	assert.deepEqual(visible(), [["Modes", true], ["Mailboxes", false], ["Conversations", false], ["Subject", true]], "named explicitly, the cell takes the room it asks for and ancestors hide, as for any cell in a chain");
+	assert.deepEqual(chain.layout().chain.cells.map((cell) => [cell.title, cell.folded]), [["Modes", false], ["Mailboxes", true], ["Conversations", true], ["Subject", false]], "named explicitly, the cell takes the room it asks for and the cells below the kept Modes fold");
 	assert.equal(chain.isAuto(chain.get(`${split.id}/metadata/messages`)), false, "it is a manual cell");
 	assert.equal(chain.sync([...root, "metadata", "messages"]).noop, true, "the same path again changes nothing");
 	assert.equal(chain.sync(root).noop, true, "a sync that ends at the split leaves its rows as they are");
@@ -962,16 +988,16 @@ scenario("room gives way in reading order through a split: the cells before it f
 	laptop.open("messages", { from: `${split}/metadata`, origin: null });
 	shown = picture(laptop);
 	assert.ok(Number(shown.root[0].split(":")[1]) >= 192);
-	assert.deepEqual(shown.root.slice(1, 3), ["Mailboxes:hidden", "Nav:hidden"], "at 1440 the mailboxes and the nav give way first");
+	assert.deepEqual(shown.root.slice(1, 3), ["Mailboxes:0", "Nav:0"], "at 1440 the mailboxes and the nav fold first, below the kept menu");
 	assert.ok(shown.row.length === 2 && shown.row.every((cell) => !cell.endsWith("hidden")), `so the summary keeps standing beside the messages, and the attachment beside the split: ${shown.row}`);
 	assert.ok(shown.root[5].startsWith("Attachment:") && !shown.root[5].endsWith("hidden"));
 	const show = at(1000);
 	show.sync([...root, "metadata", "messages"]);
-	assert.equal(show.layout().cells.get("modes/mailboxes/nav/conversations").visible, false, "at 1000 the list has hidden for the split");
+	assert.equal(show.layout().cells.get("modes/mailboxes/nav/conversations").folded, true, "at 1000 the list has folded for the split");
 	const closed = show.showByClosing("modes/mailboxes/nav/conversations");
 	assert.deepEqual(closed.map((entry) => entry.title), ["Messages"], "Show closes the newest cell inside the rows, not the split");
 	assert.ok(show.get(split), "the split stays with its summary");
-	assert.equal(show.layout().cells.get("modes/mailboxes/nav/conversations").visible, true, "and the list is back in view");
+	assert.equal(show.layout().cells.get("modes/mailboxes/nav/conversations").folded, false, "and the list is back in view");
 });
 
 scenario("ifRoom may name a path into a row, and opens it whole or not at all", () => {

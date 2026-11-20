@@ -159,7 +159,7 @@ function renderSpec(occurrence, definition) {
 	line("min", definition.min);
 	line("max", definition.max);
 	line("preferred", definition.preferred);
-	line("overflow", definition.overflow?.mode ?? "fold");
+	line("overflow", definition.overflow?.mode ?? "none");
 	line("defaultChild", definition.defaultChild);
 	spec.append(element("dt", null, "width"), element("dd", "cell-spec-width", "…"));
 	spec.append(element("dt", null, "state"), element("dd", "cell-spec-state", "…"));

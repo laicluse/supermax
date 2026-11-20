@@ -195,15 +195,6 @@
 	background: var(--supermax-default-load-error);
 	color: var(--supermax-default-surface);
 }
-.supermax-cell.is-folded > .supermax-cell-title:where([data-supermax-default]),
-.supermax-cell.is-folded > .supermax-cell-body,
-.supermax-row.is-folded > .supermax-row-chain :is(.supermax-cell-title:where([data-supermax-default]), .supermax-cell-body) {
-	opacity: 0;
-}
-/* allow-comment: folded content is already inert; pointer-events on a large body would restyle every descendant at each fold. */
-.supermax-cell.is-folded > .supermax-cell-title:where([data-supermax-default]) {
-	pointer-events: none;
-}
 .supermax-fold-cue:where([data-supermax-default]) {
 	padding: 0;
 	border: 0;

@@ -22,7 +22,7 @@ Start with [Migrating from v1 to v2](docs/migrating-to-v2.md). A dependency vers
 
 ### Breaking changes
 
-- Workspace cells and rows declare one `overflow` policy: `{ mode: "fold", size? }`, `{ mode: "hide" }` or `{ mode: "keep" }`. Omitting it permits zero-space folds. Destination placement uses `placement: "beside-split"`; `keep`, `fold` and `height` are rejected on Workspace destinations.
+- Workspace cells and rows declare at most one `overflow` policy, and `{ mode: "keep" }` is its only choice. A cell or row that gives way below a kept one folds; with nothing kept above it, it leaves the window behind Show. `{ mode: "hide" }` is refused as `invalid-overflow`. A folded surface shows none of its content, and `{ mode: "fold", size }` only gives a host room to draw a fold of its own. A title bar drawn by the host's own `header` part used to stay visible in that room; it is hidden like the default one. Destination placement uses `placement: "beside-split"`; `keep`, `fold` and `height` are rejected on Workspace destinations.
 - A split that declares `header: "title"` now reaches the `content` callback and returns only `{ header }`, so controls stand in its bar the way they do in a cell's. A callback that cannot answer for a split must return `{}` for it.
 - Paint tokens belong to the built-in renderer under `--supermax-default-*`. A host replaces part factories for its own style; geometry and transition timelines remain shell-owned.
 

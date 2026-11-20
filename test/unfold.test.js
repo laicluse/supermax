@@ -58,18 +58,10 @@ test("a cell the user opened folds last and gives way again when the leaf needs 
 	assert.equal(picture(model), "A B [C] D");
 });
 
-test("an opened cell gives way only after a cell that can hide has done so", () => {
-	const wide = { a: rail.a, d: { min: 100, preferred: 400, max: "*", overflow: { mode: "hide" } }, e: { min: 100, preferred: 600, max: "*" } };
-	const model = chain(1000, wide);
-	assert.equal(picture(model), "A [B] [C] (D) E");
-	assert.deepEqual(model.unfold(id("b"), "horizontal"), [], "the cell fits beside the last one once the hidden cell is out of the count");
-	assert.equal(picture(model), "A B [C] (D) E");
-});
-
 test("folded cells before the open one open toward the trailing side and share the handle of the nearest", () => {
-	const model = chain(450);
-	assert.equal(picture(model), "[A] [B] [C] D E");
-	for (const name of ["a", "b", "c"]) {
+	const model = chain(450, rail);
+	assert.equal(picture(model), "A [B] [C] D E");
+	for (const name of ["b", "c"]) {
 		const cell = model.layout().cells.get(id(name));
 		assert.equal(cell.foldDirection, "right");
 		assert.equal(cell.foldOpening, "right");

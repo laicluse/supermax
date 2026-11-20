@@ -215,7 +215,7 @@ for (let sample = 0; sample < 40; sample += 1) {
 	const definitions = Object.fromEntries(Array.from({ length: 5 }, (_, index) => {
 		const min = 20 + random(30);
 		const expands = min + 50 + random(100);
-		return [`cell-${index}`, { title: `Cell ${index}`, min, preferred: min + 100, max: index === 4 ? "*" : min + 200, overflow: index === 0 ? { mode: "keep" } : sample % 2 ? { mode: "hide" } : { mode: "fold", size: 4 }, variants: [
+		return [`cell-${index}`, { title: `Cell ${index}`, min, preferred: min + 100, max: index === 4 ? "*" : min + 200, overflow: index === 0 && sample % 3 ? { mode: "keep" } : sample % 2 ? undefined : { mode: "fold", size: 4 }, variants: [
 			{ id: "expanded", when: { minWidth: expands } },
 			{ id: "compact", min, preferred: min, max: index === 4 ? "*" : expands - 1 },
 		] }];

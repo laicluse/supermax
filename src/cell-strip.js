@@ -175,7 +175,8 @@ export class CellStrip {
 		const returning = next.filter((entry) => previous.get(entry.id)?.departing);
 		const arriving = next.filter((entry) => {
 			const old = previous.get(entry.id);
-			return entry.visible && (!old || (this.motion && !old.visible && old.currentWidth + old.currentMargin < STILL));
+			const givenRoom = newlyLeaving.some((candidate) => candidate.id.startsWith(`${entry.id}/`) && depthOf(candidate.id) === depthOf(entry.id) + 1);
+			return entry.visible && (!old || (this.motion && !old.visible && (givenRoom || old.currentWidth + old.currentMargin < STILL)));
 		});
 		arriving.forEach((entry, index) => { entry.order = (entry.row ?? 0) + index; });
 

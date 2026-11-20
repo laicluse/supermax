@@ -459,7 +459,7 @@ test("a kept cell retains its declared minimum without a second presentation", a
 		const navigator = new Navigator({
 			destinations: {
 				menu: { title: "Mail", min: 48, max: 256, overflow: { mode: "keep" } },
-				list: { title: "List", min: 320, max: "*", preferred: 640, overflow: { mode: "hide" } },
+				list: { title: "List", min: 320, max: "*", preferred: 640 },
 				detail: { title: "Detail", min: 320, max: 640 },
 			},
 			root: "menu",
@@ -518,7 +518,7 @@ test("floating navigation stays at the top of a headless cell without intercepti
 		host.style.cssText = "position:fixed;inset:0;width:390px;height:900px;background:white;z-index:1000";
 		document.body.append(host);
 		const navigator = new Navigator({ destinations: {
-			feed: { title: "Feed", min: 200, max: 200, overflow: { mode: "hide" } },
+			feed: { title: "Feed", min: 200, max: 200 },
 			episode: { title: "Episode", min: 390, max: "*", preferred: 390 },
 		}, root: "feed", minViewportHeight: 300, chrome: { maxRows: 4 } });
 		window.headlessWorkspace = new Workspace(host, { navigator, content: () => {

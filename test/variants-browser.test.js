@@ -192,7 +192,7 @@ test("fixed content width accounts for the gutter inside a non-leading cell", as
 test("a surviving boundary keeps its gutter until its preceding surface has left view", async () => {
 	const point = await page.evaluate(async () => {
 		await finish();
-		workspace.navigator.destinations.menu = { title: "Menu", min: 200, max: 200, overflow: { mode: "hide" } };
+		workspace.navigator.destinations.menu = { title: "Menu", min: 200, max: 200 };
 		workspace.navigator.destinations.work = { title: "Work", min: 300, max: "*", preferred: 400 };
 		workspace.navigator.setSize("menu", null); workspace.navigator.setSize("menu/work", null);
 		workspace.element.style.setProperty("--supermax-default-canvas", "rgb(201,204,209)");

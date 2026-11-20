@@ -41,10 +41,7 @@ assert.deepEqual(layoutOf({ title: "Albums", min: 200, max: 320, overflow: { mod
 	assert.deepEqual(layoutOf(foldable.destinations.split).rows[0].overflow, { mode: "fold", size: 20 });
 	assert.deepEqual(layoutOf(foldable.destinations.top).overflow, { mode: "fold", size: 16 });
 	foldable.destinations.top.overflow = { mode: "hide" };
-	foldable.destinations.split.rows[0].overflow = { mode: "hide" };
-	assert.deepEqual(validateDeclarationSet(foldable), [], "a server declaration can exclude cells and rows from folding");
-	assert.deepEqual(layoutOf(foldable.destinations.top).overflow, { mode: "hide" });
-	assert.deepEqual(layoutOf(foldable.destinations.split).rows[0].overflow, { mode: "hide" });
+	assert.ok(validateDeclarationSet(foldable).length > 0, "a server declaration cannot ask a cell to leave the window without a fold");
 	foldable.destinations.top.overflow = { mode: "fold", size: 16 };
 	foldable.destinations.top.overflow.size = 0;
 	assert.deepEqual(validateDeclarationSet(foldable), [], "a fold can explicitly reserve no space");

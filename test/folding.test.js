@@ -86,9 +86,9 @@ test("zoom retains an exit when its ancestors were already hidden", async () => 
 			host.style.cssText = "position:relative;width:100px;height:100px";
 			document.body.append(host);
 			const navigator = new Navigator({ root: "root", minViewportHeight: 100, destinations: {
-				root: { title: "Root", min: 100, max: 100, overflow: { mode: "hide" } },
-				parent: { title: "Parent", min: 100, max: 100, overflow: { mode: "hide" } },
-				detail: { title: "Detail", min: 100, max: "*", preferred: 100, overflow: { mode: "hide" }, zoomable: true, header: "title" },
+				root: { title: "Root", min: 100, max: 100 },
+				parent: { title: "Parent", min: 100, max: 100 },
+				detail: { title: "Detail", min: 100, max: "*", preferred: 100, zoomable: true, header: "title" },
 			} });
 			navigator.resize({ width: 100, height: 100 });
 			navigator.open("parent", { from: "root" });
@@ -257,7 +257,7 @@ test("a reverse vertical page drag keeps a canvas gutter under its handle", asyn
 	}
 });
 
-test("nonfoldable content after the active cell remains scrollable in a split", async () => {
+test("content after the active cell remains scrollable in a split with nothing kept above it", async () => {
 	const server = await serveDocs();
 	const browser = await chromium.launch({ channel: "chrome", headless: true });
 	try {
@@ -270,10 +270,10 @@ test("nonfoldable content after the active cell remains scrollable in a split", 
 			host.style.cssText = "position:relative;width:300px;height:300px";
 			document.body.append(host);
 			const navigator = new Navigator({ root: "menu", minViewportHeight: 300, destinations: {
-				menu: { title: "Menu", min: 40, max: 40, overflow: { mode: "keep" } },
+				menu: { title: "Menu", min: 40, max: 40 },
 				split: { title: "Split", rows: [{ destination: "list", minHeight: 200, maxHeight: "*", preferredHeight: 250 }] },
-				list: { title: "List", min: 200, max: 200, overflow: { mode: "hide" } },
-				item: { title: "Item", min: 200, max: "*", preferred: 200, overflow: { mode: "hide" } },
+				list: { title: "List", min: 200, max: 200 },
+				item: { title: "Item", min: 200, max: "*", preferred: 200 },
 			} });
 			navigator.resize({ width: 300, height: 300 });
 			navigator.open("split", { from: "menu" });
@@ -293,7 +293,7 @@ test("nonfoldable content after the active cell remains scrollable in a split", 
 			workspace.destroy();
 			return report;
 		});
-		assert.ok(result.scrollWidth >= 440, "the scroll range includes the nested row");
+		assert.ok(result.scrollWidth >= 400, "the scroll range includes the nested row");
 		assert.ok(result.scrollWidth > result.clientWidth, "horizontal scrolling is enabled");
 		assert.ok(result.after < result.before && result.after < result.viewportRight, "the trailing cell can be brought into the viewport");
 		assert.equal(result.visible, true);
@@ -316,14 +316,14 @@ test("allocated rows and cells remain physically reachable with overflow on both
 			host.style.cssText = "position:relative;width:120px;height:100px";
 			document.body.append(host);
 			const navigator = new Navigator({ root: "menu", minViewportHeight: 300, destinations: {
-				menu: { title: "Menu", min: 40, max: 40, overflow: { mode: "keep" } },
+				menu: { title: "Menu", min: 40, max: 40 },
 				split: { title: "Split", header: "title", rows: [
-					{ destination: "first", minHeight: 180, maxHeight: "*", preferredHeight: 200, overflow: { mode: "hide" } },
-					{ destination: "second", minHeight: 180, maxHeight: 200, overflow: { mode: "hide" } },
+					{ destination: "first", minHeight: 180, maxHeight: "*", preferredHeight: 200 },
+					{ destination: "second", minHeight: 180, maxHeight: 200 },
 				] },
-				first: { title: "First", min: 200, max: 200, overflow: { mode: "hide" } },
-				second: { title: "Second", min: 200, max: 200, overflow: { mode: "hide" } },
-				item: { title: "Item", min: 200, max: "*", preferred: 200, overflow: { mode: "hide" } },
+				first: { title: "First", min: 200, max: 200 },
+				second: { title: "Second", min: 200, max: 200 },
+				item: { title: "Item", min: 200, max: "*", preferred: 200 },
 			} });
 			navigator.resize({ width: 120, height: 100 });
 			navigator.open("split", { from: "menu" });
@@ -363,12 +363,18 @@ test("a clicked cue opens its fold, a cell by closing the trailing cell and a ro
 			document.body.append(host);
 			const navigator = new Navigator({ root: "mode", minViewportHeight: 300, destinations: {
 				mode: { title: "Mode", min: 48, max: 48, overflow: { mode: "keep" } },
-				mail: { title: "Mailboxes", min: 180, max: 180, overflow: { mode: "fold", size: 16 } },
+				mail: { title: "Mailboxes", min: 180, max: 180, header: "title", overflow: { mode: "fold", size: 16 } },
 				work: { title: "Messages", min: 280, max: "*", preferred: 320 },
 			} });
 			navigator.open("mail", { from: "mode" });
 			navigator.open("work", { from: "mode/mail" });
-			window.horizontal = new Workspace(host, { navigator, renderer: { fold: ({ root, state }) => {
+			window.horizontal = new Workspace(host, { navigator, renderer: { header: ({ root, slots, actions }) => {
+				const back = document.createElement("button");
+				actions.navigation.attach(back);
+				const archive = document.createElement("button");
+				archive.textContent = "Archive";
+				root.append(back, "Host bar", archive, slots.utilities);
+			}, fold: ({ root, state }) => {
 				const label = document.createElement("span");
 				label.textContent = state.title.slice(0, 1);
 				root.append(label);
@@ -387,6 +393,8 @@ test("a clicked cue opens its fold, a cell by closing the trailing cell and a ro
 		assert.equal(await page.locator('.supermax-fold-cue[data-fold-occurrence="mode/mail"]').isVisible(), true);
 		assert.equal(await page.locator('.supermax-fold-cue[data-fold-occurrence="mode/mail"]').textContent(), "M");
 		assert.equal(await page.locator('.supermax-fold-cue[data-fold-occurrence="mode/mail"]').getAttribute("data-direction"), "right");
+		await page.waitForTimeout(250);
+		assert.deepEqual(await page.locator('.supermax-cell[data-occurrence="mode/mail"]').evaluate((cell) => [cell.getBoundingClientRect().width, ...[...cell.querySelectorAll(":scope > .supermax-cell-title, :scope > .supermax-cell-body")].map((part) => getComputedStyle(part).opacity), cell.querySelector(":scope > .supermax-cell-title").inert]), [16, "0", "0", true], "a folded cell shows none of its content in its fold room, and a host's own title bar is hidden and out of the tab order");
 		assert.equal(await page.locator('.supermax-up:not([hidden]) .supermax-up-label svg path').count(), 1, "navigation uses the single SVG chevron");
 		assert.equal(await page.evaluate(() => window.horizontal.presentation.name), "veil");
 		const groups = await page.evaluate(() => window.horizontal.navigator.groups.length);
@@ -734,15 +742,16 @@ test("dragging folds follows the pointer and settles beyond the directional gold
 				host.style.cssText = "position:relative;width:320px;height:400px";
 				document.body.append(host);
 				const destinations = axis === "horizontal" ? {
+					mode: { title: "Mode", min: 32, max: 32, overflow: { mode: "keep" } },
 					first: { title: "First", min: 280, max: "*", preferred: 320 }, second: { title: "Second", min: 280, max: "*", preferred: 320 },
 				} : {
 					mode: { title: "Mode", min: 32, max: 32, overflow: { mode: "keep" } },
 					first: { title: "Rows", rows: [{ destination: "upper", minHeight: 300, maxHeight: 300 }, { destination: "lower", minHeight: 300, maxHeight: "*", preferredHeight: 400 }] },
 					upper: { title: "Upper", min: 280, max: "*", preferred: 320 }, lower: { title: "Lower", min: 280, max: "*", preferred: 320 },
 				};
-				const navigator = new Navigator({ root: axis === "horizontal" ? "first" : "mode", destinations, minViewportHeight: 400 });
-				if (axis === "horizontal") navigator.open("second", { from: "first" });
-				else navigator.open("first", { from: "mode" });
+				const navigator = new Navigator({ root: "mode", destinations, minViewportHeight: 400 });
+				navigator.open("first", { from: "mode" });
+				if (axis === "horizontal") navigator.open("second", { from: "mode/first" });
 				window.workspace = new Workspace(host, { navigator, content: () => {
 					const element = document.createElement("textarea");
 					element.value = "a draft that survives the fold";
@@ -804,7 +813,7 @@ test("dragging folds follows the pointer and settles beyond the directional gold
 			}
 			assert.equal(await page.evaluate(() => window.committedFolds), directions.length, "only completed drags announce an opened fold");
 			if (axis === "horizontal") {
-				await page.evaluate(() => window.workspace.apply({ type: "open", destination: "second", from: "first", origin: null }, { animate: false }));
+				await page.evaluate(() => window.workspace.apply({ type: "open", destination: "second", from: "mode/first", origin: null }, { animate: false }));
 				await page.waitForTimeout(100);
 			}
 			const touch = await page.context().newCDPSession(page);

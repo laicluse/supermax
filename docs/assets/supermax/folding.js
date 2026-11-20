@@ -55,6 +55,8 @@ export class FoldController {
 		entry.element.classList.toggle("is-folded", folded);
 		// allow-comment: inert restyles the whole content subtree, so a drag's provisional render leaves it for the render that settles the drag.
 		if (entry.body && !this.drag?.rendering) entry.body.inert = folded;
+		const title = entry.element.querySelector(":scope > .supermax-cell-title");
+		if (title && !this.drag?.rendering) title.inert = folded;
 		entry.foldCue.inert = !folded && this.drag?.cue !== entry.foldCue;
 		if (folded) {
 			entry.foldCue.dataset.direction = direction;

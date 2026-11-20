@@ -43,14 +43,11 @@ async function openDemo(log = []) {
 	await settle();
 }
 
-async function openDemoWithCoastFoldExcluded(log) {
+async function openDemoWithNothingKept(log) {
 	await openDemo(log);
 	await page.evaluate(() => {
 		for (const { workspace } of window.supermaxDemo.frames) {
-			workspace.navigator.destinations["album:coast"].rows.forEach((row) => { row.overflow = { mode: "hide" }; });
-			for (const [id, definition] of Object.entries(workspace.navigator.destinations)) {
-				if (id.startsWith("coast:") && !definition.rows) definition.overflow = { mode: "hide" };
-			}
+			delete workspace.navigator.destinations.albums.overflow;
 			workspace.render({ animate: false });
 		}
 	});
@@ -927,25 +924,8 @@ test("a folding card is clipped to its own room, which keeps its gutter free", {
 	await settle();
 });
 
-test("the gutter beside a split stays in place while the cells in its rows slide past it", { skip: PRESENTATION !== "origami" }, async () => {
-	await openDemoWithCoastFoldExcluded([open("album:coast", "albums"), open("coast:photo:c", coast.row("thumbnails"))]);
-	await resize([[420, 640], [960, 640]]);
-	const album = inFrame("a", ".supermax-cell.is-split");
-	const edge = () => page.locator(album).evaluate((cell) => {
-		const frame = cell.querySelector(".supermax-row-chain");
-		return { clip: getComputedStyle(frame).clipPath, left: Math.round(frame.getBoundingClientRect().left) };
-	});
-	const atRest = await edge();
-	await page.evaluate(() => window.supermaxDemo.dispatch({ type: "close" }, window.supermaxDemo.frames[1].workspace));
-	await page.evaluate(() => document.getAnimations().forEach((animation) => { animation.pause(); animation.currentTime = 100; }));
-	assert.equal((await page.locator(inFrame("a", `[data-row="${coast.row("thumbnails")}"] .supermax-strip`)).evaluate((strip) => strip.getAnimations().length)) > 0, true, "the row is sliding");
-	assert.deepEqual(await edge(), { ...atRest, clip: "inset(0px 0px 0px 1px)" }, "the row frame keeps the gutter beside the split where it was and clips what slides past it");
-	await page.evaluate(() => document.getAnimations().forEach((animation) => animation.play()));
-	await settle();
-});
-
 test("a cell that stays but changes size takes its final size at once, and only its room moves", { skip: PRESENTATION !== "origami" }, async () => {
-	await openDemoWithCoastFoldExcluded([open("album:coast", "albums"), open("coast:photo:c", coast.row("thumbnails"))]);
+	await openDemoWithNothingKept([open("album:coast", "albums"), open("coast:photo:c", coast.row("thumbnails"))]);
 	await resize([[420, 640], [960, 640]]);
 	const thumbnails = inFrame("a", `[data-occurrence="${coast.row("thumbnails")}"]`);
 	await page.evaluate(() => window.supermaxDemo.dispatch({ type: "close" }, window.supermaxDemo.frames[1].workspace));
@@ -998,7 +978,7 @@ test("a split that closes stays until the cells in its rows have folded away", {
 });
 
 test("a cell that shrinks keeps its layout until the transition ends, and slides under the cell that opens", { skip: PRESENTATION !== "origami" }, async () => {
-	await openDemoWithCoastFoldExcluded([open("album:coast", "albums"), open("coast:photo:c", coast.row("thumbnails"))]);
+	await openDemoWithNothingKept([open("album:coast", "albums"), open("coast:photo:c", coast.row("thumbnails"))]);
 	await resize([[420, 640], [960, 640]]);
 	await closeNewest("a");
 	await settle();
@@ -1101,7 +1081,7 @@ test("neighbours that move together stay joined at their shared edge, opening an
 });
 
 test("a row that stays but changes height moves its content with its bottom edge, never cut off and never laid out again", { skip: PRESENTATION !== "origami" }, async () => {
-	await openDemoWithCoastFoldExcluded([open("album:coast", "albums")]);
+	await openDemoWithNothingKept([open("album:coast", "albums")]);
 	await resize([[860, 470], [360, 640]]);
 	const rows = [coast.row("thumbnails"), coast.row("map"), coast.row("people")];
 	const shown = () => page.evaluate((ids) => ids.filter((id) => !document.querySelector(`.frame[data-frame="a"] .supermax-row[data-row="${id}"]`).classList.contains("is-hidden")), rows);
@@ -1754,7 +1734,7 @@ test("rows span the split and no cell crosses a row", async () => {
 });
 
 test("hiding rows and cells keeps navigation, draft and scroll, and the content cell scrolls by wheel", async () => {
-	await openDemoWithCoastFoldExcluded(THREE_ROWS);
+	await openDemoWithNothingKept(THREE_ROWS);
 	const captionSelector = inFrame("a", `[data-occurrence="${coast.photo("people", "c")}"] .caption`);
 	const metadataBody = inFrame("a", `[data-occurrence="${coast.metadata("people", "c")}"] .supermax-cell-body`);
 	await page.fill(captionSelector, "Lighthouse at dusk");
@@ -1777,7 +1757,7 @@ test("hiding rows and cells keeps navigation, draft and scroll, and the content 
 });
 
 test("below the declared minimum the last row keeps its height and the workspace scrolls", async () => {
-	await openDemoWithCoastFoldExcluded(THREE_ROWS);
+	await openDemoWithNothingKept(THREE_ROWS);
 	const visible = await page.locator(inFrame("b", ".supermax-cell")).evaluateAll((elements) => elements
 		.filter((element) => getComputedStyle(element).visibility === "visible")
 		.map((element) => ({ id: element.dataset.occurrence, width: element.getBoundingClientRect().width })));
@@ -2010,7 +1990,7 @@ test("another viewer is another context, with its own layout for the same destin
 });
 
 test("a modal knows its source, makes the cells behind it inert and closes before Back", async () => {
-	await openDemoWithCoastFoldExcluded([open("album:coast", "albums")]);
+	await openDemoWithNothingKept([open("album:coast", "albums")]);
 	await resize([[1100, 640], [360, 640]]);
 	const modal = inFrame("a", ".supermax-modal-layer:not([data-supermax-exiting]) .supermax-modal");
 	const photoCell = (row) => inFrame("a", `[data-occurrence="${coast.photo(row, "a")}"]`);
@@ -2089,7 +2069,7 @@ test("the demo shows persistent recovery, busy feedback, and host resolution", a
 });
 
 test("a notice is a bubble in its source cell, and moves to the top of the viewport naming a source out of view", async () => {
-	await openDemoWithCoastFoldExcluded([open("album:coast", "albums")]);
+	await openDemoWithNothingKept([open("album:coast", "albums")]);
 	await resize([[1100, 640], [360, 640]]);
 	const photoA = inFrame("a", `[data-occurrence="${coast.photo("thumbnails", "a")}"]`);
 	const cellNotice = `${photoA} .supermax-cell-notices .supermax-notice`;
@@ -2251,6 +2231,8 @@ test("a narrow Back gives its departing child's room directly to the returning p
 	await page.goto(`${server.url}/?delay=0&presentation=veil&speed=10`);
 	await page.waitForFunction(() => window.supermaxDemo?.frames.length === 2);
 	await page.getByRole("button", { name: "Twenty cells deep", exact: true }).click();
+	await page.evaluate(() => { for (const { workspace } of window.supermaxDemo.frames) { delete workspace.navigator.destinations.albums.overflow; workspace.render({ animate: false }); } });
+	await settle();
 	await page.evaluate(() => window.supermaxDemo.resize([[960, 640], [277, 633]]));
 	await settle();
 	const outgoing = inFrame("b", '[data-occurrence$="/depth:20"]');
@@ -2455,7 +2437,7 @@ test("a full-height cell opened from a row breaks out beside its split, and Back
 });
 
 test("a twenty-cell chain stays navigable in both presentations", async () => {
-	await openDemo(TWENTY_DEEP);
+	await openDemoWithNothingKept(TWENTY_DEEP);
 	await resize([[960, 640], [420, 640]]);
 	for (const key of ["a", "b"]) {
 		const titles = await groups(key);
@@ -2471,7 +2453,7 @@ test("a twenty-cell chain stays navigable in both presentations", async () => {
 	const spec = await page.locator(inFrame("a", '[data-spec-for$="/depth:20"]')).evaluate((element) => ({ hidden: element.hidden, text: [...element.querySelectorAll("dt")].map((term) => `${term.textContent} ${term.nextElementSibling.textContent}`) }));
 	assert.equal(spec.hidden, false, "a cell with room shows its definition");
 	assert.deepEqual(spec.text.slice(0, 4), ["id depth:20", "min 128", "max 512", "preferred 256"]);
-	assert.ok(spec.text.includes("overflow hide"));
+	assert.ok(spec.text.includes("overflow none"));
 	assert.match(spec.text.find((line) => line.startsWith("width ")), /^width \d+ px$/);
 	await page.selectOption("[data-presentation]", "fold");
 	await settle();
@@ -2624,7 +2606,7 @@ test("history restore names where the application now is", async () => {
 });
 
 test("cells inside a hidden row are not painted and Back brings the row back", async () => {
-	await openDemoWithCoastFoldExcluded(THREE_ROWS);
+	await openDemoWithNothingKept(THREE_ROWS);
 	await resize([[960, 640], [420, 300]]);
 	assert.deepEqual(await hiddenRows("b"), [true, true, false]);
 	const visibility = await page.locator(inFrame("b", `.supermax-row[data-row="${coast.row("map")}"] .supermax-cell`)).evaluateAll((elements) => [...new Set(elements.map((element) => getComputedStyle(element).visibility))]);

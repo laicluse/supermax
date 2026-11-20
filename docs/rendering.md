@@ -59,6 +59,22 @@ Dimensions can be unavailable at initial mount and arrive in allocation updates.
 
 The `fold` and `reset` roots are native buttons whose mechanics belong to Supermax. Their renderers draw their interiors and style their roots. Navigation, Retry, modal close and notice renderers supply their own native buttons through action bindings.
 
+## Drawing your own fold
+
+A cell or row that gives way below a kept one folds, and a folded cell or row shows none of its content. What marks its place is the fold cue that the `fold` part draws: by default a small handle that lies over the gutter and takes no room from its neighbours. A layout that relies on that handle declares nothing for it.
+
+A host that wants a fold of its own design, such as a stitched seam or a concertina edge, replaces the `fold` part and may give the fold room for that drawing:
+
+```js
+albums: { title: "Albums", min: 180, max: 320, overflow: { mode: "fold", size: 16 } }
+```
+
+`size` is the width a folded cell sets aside, or the height a folded row sets aside, in CSS pixels. Nothing of the cell or row appears in it; it is the surface for the host's drawing. It is valid only with `mode: "fold"`, is a finite nonnegative length smaller than every form's minimum on that axis (`invalid-fold-size`, or `invalid-variant-fold` for a form in `variants`), and defaults to zero. It is independent of `--supermax-gutter`.
+
+A strip that should show content, such as a rail of icons, is not a fold. Keep the cell and declare the strip as a [smaller form](application-shell.md#responsive-forms-save-space).
+
+The [main demo](index.html) offers **Folding: 8px reserved on both axes** beside the default scenario: [8px of fold room on both axes](assets/captures/folding-reserved.png).
+
 ## Native actions and outlets
 
 `actions.<name>.attach(button)` accepts an `HTMLButtonElement` and returns a detach function. The shell binds activation and maintains `hidden`, `disabled`, `aria-disabled`, `aria-busy` and the localized accessible name. The descriptor's current state is in `state.actions[name]`: `{ offered, enabled, busy, label }`. Missing flags mean offered and enabled, with no busy state. Busy actions use `aria-disabled` and reject activation while retaining keyboard focus; `enabled: false` disables the native button.

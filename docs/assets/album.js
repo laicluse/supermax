@@ -101,7 +101,7 @@ export function destinations(context = "ana") {
 	if (catalogs.has(context)) return catalogs.get(context);
 	const result = { albums: { title: "Albums", ...widths.albums, data: { kind: "albums" } } };
 	for (let n = 1; n <= depthCount; n += 1) {
-		result[depthId(n)] = { title: `Depth ${n}`, ...widths.depth, overflow: { mode: "hide" }, data: { kind: "depth", n } };
+		result[depthId(n)] = { title: `Depth ${n}`, ...widths.depth, data: { kind: "depth", n } };
 	}
 	for (const album of albums) {
 		const key = ids(album);
