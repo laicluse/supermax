@@ -451,6 +451,47 @@ scenario("sync brings the open chain to a list of destinations in one transactio
 	assert.equal(chain.sync(["inbox", "list"]).noop, true, "a list that is already open changes nothing");
 });
 
+scenario("sync opens the longest beginning of ifRoom that shows without hiding what is in view, as cells a later explicit sync promotes", () => {
+	const chain = new Navigator({
+		destinations: {
+			elsewhere,
+			inbox: { title: "Inbox", min: 200, max: 300 },
+			list: { title: "List", min: 200, max: "*", preferred: 300 },
+			"conversation:1": { title: "Conversation 1", min: 200, max: 300 },
+			"messages:1": { title: "Messages 1", min: 300, max: 400 },
+			"attachments:1": { title: "Attachments 1", min: 200, max: 300 },
+		},
+		root: "inbox",
+		minViewportHeight,
+		chrome,
+	});
+	chain.resize({ width: 1000, height: 500 });
+	const open = () => {
+		const ids = [];
+		for (let current = chain.root; current; current = chain.child(current)) ids.push(current.destination);
+		return ids;
+	};
+	const required = ["inbox", "list", "conversation:1"];
+	const before = JSON.stringify(chain.snapshot());
+	assert.deepEqual(chain.sync(required, { ifRoom: ["messages:1", "nowhere"] }), { ok: false, reason: "unknown-destination", destination: "nowhere" }, "an unknown optional destination refuses the whole sync");
+	assert.equal(JSON.stringify(chain.snapshot()), before, "without touching the model");
+	const result = chain.sync(required, { ifRoom: ["messages:1", "attachments:1"] });
+	assert.equal(result.ok, true);
+	assert.deepEqual(open(), [...required, "messages:1"], "Messages fits next to what is in view, Attachments would push Inbox out of it");
+	assert.ok(chain.layout().chain.cells.every((cell) => cell.visible), "so everything stays in view");
+	const messages = chain.child(chain.child(chain.child(chain.root)));
+	assert.equal(chain.isAuto(messages), true, "an optional cell opens as an automatic one");
+	chain.resize({ width: 1400, height: 500 });
+	chain.layout();
+	assert.deepEqual(open(), [...required, "messages:1"], "a resize opens nothing");
+	assert.equal(chain.sync(required, { ifRoom: ["messages:1", "attachments:1"] }).ok, true);
+	assert.deepEqual(open(), [...required, "messages:1", "attachments:1"], "the next sync decides again against the wider window");
+	assert.equal(chain.sync([...required, "messages:1"]).ok, true);
+	assert.equal(chain.isAuto(chain.get(messages.id)), false, "naming an automatic cell in the required list promotes it, as a click does");
+	assert.deepEqual(chain.groups.map((group) => group.title).slice(-1), ["Messages 1"], "into a Back step of its own");
+	assert.equal(chain.sync([...required, "messages:1"], { ifRoom: ["attachments:1"] }).noop, true, "and a sync that finds everything in place changes nothing");
+});
+
 scenario("a title can change after a cell opened, in its occurrence, its group and where the application is, without a new declaration", () => {
 	const instance = model();
 	openGallery(instance);

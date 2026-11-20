@@ -259,23 +259,29 @@ export class Navigator {
 		return true;
 	}
 
-	sync(destinationIds) {
+	sync(destinationIds, { ifRoom = [] } = {}) {
 		const [rootId] = destinationIds;
 		if (rootId !== this.root.destination) return { ok: false, reason: "other-root", destination: rootId };
-		const unknown = destinationIds.find((id) => !this.definitionOf(id));
+		const unknown = [...destinationIds, ...ifRoom].find((id) => !this.definitionOf(id));
 		if (unknown) return { ok: false, reason: "unknown-destination", destination: unknown };
 		const open = [];
 		for (let current = this.root; current; current = this.child(current)) open.push(current);
 		let shared = 1;
 		while (shared < destinationIds.length && shared < open.length && open[shared].destination === destinationIds[shared]) shared += 1;
-		const beyond = open[shared];
-		if (shared === destinationIds.length && (!beyond || this.isAuto(beyond))) return { ok: true, noop: true, occurrence: open[shared - 1] };
 		const before = this.snapshot();
-		if (shared === destinationIds.length) {
-			this.closeSubtree(beyond);
-			this.dropEmptyGroups();
-		}
 		let last = open[shared - 1];
+		let changed = false;
+		if (shared === destinationIds.length) {
+			const beyond = open[shared];
+			if (beyond && !this.isAuto(beyond)) {
+				this.closeSubtree(beyond);
+				changed = true;
+			}
+			if (shared > 1 && this.isAuto(last)) {
+				this.promote(last);
+				changed = true;
+			}
+		}
 		for (const id of destinationIds.slice(shared)) {
 			const result = this.open(id, { from: last.id });
 			if (!result.ok) {
@@ -283,9 +289,46 @@ export class Navigator {
 				return { ok: false, reason: result.reason, destination: id };
 			}
 			last = result.occurrence;
+			changed = true;
 		}
-		this.bringIntoView(last.id);
-		return { ok: true, occurrence: last };
+		if (changed) this.bringIntoView(last.id);
+		const optional = this.openIfRoom(last, ifRoom);
+		if (!changed && optional.length === 0) return { ok: true, noop: true, occurrence: last };
+		return { ok: true, occurrence: last, optional };
+	}
+
+	// allow-comment: an optional cell opens only when it shows without hiding or compacting a cell that is in view now; existing widths may change.
+	openIfRoom(parent, destinationIds) {
+		const opened = [];
+		const shown = (layout) => [...layout.cells.values()].filter((cell) => cell.visible && !cell.compact).map((cell) => cell.occurrence);
+		let current = parent;
+		for (const id of destinationIds) {
+			const existing = this.child(current);
+			if (existing) {
+				if (existing.destination !== id) break;
+				current = existing;
+				continue;
+			}
+			if (isSplit(this.definitionOf(id)) && !validateSplit(this, id, current).ok) break;
+			const inView = shown(this.layout());
+			const before = this.snapshot();
+			const group = this.groups.find((candidate) => candidate.id === current.group) ?? null;
+			const child = this.createOccurrence(id, current, 0, group);
+			if (!group) this.createGroup(child);
+			const layout = this.layout();
+			const cell = layout.cells.get(child.id);
+			const fits = cell?.visible && !cell.compact && inView.every((occurrence) => {
+				const kept = layout.cells.get(occurrence);
+				return kept?.visible && !kept.compact;
+			});
+			if (!fits) {
+				this.restore(before);
+				break;
+			}
+			opened.push(child.id);
+			current = child;
+		}
+		return opened;
 	}
 
 	closeNewestGroup() {

@@ -900,14 +900,16 @@ test("sync brings a workspace to a list of destinations in one render, or leaves
 		for (const type of ["render", "change", "rejected"]) workspace.addEventListener(type, (event) => events.push(type === "change" ? `change:${event.detail.action.type}` : type));
 		workspace.openModal({ title: "Draft", content: () => ({ element: document.createElement("p") }) }, {});
 		const refused = workspace.sync(["albums", "nowhere"]);
+		const optionalRefused = workspace.sync(["albums", "album:coast"], { ifRoom: ["nowhere"], origin: null });
 		const modalAfterRefusal = !!workspace.modal;
 		const before = [...events];
 		events.length = 0;
 		const result = workspace.sync(["albums", "album:coast"]);
-		return { refused, modalAfterRefusal, before, events, ok: result.ok, open: result.occurrence?.destination, modal: !!workspace.modal, groups: workspace.navigator.state().groups.map((group) => group.title) };
+		return { refused, optionalRefused, modalAfterRefusal, before, events, ok: result.ok, open: result.occurrence?.destination, modal: !!workspace.modal, groups: workspace.navigator.state().groups.map((group) => group.title) };
 	});
 	assert.deepEqual(outcome.refused, { ok: false, reason: "unknown-destination", destination: "nowhere" });
-	assert.deepEqual(outcome.before, ["rejected"], "a refused sync renders nothing and reports the refusal");
+	assert.deepEqual(outcome.optionalRefused, { ok: false, reason: "unknown-destination", destination: "nowhere" }, "an unknown destination in ifRoom refuses the whole sync too");
+	assert.deepEqual(outcome.before, ["rejected", "rejected"], "a refused sync renders nothing and reports the refusal");
 	assert.equal(outcome.modalAfterRefusal, true, "and leaves an open modal alone");
 	assert.deepEqual(outcome.events, ["render", "change:sync"], "a sync renders once and reports one change");
 	assert.deepEqual([outcome.ok, outcome.open, outcome.modal, outcome.groups], [true, "album:coast", false, ["Coast"]], "it opens the album and closes the modal, like any navigation");

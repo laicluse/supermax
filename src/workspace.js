@@ -346,10 +346,10 @@ export class Workspace extends EventTarget {
 		for (const { strip } of this.chains.values()) strip.stay?.(ids);
 	}
 
-	sync(destinationIds, { animate = true, origin = null } = {}) {
-		const action = { type: "sync", destinations: [...destinationIds] };
+	sync(destinationIds, { animate = true, origin = null, ifRoom = [] } = {}) {
+		const action = { type: "sync", destinations: [...destinationIds], ifRoom: [...ifRoom] };
 		const before = new Set(this.navigator.occurrences.keys());
-		const result = this.navigator.sync(destinationIds);
+		const result = this.navigator.sync(destinationIds, { ifRoom });
 		if (result.ok && origin) {
 			let opened = this.navigator.root;
 			while (opened && before.has(opened.id)) opened = this.navigator.child(opened);
