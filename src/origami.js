@@ -1,3 +1,5 @@
+import { APPEAR, DISAPPEAR } from "./motion.js";
+
 export const HORIZON = 1 - 2 / (1 + Math.sqrt(5));
 
 // A cell folds open from the edge it shares with its parent and folds away on the edge across from it.
@@ -12,7 +14,7 @@ function hinge(element, opening) {
 function fold(element, timing, opening, delay = 0) {
 	const { origin, folded } = hinge(element, opening);
 	element.style.transformOrigin = origin;
-	const options = { duration: timing.duration, delay, easing: opening ? "ease-out" : "ease-in", fill: "both" };
+	const options = { duration: timing.duration, delay, easing: (opening ? APPEAR : DISAPPEAR).easing, fill: "both" };
 	const flat = { transform: "none", opacity: 1 };
 	const edge = { transform: folded, opacity: 0 };
 	const keyframes = opening ? [{ ...edge, offset: 0 }, { ...edge, offset: 0.3 }, { ...flat, offset: 1 }] : [{ ...flat, offset: 0 }, { ...edge, offset: 0.7 }, { ...edge, offset: 1 }];

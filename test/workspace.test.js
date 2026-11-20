@@ -257,7 +257,8 @@ test("a modal sits front and centre in its own viewport and a frustum links it t
 	assert.ok(faces.length >= 1 && faces.length <= 2, `only the faces turned towards the viewer are drawn: ${faces.join(", ")}`);
 	assert.equal(await page.locator(inFrame("b", ".supermax-modal")).count(), 0, "the other frame stays clear");
 	await page.keyboard.press("Escape");
-	assert.equal(await page.locator(inFrame("a", ".supermax-origin.is-modal")).count(), 0, "closing removes the frustum with the modal");
+	assert.equal(await page.locator(inFrame("a", ".supermax-modal-layer:not([data-supermax-exiting])")).count(), 0, "Escape closes the modal");
+	await page.waitForFunction(() => !document.querySelector('.frame[data-frame="a"] .supermax-origin.is-modal'));
 });
 
 test("a modal grows out of its source cell in a new cell's time while its frustum follows", async () => {
@@ -274,12 +275,78 @@ test("a modal grows out of its source cell in a new cell's time while its frustu
 		const now = dialog.getBoundingClientRect();
 		const cell = source.getBoundingClientRect();
 		const frustum = workspace.modal.originLayer.querySelector(".supermax-frustum");
-		return { duration: entrance.effect.getTiming().duration, cell: cell.width, now: now.width, final: final.width, opacity: Number(frustum.style.opacity) };
+		const innerFades = dialog.getAnimations({ subtree: true }).filter((animation) => animation.effect.target !== dialog && animation.effect.getKeyframes().some((frame) => frame.opacity !== undefined)).length;
+		return { duration: entrance.effect.getTiming().duration, easing: entrance.effect.getTiming().easing, innerFades, cell: cell.width, now: now.width, final: final.width, opacity: Number(frustum.style.opacity) };
 	}, coast.photo("map", "b"));
 	assert.equal(midway.duration, 200, "the same 200ms as a new cell");
+	assert.equal(midway.easing, "ease-out", "and it eases out as a new cell does");
+	assert.equal(midway.innerFades, 0, "the dialog fades as one, not part by part");
 	assert.ok(midway.now > Math.min(midway.cell, midway.final) && midway.now < Math.max(midway.cell, midway.final), "halfway the plane sits between the source cell and the modal");
 	assert.ok(midway.opacity > 0 && midway.opacity < 1, "and its frustum is fading in with it");
 	await settle();
+});
+
+test("a closed modal folds back into its source as a closing cell does, while the workspace is usable at once", async () => {
+	await openDemo([open("album:coast", "albums"), open("coast:photo:b", coast.row("map"))]);
+	await page.click(inFrame("a", `[data-occurrence="${coast.photo("map", "b")}"] .caption-edit`));
+	await settle();
+	const closing = await page.evaluate((photo) => {
+		const workspace = window.supermaxDemo.frames[0].workspace;
+		const final = workspace.modal.dialog.getBoundingClientRect().width;
+		workspace.closeModal("close");
+		const layer = document.querySelector('.frame[data-frame="a"] .supermax-modal-layer');
+		const dialog = layer?.querySelector(".supermax-modal");
+		const exit = dialog?.getAnimations().find((animation) => animation.effect.getKeyframes().some((frame) => frame.transform !== undefined));
+		exit?.pause();
+		if (exit) exit.currentTime = 100;
+		window.__exit = exit;
+		return {
+			modal: workspace.modal,
+			usable: !workspace.body.inert,
+			leaving: !!layer?.inert && layer.hasAttribute("data-supermax-exiting"),
+			easing: exit?.effect.getTiming().easing,
+			duration: exit?.effect.getTiming().duration,
+			cell: document.querySelector(`.frame[data-frame="a"] [data-occurrence="${photo}"]`).getBoundingClientRect().width,
+			final,
+			now: dialog?.getBoundingClientRect().width,
+		};
+	}, coast.photo("map", "b"));
+	assert.equal(closing.modal, null, "the modal is closed at once");
+	assert.ok(closing.usable, "and the cells behind it take input again");
+	assert.ok(closing.leaving, "while the dialog leaves inert on its way out");
+	assert.equal(closing.duration, 200, "in a closing cell's time");
+	assert.equal(closing.easing, "ease-in", "easing in as a closing cell does");
+	assert.ok(closing.now > Math.min(closing.cell, closing.final) && closing.now < Math.max(closing.cell, closing.final), "halfway the plane sits between the modal and its source");
+	await page.waitForFunction(() => {
+		const frustum = document.querySelector('.frame[data-frame="a"] .supermax-modal-layer .supermax-frustum');
+		return frustum && Number(frustum.style.opacity) > 0 && Number(frustum.style.opacity) < 1;
+	});
+	await page.evaluate(() => window.__exit.play());
+	await page.waitForFunction(() => !document.querySelector('.frame[data-frame="a"] .supermax-modal-layer'));
+});
+
+test("content that arrives after its cell has appeared swaps in without a fade of its own", async () => {
+	await page.goto(`${server.url}/?delay=300${PRESENTATION === "origami" ? "" : `&presentation=${PRESENTATION}`}#${encodeLog([open("album:coast", "albums"), open("coast:photo:a", coast.row("thumbnails"))])}`);
+	await page.waitForSelector(inFrame("a", `[data-occurrence="${coast.metadata("thumbnails", "a")}"] .metadata-link`));
+	await settle();
+	await page.evaluate(() => {
+		window.__innerFades = [];
+		const seen = new Set();
+		const watch = () => {
+			for (const animation of document.getAnimations()) {
+				const target = animation.effect?.target;
+				if (seen.has(animation) || !target?.closest?.('.frame[data-frame="a"] .supermax-cell') || target.classList?.contains("supermax-cell")) continue;
+				seen.add(animation);
+				if (animation.effect.getKeyframes().some((frame) => frame.opacity !== undefined)) window.__innerFades.push(target.className);
+			}
+			requestAnimationFrame(watch);
+		};
+		watch();
+	});
+	await page.click(inFrame("a", `[data-occurrence="${coast.metadata("thumbnails", "a")}"] .metadata-link:not(.album-export)`));
+	await page.waitForSelector(inFrame("a", `[data-occurrence="${coast.history("thumbnails", "a")}"] .supermax-cell-body:not(:has(.supermax-loading))`), { timeout: 5000 });
+	await page.waitForTimeout(300);
+	assert.deepEqual(await page.evaluate(() => window.__innerFades), [], "nothing inside the cell fades on its own");
 });
 
 test("in dark mode the frustum is lighter than what lies behind it, still lit from above", async () => {
@@ -783,7 +850,7 @@ test("remote cells open from hints, complete when their layout metadata arrives,
 test("a modal knows its source, traps the keyboard, closes before Back and returns focus to a usable place", async () => {
 	await openDemo([open("album:coast", "albums")]);
 	await resize([[1100, 640], [360, 640]]);
-	const modal = inFrame("a", ".supermax-modal");
+	const modal = inFrame("a", ".supermax-modal-layer:not([data-supermax-exiting]) .supermax-modal");
 	const photoCell = (row) => inFrame("a", `[data-occurrence="${coast.photo(row, "a")}"]`);
 	const urlBefore = page.url();
 	await page.selectOption("[data-delay]", "400");

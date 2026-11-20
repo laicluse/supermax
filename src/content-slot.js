@@ -43,10 +43,8 @@ export class ContentSlot {
 
 	settle(handle) {
 		this.handle = handle;
-		const late = this.element.classList.contains("is-loading");
 		this.element.classList.remove("is-loading", "is-error");
 		this.body.replaceChildren(...(handle.element ? [handle.element] : []));
-		if (late && handle.element?.animate && !this.workspace.reducedMotion.matches) handle.element.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 160, easing: "ease-out" });
 		handle.update?.(this.id ? this.workspace.navigator.get(this.id) : null, this.workspace);
 		this.onSettled?.();
 		this.workspace.dispatchEvent(new CustomEvent("content", { detail: { occurrence: this.id, state: "loaded" } }));

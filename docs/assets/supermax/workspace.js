@@ -468,25 +468,28 @@ export class Workspace extends EventTarget {
 		return { id, from: overlay.getBoundingClientRect(), to: entry.element.getBoundingClientRect() };
 	}
 
+	localLinks(layer, links) {
+		const base = layer.getBoundingClientRect();
+		const shift = (rect) => new DOMRect(rect.left - base.left, rect.top - base.top, rect.width, rect.height);
+		return links.map((link) => ({ ...link, from: shift(link.from), to: shift(link.to) }));
+	}
+
+	drawModalOrigin(modal, entering) {
+		if (!this.origin || !modal.originLayer) return;
+		this.origin({ kind: "modal", layer: modal.originLayer, links: this.localLinks(modal.originLayer, [this.originLink("modal", modal.dialog, modal.source)].filter(Boolean)), entering });
+	}
+
 	drawOrigins() {
 		if (!this.origin || !this.layout) return;
 		const modal = this.modal;
-		const local = (layer, links) => {
-			const base = layer.getBoundingClientRect();
-			const shift = (rect) => new DOMRect(rect.left - base.left, rect.top - base.top, rect.width, rect.height);
-			return links.map((link) => ({ ...link, from: shift(link.from), to: shift(link.to) }));
-		};
-		if (modal) {
-			const entering = modal.entrance ? modal.entrance.effect.getComputedTiming().progress ?? 1 : null;
-			this.origin({ kind: "modal", layer: modal.originLayer, links: local(modal.originLayer, [this.originLink("modal", modal.dialog, modal.source)].filter(Boolean)), entering });
-		}
+		if (modal) this.drawModalOrigin(modal, modal.entrance ? modal.entrance.effect.getComputedTiming().progress ?? 1 : null);
 		const bubbles = new Map();
 		for (const notice of modal ? [] : this.notices.notices.values()) {
 			if (notice.host === this.notices.region || notice.entering || bubbles.has(notice.source)) continue;
 			const link = this.originLink(notice.source, notice.host, notice.source);
 			if (link) bubbles.set(notice.source, link);
 		}
-		this.origin({ kind: "notice", layer: this.noticeOrigin, links: local(this.noticeOrigin, [...bubbles.values()]) });
+		this.origin({ kind: "notice", layer: this.noticeOrigin, links: this.localLinks(this.noticeOrigin, [...bubbles.values()]) });
 		this.notices.veil();
 	}
 

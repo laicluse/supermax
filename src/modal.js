@@ -1,6 +1,6 @@
 import { ContentSlot } from "./content-slot.js";
 import { focusables } from "./focus.js";
-import { STRIP_TIMING } from "./cell-strip.js";
+import { APPEAR, DISAPPEAR } from "./motion.js";
 
 const MODAL_BOUNDS = Object.freeze({ min: 280, max: 720, preferred: 440, minHeight: 160, maxHeight: Infinity, preferredHeight: null });
 
@@ -79,12 +79,7 @@ export class ModalHost {
 		const { dialog } = modal;
 		dialog.style.animation = "none";
 		dialog.style.transformOrigin = "0 0";
-		const scale = `scale(${from.width / to.width}, ${from.height / to.height})`;
-		modal.entrance = dialog.animate([
-			{ transform: `translate(${from.left - to.left}px, ${from.top - to.top}px) ${scale}`, opacity: 0 },
-			{ transform: "none", opacity: 1 },
-		], { duration: STRIP_TIMING.duration, easing: "cubic-bezier(0.2, 0, 0, 1)" });
-		for (const part of dialog.children) part.animate([{ opacity: 0, offset: 0 }, { opacity: 0, offset: 0.55 }, { opacity: 1, offset: 1 }], { duration: STRIP_TIMING.duration });
+		modal.entrance = dialog.animate([{ transform: this.planeOver(from, to), opacity: 0 }, { transform: "none", opacity: 1 }], APPEAR);
 		const follow = () => {
 			if (this.current !== modal) return;
 			workspace.drawOrigins();
@@ -96,6 +91,38 @@ export class ModalHost {
 			modal.entrance = null;
 			workspace.scheduleOrigins();
 		}, () => {});
+	}
+
+	planeOver(cell, dialog) {
+		return `translate(${cell.left - dialog.left}px, ${cell.top - dialog.top}px) scale(${cell.width / dialog.width}, ${cell.height / dialog.height})`;
+	}
+
+	// The closed dialog shrinks back into its source cell as a closing cell folds away, while the workspace already takes input.
+	leave(modal, reason) {
+		const workspace = this.workspace;
+		const view = workspace.document.defaultView;
+		const { element, dialog } = modal;
+		modal.entrance?.finish();
+		if (reason === "destroyed" || view.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+			element.remove();
+			return;
+		}
+		element.inert = true;
+		element.setAttribute("data-supermax-exiting", "");
+		const cell = modal.source && workspace.findCell(modal.source)?.full ? workspace.cells.get(modal.source)?.element : null;
+		const to = dialog.getBoundingClientRect();
+		dialog.style.animation = "none";
+		dialog.style.transformOrigin = "0 0";
+		const gone = cell && to.width > 0 && to.height > 0 ? this.planeOver(cell.getBoundingClientRect(), to) : "scale(0.97)";
+		const exit = dialog.animate([{ transform: "none", opacity: 1 }, { transform: gone, opacity: 0 }], { ...DISAPPEAR, fill: "forwards" });
+		element.animate([{ backgroundColor: "transparent" }], { ...DISAPPEAR, fill: "forwards" });
+		const follow = () => {
+			if (!element.isConnected) return;
+			workspace.drawModalOrigin(modal, 1 - (exit.effect.getComputedTiming().progress ?? 1));
+			view.requestAnimationFrame(follow);
+		};
+		if (cell && modal.originLayer) view.requestAnimationFrame(follow);
+		exit.finished.then(() => element.remove(), () => element.remove());
 	}
 
 	size(dialog, bounds) {
@@ -216,7 +243,7 @@ export class ModalHost {
 		this.resizeObserver?.disconnect();
 		this.resizeObserver = null;
 		modal.slot.dispose();
-		modal.element.remove();
+		this.leave(modal, reason);
 		workspace.body.inert = false;
 		workspace.element.removeEventListener("keydown", this.onKeydown, true);
 		workspace.notices.region.removeEventListener("keydown", this.onKeydown, true);

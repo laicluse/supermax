@@ -268,9 +268,9 @@
 	background: var(--supermax-notice-veil);
 	opacity: 0;
 	pointer-events: none;
-	transition: opacity 180ms ease, height 180ms ease;
+	transition: opacity 180ms ease-in, height 180ms ease-in;
 }
-.supermax-notice-veil.is-shown { opacity: 1; }
+.supermax-notice-veil.is-shown { opacity: 1; transition-timing-function: ease-out; }
 .supermax-cell-notices {
 	position: absolute;
 	top: calc(var(--supermax-cell-title, 28px) + 10px);
@@ -402,7 +402,7 @@
 .supermax-modal-body { flex: 1 1 auto; min-height: 0; overflow: auto; padding: 12px 16px 16px; }
 .supermax-modal-body .supermax-loading, .supermax-modal-body .supermax-error { padding: 0; }
 @media (prefers-reduced-motion: no-preference) {
-	.supermax-modal { animation: supermax-modal-in 180ms cubic-bezier(0.2, 0, 0, 1); }
+	.supermax-modal { animation: supermax-modal-in 200ms ease-out; }
 	@keyframes supermax-modal-in { from { opacity: 0; transform: scale(0.97); } }
 	.supermax-modal-layer { animation: supermax-backdrop-in 200ms ease-out; }
 	@keyframes supermax-backdrop-in { from { background-color: transparent; } }
