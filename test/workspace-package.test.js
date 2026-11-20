@@ -61,8 +61,8 @@ test("the package stylesheet alone renders the chrome at the sizes the model com
 
 test("a split and a cell in its row that declares a title header each draw their own bar", async () => {
 	const titles = await page.evaluate(() => ({
-		split: document.querySelector('[data-occurrence="root/gallery"] > .supermax-cell-title')?.textContent,
-		row: document.querySelector('[data-occurrence="root/gallery/grid"] > .supermax-cell-title')?.textContent ?? null,
+		split: document.querySelector('[data-occurrence="root/gallery"] > .supermax-cell-title .supermax-cell-title-text')?.textContent,
+		row: document.querySelector('[data-occurrence="root/gallery/grid"] > .supermax-cell-title .supermax-cell-title-text')?.textContent ?? null,
 	}));
 	assert.deepEqual(titles, { split: "Gallery", row: "Grid" });
 });
@@ -114,65 +114,16 @@ test("library text is opt-in: defaults stay English, a host replaces what it nam
 	assert.deepEqual(result.failures, ['TypeError: Unknown Supermax string "navigaton"', 'TypeError: Supermax string "retry" must be a function that returns text']);
 });
 
-test("origin: null draws no link, and anything else that is not a function is refused", async () => {
-	const result = await page.evaluate(async () => {
-		const { Navigator, Workspace } = await import("/src/index.js");
-		const navigator = new Navigator({ destinations: window.fixture.destinations, root: "root", minViewportHeight: window.fixture.minViewportHeight, chrome: window.fixture.chrome });
-		const host = document.createElement("div");
-		host.style.cssText = "width:600px;height:400px";
-		document.body.append(host);
-		const before = document.querySelectorAll(".supermax-origin").length;
-		const bare = new Workspace(host, { navigator, content: () => ({ element: document.createElement("div") }), origin: null });
-		const added = document.querySelectorAll(".supermax-origin").length - before;
-		bare.destroy();
-		host.remove();
-		let refused = null;
-		try { new Workspace(document.createElement("div"), { navigator, content: () => ({}), origin: "frustum" }); } catch (error) { refused = error.constructor.name; }
-		return { added, refused };
-	});
-	assert.deepEqual(result, { added: 0, refused: "TypeError" });
-});
-
-test("an origin callback owns the drawing from source and overlay rectangles", async () => {
-	const result = await page.evaluate(async () => {
-		const { Navigator, Workspace } = await import("/src/index.js");
-		const frame = document.createElement("div");
-		frame.style.cssText = "contain:layout;width:600px;height:400px";
-		const host = document.createElement("div");
-		host.style.cssText = "width:600px;height:400px";
-		frame.append(host);
-		document.body.append(frame);
-		const navigator = new Navigator({ destinations: window.fixture.destinations, root: "root", minViewportHeight: window.fixture.minViewportHeight, chrome: window.fixture.chrome });
-		const calls = [];
-		const origin = ({ kind, layer, links, entering, time }) => {
-			calls.push({ kind, links, entering, scaled: time.ms(10) });
-			layer.replaceChildren();
-			for (const { from, to } of links) {
-				const line = document.createElementNS("http://www.w3.org/2000/svg", "line");
-				line.setAttribute("class", "custom-origin-line");
-				line.setAttribute("x1", String(from.left));
-				line.setAttribute("y1", String(from.top));
-				line.setAttribute("x2", String(to.right));
-				line.setAttribute("y2", String(to.bottom));
-				line.setAttribute("stroke", "#7f5c2a");
-				layer.append(line);
-			}
-		};
-		const workspace = new Workspace(host, { navigator, content: () => ({ element: document.createElement("div") }), overlayRoot: frame, origin });
-		workspace.openModal({ title: "Custom", content: () => ({ element: document.createElement("div") }) }, { from: "root" });
-		workspace.drawOrigins();
-		const drawn = frame.querySelectorAll(".custom-origin-line").length;
-		const gradients = frame.querySelectorAll(".supermax-frustum-fade").length;
-		const call = calls.find((entry) => entry.kind === "modal" && entry.links.length > 0);
-		workspace.destroy();
-		frame.remove();
-		return { drawn, gradients, kind: call?.kind, sourceWidth: call?.links[0].from.width, targetWidth: call?.links[0].to.width, scaled: call?.scaled };
-	});
-	assert.equal(result.drawn, 1, "the host draws its own SVG in the supplied layer");
-	assert.equal(result.gradients, 0, "no default gradient is imposed on the host drawing");
-	assert.equal(result.kind, "modal");
-	assert.ok(result.sourceWidth > 0 && result.targetWidth > 0, "the callback receives source and overlay geometry");
-	assert.equal(result.scaled, 10, "the shared TimeScale is available to the callback");
+test("a host frustum renderer paints persistent shell geometry or leaves it unpainted", async () => {
+ const result = await page.evaluate(async () => {
+  const { Navigator, Workspace } = await import("/src/index.js");
+  const host = document.createElement("div"); host.style.cssText="width:600px;height:400px";document.body.append(host);
+  const navigator = new Navigator({destinations:window.fixture.destinations,root:"root",minViewportHeight:window.fixture.minViewportHeight,chrome:window.fixture.chrome});
+  const paints=[];let mounts=0;
+  const workspace = new Workspace(host,{navigator,content:()=>({element:document.createElement("div")}),renderer:{frustum({root}){mounts++;root.setAttribute("fill","gold");return {paint(geometry){paints.push(geometry);}};}}});
+  workspace.openModal({title:"Custom",content:()=>({element:document.createElement("div")})},{from:"root"});workspace.drawOrigins();const first=mounts;workspace.drawOrigins();
+  const result={stable:mounts===first,drawn:host.querySelectorAll('.supermax-frustum-face[fill="gold"]').length,geometry:paints.some(value=>value.from.width>0&&value.to.width>0)};workspace.destroy();host.remove();return result;
+ });assert.equal(result.stable,true);assert.ok(result.drawn>0);assert.equal(result.geometry,true);
 });
 
 test("loading shows only a centered, accessibly named spinner in cells and modals", async () => {
@@ -234,7 +185,7 @@ test("persistent notices keep an action visible through busy work until the host
 	assert.equal(await page.evaluate(() => document.activeElement?.className), "supermax-notice-action", "a status update preserves keyboard focus");
 	await notice.locator(".supermax-notice-action").click();
 	assert.equal(await notice.locator(".supermax-notice-text").textContent(), "Starting service");
-	assert.equal(await notice.locator(".supermax-notice-controls").getAttribute("aria-busy"), "", "busy state stays on the controls while text can be announced");
+	assert.equal(await notice.locator(".supermax-notice-controls").getAttribute("aria-busy"), "true", "busy state stays on the controls while text can be announced");
 	assert.equal(await notice.locator(".supermax-notice-spinner").count(), 1);
 	assert.equal(await notice.locator(".supermax-notice-action").getAttribute("aria-disabled"), "true", "the action cannot be repeated during work");
 	assert.equal(await page.evaluate(() => document.activeElement?.className), "supermax-notice-action", "busy feedback keeps focus on the action");
@@ -332,9 +283,9 @@ test("notices sit in their source cell by default, or at the top with noticePlac
 	assert.deepEqual(result, { byDefault: "cell", top: "top", refused: "TypeError" });
 });
 
-test("notice icons are opt-out: line icons by default, a host function or null", async () => {
+test("the default notice renderer can be composed with host iconography", async () => {
 	const result = await page.evaluate(async () => {
-		const { Navigator, Workspace } = await import("/src/index.js");
+		const { Navigator, Workspace, DEFAULT_RENDERER } = await import("/src/index.js");
 		const icons = async (options) => {
 			const navigator = new Navigator({ destinations: window.fixture.destinations, root: "root", minViewportHeight: window.fixture.minViewportHeight, chrome: window.fixture.chrome });
 			const frame = document.createElement("div");
@@ -352,10 +303,11 @@ test("notice icons are opt-out: line icons by default, a host function or null",
 			return found;
 		};
 		let refused = null;
-		try { new Workspace(document.createElement("div"), { navigator: new Navigator({ destinations: window.fixture.destinations, root: "root", minViewportHeight: window.fixture.minViewportHeight, chrome: window.fixture.chrome }), content: () => ({}), noticeIcon: "check" }); } catch (error) { refused = error.constructor.name; }
-		return { byDefault: await icons({}), custom: await icons({ noticeIcon: (kind, document) => document.createElement("b") }), none: await icons({ noticeIcon: null }), refused };
+		try { new Workspace(document.createElement("div"), { navigator: new Navigator({ destinations: window.fixture.destinations, root: "root", minViewportHeight: window.fixture.minViewportHeight, chrome: window.fixture.chrome }), content: () => ({}), renderer: { notice: "check" } }); } catch (error) { refused = error.constructor.name; }
+		const notice = (tag) => (context) => { const handle=DEFAULT_RENDERER.notice(context);return {update(state){handle.update(state);const icon=context.root.querySelector(".supermax-notice-icon");if(tag)icon.replaceChildren(context.document.createElement(tag));else icon.remove();}}; };
+		return { byDefault: await icons({}), custom: await icons({ renderer: { notice: notice("b") } }), none: await icons({ renderer: { notice: notice(null) } }), refused };
 	});
-	assert.deepEqual(result, { byDefault: "svg", custom: "b", none: null, refused: "TypeError" });
+	assert.deepEqual(result, { byDefault: "svg", custom: "b", none: null, refused: "SupermaxRendererError" });
 });
 
 test("a cell whose left edge stays put keeps its content in place while it widens, and starts a narrowing where it is", async () => {
@@ -581,7 +533,7 @@ test("floating navigation stays at the top of a headless cell without intercepti
 		window.headlessWorkspace.sync(["feed", "episode"], { animate: false, origin: null });
 	});
 	try {
-		const control = page.locator("#headless-navigation .supermax-up.is-floating");
+		const control = page.locator("#headless-navigation .supermax-up:not([hidden]).is-floating");
 		await control.waitFor({ state: "visible" });
 		const bounds = await control.boundingBox();
 		assert.equal(bounds.y, 6);

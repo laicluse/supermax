@@ -1,3 +1,4 @@
+import { resolveRenderer, mountPart } from "./renderer.js";
 import { CellStrip, STILL, STRIP_TIMING } from "./cell-strip.js";
 import { ContentSlot } from "./content-slot.js";
 import { DividerLayer } from "./dividers.js";
@@ -7,8 +8,8 @@ import { ModalHost } from "./modal.js";
 import { NoticeBoard } from "./notices.js";
 import { FoldController } from "./folding.js";
 import { resolveStrings } from "./strings.js";
-import { frustumOrigin } from "./origin.js";
-import { chevronIcon, defaultNoticeIcon } from "./icons.js";
+import { frustumOrigin, disposeOrigin } from "./origin.js";
+
 import { HORIZON } from "./origami.js";
 import { VEIL_PRESENTATION } from "./veil.js";
 import { TIMING, TimeScale, animateGeometry } from "./motion.js";
@@ -33,18 +34,19 @@ const JUSTIFY = Object.freeze({ start: "flex-start", center: "center", end: "fle
 const UP_NAME_LIMIT = 20;
 
 export class Workspace extends EventTarget {
-	constructor(element, { navigator, content, foldContent = null, onIntent = null, presentation = VEIL_PRESENTATION, strings = {}, origin = frustumOrigin, overlayRoot = element.ownerDocument.body, noticePlacement = "source", noticeIcon = defaultNoticeIcon, time = new TimeScale() }) {
+	constructor(element, options) {
 		super();
+		const known = ["navigator", "content", "renderer", "onIntent", "presentation", "strings", "overlayRoot", "noticePlacement", "time"];
+		for (const key of Object.keys(options)) if (!known.includes(key)) throw new TypeError(`Unknown Workspace option "${key}"`);
+		const { navigator, content, renderer = {}, onIntent = null, presentation = VEIL_PRESENTATION, strings = {}, overlayRoot = element.ownerDocument.body, noticePlacement = "source", time = new TimeScale() } = options;
 		this.time = time;
-		this.foldContent = foldContent;
+		this.renderer = resolveRenderer(renderer);
+		this.renderParts = new Set();
 		this.onTimeScale = () => this.paintTime();
-		if (noticeIcon !== null && typeof noticeIcon !== "function") throw new TypeError("noticeIcon must be a function that returns an element, or null for no icon");
-		this.noticeIcon = noticeIcon;
 		if (noticePlacement !== "source" && noticePlacement !== "top") throw new TypeError('noticePlacement must be "source" or "top"');
 		this.noticePlacement = noticePlacement;
-		if (origin !== null && typeof origin !== "function") throw new TypeError("origin must be a function that draws links, or null to draw none");
 		this.strings = resolveStrings(strings);
-		this.origin = origin;
+
 		this.overlayRoot = overlayRoot;
 		this.element = element;
 		this.navigator = navigator;
@@ -58,18 +60,23 @@ export class Workspace extends EventTarget {
 		this.closingRows = [];
 		this.chains = new Map();
 		this.rows = new Map();
-		this.notices = new NoticeBoard(this);
-		this.modalHost = new ModalHost(this);
-		this.folds = new FoldController(this);
-		this.dividers = new DividerLayer(this);
-		this.reducedMotion = this.document.defaultView.matchMedia("(prefers-reduced-motion: reduce)");
-		this.buildChrome();
-		this.paintTime();
-		this.time.addEventListener("change", this.onTimeScale);
-		this.element.classList.add(`supermax-presentation-${this.presentation.name}`);
-		this.observer = new this.document.defaultView.ResizeObserver(() => this.measure());
-		this.observer.observe(element);
-		this.measure();
+		try {
+			this.notices = new NoticeBoard(this);
+			this.modalHost = new ModalHost(this);
+			this.folds = new FoldController(this);
+			this.dividers = new DividerLayer(this);
+			this.reducedMotion = this.document.defaultView.matchMedia("(prefers-reduced-motion: reduce)");
+			this.buildChrome();
+			this.paintTime();
+			this.time.addEventListener("change", this.onTimeScale);
+			this.element.classList.add(`supermax-presentation-${this.presentation.name}`);
+			this.observer = new this.document.defaultView.ResizeObserver(() => this.measure());
+			this.observer.observe(element);
+			this.measure();
+		} catch (error) {
+			this.destroy();
+			throw error;
+		}
 	}
 
 	create(tag, className, text) {
@@ -81,17 +88,14 @@ export class Workspace extends EventTarget {
 
 	buildChrome() {
 		this.element.classList.add("supermax-workspace");
-		this.upButton = this.create("button", "supermax-up");
-		this.upButton.type = "button";
-		this.upLabel = this.create("span", "supermax-up-label");
-		this.upLabel.append(chevronIcon(this.document));
-		this.upLabel.setAttribute("aria-hidden", "true");
-		this.upName = this.create("span", "supermax-up-target");
-		this.upButton.append(this.upLabel, this.upName);
-		this.upButton.addEventListener("click", () => this.requestUp());
+		this.upButton = null;
 		this.body = this.create("div", "supermax-body");
 		this.element.replaceChildren(this.body);
-		this.noticeOrigin = this.origin ? this.originLayer("supermax-origin is-notices") : null;
+		const canvas = this.create("div", "supermax-canvas");
+		this.element.prepend(canvas);
+		this.canvasPart = mountPart(this, "canvas", canvas);
+		this.element.style.setProperty("--supermax-cell-title", `${this.navigator.chrome.header}px`);
+		this.noticeOrigin = this.originLayer("supermax-origin is-notices");
 		if (this.noticeOrigin) this.overlayRoot.append(this.noticeOrigin);
 		this.onViewportChange = () => {
 			this.placeHorizon();
@@ -230,13 +234,13 @@ export class Workspace extends EventTarget {
 			entry.viewport.remove();
 		}
 		this.chains.clear();
-		this.dividers.clear();
+		this.dividers?.clear();
 		if (this.rendered) this.render({ animate: false });
 		this.dispatchEvent(new CustomEvent("presentation", { detail: { name: next.name } }));
 	}
 
 	get modal() {
-		return this.modalHost.current;
+		return this.modalHost?.current ?? null;
 	}
 
 	notify(options) {
@@ -338,7 +342,7 @@ export class Workspace extends EventTarget {
 		const entry = this.cells.get(occurrenceId);
 		if (entry) {
 			entry.element.setAttribute("aria-label", title);
-			if (entry.titleNode) entry.titleNode.textContent = title;
+
 			if (entry.foldCue) {
 				entry.foldCue.setAttribute("aria-label", this.strings.unfold(title));
 				entry.foldCue.title = this.strings.unfold(title);
@@ -456,6 +460,7 @@ export class Workspace extends EventTarget {
 			return before && (before.variant !== cell.variant || before.rowVariant !== cell.rowVariant);
 		}) || [...this.cells.values()].some((entry) => [...entry.variantAnimations ?? []].some((animation) => ["running", "paused"].includes(animation.playState)));
 		this.layout = layout;
+		this.canvasPart.update({ width: this.navigator.size.width, height: this.navigator.size.height });
 		this.upDestination = this.navigator.zoomed ? this.zoomedFrom(layout) : layout.back;
 		const animating = this.folds.drag?.rendering || (animate && !this.reducedMotion.matches);
 		this.animating = animating;
@@ -502,6 +507,8 @@ export class Workspace extends EventTarget {
 		}
 	}
 
+	disposeOrigin(layer) { disposeOrigin(layer); }
+
 	originLayer(className) {
 		const layer = this.document.createElementNS("http://www.w3.org/2000/svg", "svg");
 		layer.setAttribute("class", className);
@@ -510,7 +517,7 @@ export class Workspace extends EventTarget {
 	}
 
 	scheduleOrigins() {
-		if (!this.origin || this.originFrame) return;
+		if (this.originFrame) return;
 		this.originFrame = this.document.defaultView.requestAnimationFrame(() => {
 			this.originFrame = null;
 			this.drawOrigins();
@@ -530,12 +537,12 @@ export class Workspace extends EventTarget {
 	}
 
 	drawModalOrigin(modal, entering) {
-		if (!this.origin || !modal.originLayer) return;
-		this.origin({ kind: "modal", time: this.time, layer: modal.originLayer, links: this.localLinks(modal.originLayer, [this.originLink("modal", modal.dialog, modal.source)].filter(Boolean)), entering });
+		if (!modal.originLayer) return;
+		frustumOrigin({ workspace: this, kind: "modal", time: this.time, layer: modal.originLayer, links: this.localLinks(modal.originLayer, [this.originLink("modal", modal.dialog, modal.source)].filter(Boolean)), entering });
 	}
 
 	drawOrigins() {
-		if (!this.origin || !this.layout) return;
+		if (!this.layout) return;
 		const modal = this.modal;
 		if (modal) this.drawModalOrigin(modal, modal.entrance ? modal.entrance.effect.getComputedTiming().progress ?? 1 : null);
 		const bubbles = new Map();
@@ -544,29 +551,28 @@ export class Workspace extends EventTarget {
 			const link = this.originLink(notice.source, notice.host, notice.source);
 			if (link) bubbles.set(notice.source, link);
 		}
-		this.origin({ kind: "notice", time: this.time, layer: this.noticeOrigin, links: this.localLinks(this.noticeOrigin, [...bubbles.values()]) });
+		frustumOrigin({ workspace: this, kind: "notice", time: this.time, layer: this.noticeOrigin, links: this.localLinks(this.noticeOrigin, [...bubbles.values()]) });
 		this.notices.veil();
 	}
 
 	// allow-comment: the Show control lives in the first cell of the root chain in view, in its title bar or at its top left corner when it has no bar.
 	renderUp() {
 		const next = this.upDestination && this.navigator.get(this.upDestination.id);
-		this.upButton.hidden = !next;
-		if (next) this.upButton.setAttribute("aria-label", this.upDestination.zoomOnly ? this.strings.zoomOut() : this.strings.up(next.title));
-		else this.upButton.removeAttribute("aria-label");
 		const first = this.layout?.chain.cells.find((cell) => cell.inView && !cell.folded) ?? this.layout?.chain.cells.find((cell) => cell.inView);
-		const entry = first ? this.cells.get(first.occurrence) : null;
-		// allow-comment: the visible name says what comes back only when that adds something: a short title that differs from the bar it stands in; otherwise the control says Back, and its accessible name describes the target or zoom exit.
-		const own = first ? this.navigator.get(first.occurrence)?.title : null;
-		const named = next && !this.upDestination.zoomOnly && next.title.length <= UP_NAME_LIMIT && next.title !== own;
-		this.upName.textContent = next ? (named ? next.title : this.strings.back()) : "";
-		if (!entry) {
-			this.upButton.remove();
-			return;
+		this.upButton = null;
+		for (const [id, entry] of this.cells) {
+			const occurrence = this.navigator.get(id);
+			if (!occurrence) continue;
+			const offered = !!next && first?.occurrence === id;
+			const named = next && !this.upDestination.zoomOnly && next.title.length <= UP_NAME_LIMIT && next.title !== occurrence.title;
+			const state = { occurrence: id, title: occurrence.title, navigationText: next ? (named ? next.title : this.strings.back()) : "", actions: { navigation: { offered, label: next ? (this.upDestination.zoomOnly ? this.strings.zoomOut() : this.strings.up(next.title)) : this.strings.back() } } };
+			entry.chromePart.update(state);
+			const cell = this.layout?.cells.get(id);
+			const paintState = { ...state, split: entry.element.classList.contains("is-split"), folded: !!cell?.folded, visible: !!cell?.full, width: cell?.width, height: cell?.height, headerHeight: entry.header ? this.navigator.chrome.header : 0, variant: cell?.variant, rowVariant: cell?.rowVariant };
+			entry.element.toggleAttribute("data-supermax-conceal", !!this.presentation.motion?.concealContent);
+			entry.materialPart.update(paintState); entry.veilPart.update(paintState);
+			if (offered) this.upButton = entry.chromePart.actions.navigation.element;
 		}
-		const home = entry.leading ?? entry.element;
-		this.upButton.classList.toggle("is-floating", home === entry.element);
-		if (home.firstChild !== this.upButton) home.prepend(this.upButton);
 	}
 
 	renderChain(chain, host, animating, { inRow = false, row = 0 } = {}) {
@@ -682,26 +688,22 @@ export class Workspace extends EventTarget {
 		element.dataset.occurrence = occurrenceId;
 		element.setAttribute("aria-label", occurrence.title);
 		const body = this.create("div", "supermax-cell-body");
+		const material = this.create("div", "supermax-material");
+		const veil = this.create("div", "supermax-veil");
+		material.setAttribute("aria-hidden", "true"); veil.setAttribute("aria-hidden", "true");
+		const state = { occurrence: occurrenceId, title: occurrence.title, split: isSplit(definition), headerHeight: definition.header === "title" ? this.navigator.chrome.header : 0, actions: { navigation: { offered: false, label: this.strings.back() } } };
+		const utilities = this.create("div", "supermax-utilities");
 		let header = null;
-		let leading = null;
-		let titleNode = null;
-		let trailing = null;
-		if (isSplit(definition)) {
-			element.classList.add("is-split");
-			body.append(this.create("div", "supermax-rows"));
-		}
-		// allow-comment: a title bar has three parts in a fixed order: leading holds the Show control, the centre the title, trailing the content's own controls; each is there even when empty, so an application styles the bar once.
-		if (definition.header !== "title") element.classList.add("is-headless");
-		else {
-			header = this.create("header", "supermax-cell-title");
-			leading = this.create("div", "supermax-cell-title-leading");
-			titleNode = this.create("span", "supermax-cell-title-text", occurrence.title);
-			trailing = this.create("div", "supermax-cell-title-trailing");
-			header.append(leading, titleNode, trailing);
-			element.append(header);
-		}
-		element.append(body);
-		entry = { element, body, header, leading, titleNode, trailing, slot: new ContentSlot(this, { element, body, header: trailing, id: occurrenceId }), parent: occurrence.parent };
+		if (isSplit(definition)) { element.classList.add("is-split"); body.append(this.create("div", "supermax-rows")); }
+		const chrome = this.create(definition.header === "title" ? "header" : "div", definition.header === "title" ? "supermax-cell-title" : "supermax-navigation");
+		if (definition.header === "title") header = chrome;
+		else element.classList.add("is-headless");
+		element.append(material, chrome, body, veil);
+		const chromePart = mountPart(this, header ? "header" : "navigation", chrome, state, { actions: { navigation: { run: () => this.requestUp() } }, slots: header ? { utilities } : {} });
+		const materialPart = mountPart(this, "cell", material, state);
+		const veilPart = mountPart(this, "veil", veil, state);
+		element.supermaxPaint = { veil, foreground: [chrome, body], concealContent: () => !!this.presentation.motion?.concealContent };
+		entry = { element, body, header, chromePart, materialPart, veilPart, slot: new ContentSlot(this, { element, body, header: header ? utilities : null, id: occurrenceId }), parent: occurrence.parent };
 		this.folds.mount(entry, occurrence, "horizontal");
 		this.cells.set(occurrenceId, entry);
 		if (!isSplit(definition)) this.mountContent(entry, occurrence);
@@ -858,6 +860,7 @@ export class Workspace extends EventTarget {
 				this.leavingCells.delete(occurrenceId);
 				this.origins.delete(occurrenceId);
 				entry.slot.dispose();
+				entry.chromePart.dispose(); entry.materialPart.dispose(); entry.veilPart.dispose();
 			});
 		}
 		for (const [rowId, entry] of this.rows) {
@@ -904,16 +907,17 @@ export class Workspace extends EventTarget {
 
 	destroy() {
 		if (this.modal) this.closeModal("destroyed");
-		this.notices.clear();
-		this.dividers.clear();
-		this.folds.destroy();
+		this.notices?.clear();
+		this.dividers?.clear();
+		this.folds?.destroy();
 		this.layout = null;
 		this.element.classList.remove("has-modal");
-		this.observer.disconnect();
+		this.observer?.disconnect();
 		this.time.removeEventListener("change", this.onTimeScale);
 		this.document.defaultView.removeEventListener("resize", this.onViewportChange);
 		this.document.removeEventListener("scroll", this.onViewportChange, true);
 		if (this.originFrame) this.document.defaultView.cancelAnimationFrame(this.originFrame);
+		this.disposeOrigin(this.noticeOrigin);
 		this.noticeOrigin?.remove();
 		for (const entry of [...this.cells.values(), ...this.leavingCells.values()]) entry.slot.dispose();
 		for (const entry of this.chains.values()) entry.strip.destroy();
@@ -922,6 +926,7 @@ export class Workspace extends EventTarget {
 		this.origins.clear();
 		this.chains.clear();
 		this.rows.clear();
+		for (const part of [...this.renderParts]) part.dispose();
 		this.element.replaceChildren();
 		this.element.classList.remove("supermax-workspace", `supermax-presentation-${this.presentation.name}`);
 	}

@@ -103,7 +103,7 @@ test("Show never strands later rows without a fold handle", async () => {
 	await page.evaluate(() => window.supermaxDemo.resize([[960, 640], [401, 292]]));
 	await page.waitForFunction(() => window.supermaxDemo.frames[1].workspace.layout.height === 292);
 	for (const expected of [coast.row("map"), coast.row("thumbnails")]) {
-		await page.click(inFrame("b", ".supermax-up"));
+		await page.click(inFrame("b", ".supermax-up:not([hidden])"));
 		await settle();
 		const row = await page.evaluate((id) => window.supermaxDemo.frames[1].workspace.layout.rows.get(id), expected);
 		assert.equal(row.visible && !row.folded, true, `Show reaches ${expected}`);
@@ -122,7 +122,7 @@ test("fold handles reveal adjacent rows one page at a time", async () => {
 	await page.evaluate(() => window.supermaxDemo.resize([[960, 640], [401, 292]]));
 	await page.waitForFunction(() => window.supermaxDemo.frames[1].workspace.layout.height === 292);
 	for (let step = 0; step < 2; step += 1) {
-		await page.click(inFrame("b", ".supermax-up"));
+		await page.click(inFrame("b", ".supermax-up:not([hidden])"));
 		await settle();
 	}
 	await page.waitForTimeout(100);
@@ -241,7 +241,9 @@ async function groups(key) {
 }
 
 async function backButton(key) {
-	return page.locator(inFrame(key, ".supermax-up")).evaluate((button) => ({ hidden: button.hidden, label: button.getAttribute("aria-label"), text: button.textContent }));
+	const control = page.locator(inFrame(key, ".supermax-up:not([hidden])"));
+	if (!(await control.count())) return { hidden: true, label: null, text: "" };
+	return control.evaluate((button) => ({ hidden: button.hidden, label: button.getAttribute("aria-label"), text: button.textContent }));
 }
 
 async function closeNewest(key) {
@@ -357,7 +359,7 @@ test("a long name in the Show control gives way to the title on a phone", async 
 		const { workspace } = window.supermaxDemo.frames[1];
 		for (const id of workspace.navigator.state().occurrences) workspace.setTitle(id, `A very long name for ${id.split("/").pop()} that does not fit on a phone at all`);
 	});
-	const measured = await page.locator(inFrame("b", ".supermax-up")).evaluate((up) => {
+	const measured = await page.locator(inFrame("b", ".supermax-up:not([hidden])")).evaluate((up) => {
 		const cell = up.closest(".supermax-cell");
 		return {
 			cellWidth: cell.getBoundingClientRect().width,
@@ -375,14 +377,14 @@ test("a long name in the Show control gives way to the title on a phone", async 
 	assert.match(measured.label, /A very long name for depth:18/, "while its accessible name still names the hidden parent by its new title");
 	await openDemo(THREE_ROWS);
 	await resize([[960, 370], [420, 640]]);
-	const wide = await page.locator(inFrame("a", ".supermax-up")).evaluate((up) => ({ hidden: up.hidden, inBar: !!up.closest(".supermax-cell-title-leading"), nameShown: getComputedStyle(up.querySelector(".supermax-up-target")).display !== "none" && up.querySelector(".supermax-up-target").getBoundingClientRect().width > 20, first: up.closest(".supermax-cell").dataset.occurrence }));
+	const wide = await page.locator(inFrame("a", ".supermax-up:not([hidden])")).evaluate((up) => ({ hidden: up.hidden, inBar: !!up.closest(".supermax-cell-title-leading"), nameShown: getComputedStyle(up.querySelector(".supermax-up-target")).display !== "none" && up.querySelector(".supermax-up-target").getBoundingClientRect().width > 20, first: up.closest(".supermax-cell").dataset.occurrence }));
 	assert.deepEqual(wide, { hidden: false, inBar: true, nameShown: false, first: "albums" }, "the host keeps the Show control compact inside its narrow menu");
 });
 
 test("the Show control says Back when the name of what it brings back is long or repeats its own bar", async () => {
 	await openDemo(TWENTY_DEEP);
 	await resize([[960, 640], [420, 640]]);
-	const control = () => page.locator(inFrame("a", ".supermax-up")).evaluate((up) => ({ text: up.textContent, label: up.getAttribute("aria-label") }));
+	const control = () => page.locator(inFrame("a", ".supermax-up:not([hidden])")).evaluate((up) => ({ text: up.textContent, label: up.getAttribute("aria-label") }));
 	assert.deepEqual(await control(), { text: "Depth 15", label: "Show Depth 15" }, "a short name that differs from the bar names the cell");
 	await page.evaluate(() => window.supermaxDemo.frames[0].workspace.setTitle(window.supermaxDemo.frames[0].workspace.upDestination.id, "Your order at the corner shop has been delivered"));
 	assert.deepEqual(await control(), { text: "Back", label: "Show Your order at the corner shop has been delivered" }, "a long name becomes Back, while the accessible name still names the cell");
@@ -398,7 +400,7 @@ test("the up control names the nearest hidden parent, closes what falls off the 
 	await resize([[960, 640], [420, 640]]);
 	assert.deepEqual(await backButton("a"), { hidden: false, label: "Show Depth 15", text: "Depth 15" });
 	const before = { a: await groups("a"), b: await backButton("b"), bGroups: await groups("b"), url: page.url() };
-	await page.click(inFrame("a", ".supermax-up"));
+	await page.click(inFrame("a", ".supermax-up:not([hidden])"));
 	await settle();
 	assert.deepEqual(await groups("a"), before.a.slice(0, -1), "Depth 20 closes so Depth 15 fits");
 	assert.equal(page.url(), before.url, "the shared log does not change");
@@ -428,14 +430,14 @@ test("Back climbs the newest branch first, then the branch opened before it in a
 	await page.click(inFrame("a", `[data-occurrence="${coast.metadata("thumbnails", "a")}"] .metadata-link`));
 	await settle();
 	assert.equal((await backButton("a")).label, "Show Thumbnails", "the hidden parent of the newest branch comes back first");
-	await page.click(inFrame("a", ".supermax-up"));
+	await page.click(inFrame("a", ".supermax-up:not([hidden])"));
 	await settle();
 	assert.equal((await backButton("a")).label, "Show Map", "with that branch whole, the branch opened before it climbs next");
-	await page.click(inFrame("a", ".supermax-up"));
+	await page.click(inFrame("a", ".supermax-up:not([hidden])"));
 	await settle();
 	assert.equal(await painted(inFrame("a", `[data-occurrence="${coast.row("map")}"]`)), true);
 	assert.equal((await backButton("a")).label, "Show People", "the remaining earlier row is next");
-	await page.click(inFrame("a", ".supermax-up"));
+	await page.click(inFrame("a", ".supermax-up:not([hidden])"));
 	await settle();
 	assert.equal((await backButton("a")).hidden, true, "with nothing above any branch out of view Back goes away");
 	assert.deepEqual(await groups("a"), ["Coast"], "each step closed only the History A that had pushed its parent out");
@@ -444,16 +446,16 @@ test("Back climbs the newest branch first, then the branch opened before it in a
 test("a click in one frame reaches the other as the same new click, even after the up control closed cells there", async () => {
 	await openDemo(TWENTY_DEEP);
 	await resize([[960, 640], [420, 640]]);
-	for (let step = 0; step < 8; step += 1) { await page.click(inFrame("a", ".supermax-up")); await settle(); }
-	for (let step = 0; step < 3; step += 1) { await page.click(inFrame("b", ".supermax-up")); await settle(); }
+	for (let step = 0; step < 8; step += 1) { await page.click(inFrame("a", ".supermax-up:not([hidden])")); await settle(); }
+	for (let step = 0; step < 3; step += 1) { await page.click(inFrame("b", ".supermax-up:not([hidden])")); await settle(); }
 	assert.equal((await groups("a")).length, 12);
 	assert.equal((await groups("b")).length, 17, "each frame closed what its own size needed");
 	await page.click(inFrame("a", `[data-occurrence="${TWENTY_DEEP[12].from}"] .depth-next`));
 	await settle();
 	assert.deepEqual(await groups("b"), await groups("a"), "the frame that still had Depth 13 to 17 open opens Depth 13 anew, so both end at the clicked cell");
-	await page.click(inFrame("b", ".supermax-up"));
+	await page.click(inFrame("b", ".supermax-up:not([hidden])"));
 	await settle();
-	await page.click(inFrame("b", ".supermax-up"));
+	await page.click(inFrame("b", ".supermax-up:not([hidden])"));
 	await settle();
 	await page.click(inFrame("a", `[data-occurrence="${TWENTY_DEEP[13].from}"] .depth-next`));
 	await settle();
@@ -472,7 +474,7 @@ test("a modal sits front and centre in its own viewport and a frustum links it t
 		return { dx: Math.round((dialog.left + dialog.width / 2) - (frame.left + frame.width / 2)), dy: Math.round((dialog.top + dialog.height / 2) - (frame.top + frame.height / 2)), inside: dialog.left >= frame.left && dialog.right <= frame.right && dialog.top >= frame.top && dialog.bottom <= frame.bottom };
 	});
 	assert.ok(Math.abs(geometry.dx) <= 1 && Math.abs(geometry.dy) <= 1 && geometry.inside, `the dialog is centred inside its frame (${geometry.dx}, ${geometry.dy})`);
-	const faces = await page.locator(inFrame("a", ".supermax-origin.is-modal .supermax-frustum-face")).evaluateAll((elements) => elements.map((element) => element.getAttribute("class").split(" ").pop()));
+	const faces = await page.locator(inFrame("a", ".supermax-origin.is-modal .supermax-frustum-face")).evaluateAll((elements) => elements.filter((element) => getComputedStyle(element).display !== "none").map((element) => element.getAttribute("class").split(" ").pop()));
 	assert.ok(faces.length >= 1 && faces.length <= 2, `only the faces turned towards the viewer are drawn: ${faces.join(", ")}`);
 	assert.equal(await page.locator(inFrame("b", ".supermax-modal")).count(), 0, "the other frame stays clear");
 	await page.click(inFrame("a", ".supermax-modal-close"));
@@ -609,7 +611,7 @@ test("in dark mode the frustum is lighter than what lies behind it, still lit fr
 		await page.click(inFrame("a", `[data-occurrence="${coast.photo("map", "b")}"] .caption-edit`));
 		await settle();
 		await page.waitForFunction(() => document.querySelector('.frame[data-frame="a"] .supermax-origin.is-modal .supermax-frustum-face'));
-		const fills = await page.evaluate(() => Object.fromEntries([...document.querySelectorAll('.frame[data-frame="a"] .supermax-origin.is-modal .supermax-frustum-face')].map((face) => [face.dataset.side, getComputedStyle(face.gradient.querySelector("stop")).stopColor])));
+		const fills = await page.evaluate(() => Object.fromEntries([...document.querySelectorAll('.frame[data-frame="a"] .supermax-origin.is-modal .supermax-frustum-face')].map((face) => [face.dataset.side, getComputedStyle(face.parentElement.querySelector(`#${CSS.escape(/url\("?#([^\")]+)\"?\)/.exec(face.getAttribute("fill"))[1])} stop`)).stopColor])));
 		const white = (fill) => { const [r, g, b, a] = fill.match(/[\d.]+/g).map(Number); return r === 255 && g === 255 && b === 255 ? a : -1; };
 		assert.ok(Object.values(fills).length > 0 && Object.values(fills).every((fill) => white(fill) > 0), `every face is a light veil: ${JSON.stringify(fills)}`);
 		if (fills.top && fills.bottom) assert.ok(white(fills.top) > white(fills.bottom), "the top face catches the most light");
@@ -628,7 +630,7 @@ test("a modal whose content arrives late already stands at the height that conte
 	assert.ok(await page.locator(inFrame("a", ".supermax-modal .supermax-loading")).count() > 0, "the content is still loading");
 	const mark = await page.locator(inFrame("a", ".supermax-modal .supermax-loading-mark")).evaluate((element) => {
 		const style = getComputedStyle(element);
-		return { stroke: style.borderTopWidth, ring: style.borderTopColor, gap: style.borderRightColor, canvas: getComputedStyle(element.closest(".frame").querySelector(".supermax-workspace")).backgroundColor };
+		return { stroke: style.borderTopWidth, ring: style.borderTopColor, gap: style.borderRightColor, canvas: getComputedStyle(element.closest(".frame").querySelector(".supermax-canvas")).backgroundColor };
 	});
 	assert.deepEqual(mark, { stroke: "1px", ring: mark.canvas, gap: "rgba(0, 0, 0, 0)", canvas: mark.canvas }, "the loading mark is a one-pixel open ring in canvas colour");
 	const loading = await height();
@@ -683,7 +685,7 @@ test("cells stand one gutter apart over the canvas, and rows never run past thei
 		const cells = [...root.querySelectorAll(".supermax-cell")].filter((cell) => cell.getBoundingClientRect().width > 0 && getComputedStyle(cell).visibility !== "hidden");
 		const split = root.querySelector(".supermax-cell.is-split").getBoundingClientRect();
 		return {
-			canvas: getComputedStyle(root.querySelector(".supermax-workspace")).backgroundColor,
+			canvas: getComputedStyle(root.querySelector(".supermax-canvas")).backgroundColor,
 			gutters: cells.map((cell) => [cell.dataset.occurrence.split("/").pop(), getComputedStyle(cell).borderLeftWidth]),
 			rows: [...root.querySelectorAll(".supermax-row")].map((row) => getComputedStyle(row).borderTopWidth),
 			frames: [...root.querySelectorAll(".supermax-row-chain")].map((frame) => getComputedStyle(frame).clipPath),
@@ -691,7 +693,7 @@ test("cells stand one gutter apart over the canvas, and rows never run past thei
 			radius: getComputedStyle(root.querySelector(".supermax-up")).borderRadius,
 		};
 	});
-	assert.equal(geometry.canvas, "rgb(221, 221, 221)", "the canvas takes the colour the host sets in --supermax-canvas");
+	assert.equal(geometry.canvas, "rgb(221, 221, 221)", "the canvas takes the colour the host sets in --supermax-default-canvas");
 	assert.deepEqual(Object.fromEntries(geometry.gutters), {
 		albums: "0px",
 		"album:coast": "0px",
@@ -1339,9 +1341,9 @@ test("zooming a cell hides the cells before it, keeps what follows, and Show zoo
 	assert.deepEqual(events, ["coast:photo:c"], "the header's zoom control zooms Photo C");
 	const zoomed = await shown();
 	assert.deepEqual(zoomed.slice(0, 2), ["coast:photo:c", "coast:metadata:c"], `Thumbnails hides, and Photo C keeps what follows it: ${zoomed}`);
-	const show = await page.locator(inFrame("a", ".supermax-up")).evaluate((button) => ({ hidden: button.hidden, text: button.textContent }));
+	const show = await page.locator(inFrame("a", ".supermax-up:not([hidden])")).evaluate((button) => ({ hidden: button.hidden, text: button.textContent }));
 	assert.deepEqual(show, { hidden: false, text: "Thumbnails" }, "the Show control offers the way back to the zoomed cell's hidden parent");
-	await page.click(inFrame("a", ".supermax-up"));
+	await page.click(inFrame("a", ".supermax-up:not([hidden])"));
 	await settle();
 	await page.evaluate(() => document.getAnimations().forEach((animation) => animation.finish()));
 	assert.deepEqual(await page.evaluate(() => window.zoomEvents), ["coast:photo:c", null], "and Show zooms out first");
@@ -1357,9 +1359,9 @@ test("in zoom the Show control names only what zooming out brings back, because 
 	await page.evaluate((photo) => window.supermaxDemo.frames[1].workspace.zoom(photo), photo);
 	await settle();
 	await page.evaluate(() => document.getAnimations().forEach((animation) => animation.finish()));
-	const control = await page.locator(inFrame("b", ".supermax-up")).evaluate((button) => ({ hidden: button.hidden, name: button.querySelector(".supermax-up-target")?.textContent ?? "", label: button.getAttribute("aria-label") }));
+	const control = await page.locator(inFrame("b", ".supermax-up:not([hidden])")).evaluate((button) => ({ hidden: button.hidden, name: button.querySelector(".supermax-up-target")?.textContent ?? "", label: button.getAttribute("aria-label") }));
 	assert.equal(control.hidden, false, "zoom always provides an exit");
-	await page.locator(inFrame("b", ".supermax-up")).click();
+	await page.locator(inFrame("b", ".supermax-up:not([hidden])")).click();
 	await settle();
 	await page.evaluate(() => document.getAnimations().forEach((animation) => animation.finish()));
 	const after = await visibleTitles();
@@ -1577,7 +1579,7 @@ test("origami folds a cell open from its parent's edge and back onto it when it 
 			const animations = document.getAnimations().filter((animation) => animation.effect?.target === cell);
 			const fold = animations.find((animation) => animation.effect.getKeyframes().some((frame) => frame.transform?.includes("rotate")));
 			if (!fold) return null;
-			const fade = animations.find((animation) => animation.effect.pseudoElement === "::after" && animation.effect.getKeyframes().some((frame) => frame.opacity !== undefined));
+			const fade = document.getAnimations().find((animation) => animation.effect?.target === cell.querySelector(":scope > .supermax-veil") && animation.effect.getKeyframes().some((frame) => frame.opacity !== undefined));
 			const edge = (frames, folded) => frames.filter(folded).map((frame) => frame.computedOffset);
 			return {
 				cell: cell.dataset.occurrence.split("/").pop(),
@@ -1593,7 +1595,7 @@ test("origami folds a cell open from its parent's edge and back onto it when it 
 				opaque: getComputedStyle(cell).opacity,
 				shadeOnCompositor: !!fade && !fade.effect.getKeyframes().some((frame) => Object.keys(frame).some((key) => key.startsWith("--"))),
 				fadeTiming: fade ? [fade.effect.getTiming().easing, fade.effect.getTiming().delay, fade.effect.getComputedTiming().endTime] : null,
-				innerFades: document.getAnimations().filter((animation) => cell.contains(animation.effect?.target) && animation.effect.target !== cell && animation.effect.getKeyframes().some((frame) => frame.opacity !== undefined)).length,
+				innerFades: document.getAnimations().filter((animation) => cell.contains(animation.effect?.target) && animation.effect.target !== cell && !animation.effect.target.classList.contains("supermax-veil") && animation.effect.getKeyframes().some((frame) => frame.opacity !== undefined)).length,
 			};
 		}).filter(Boolean);
 	});
@@ -1757,7 +1759,7 @@ test("a dragged divider follows the pointer while every cell in its chain gives 
 	const widthReset = page.locator(inFrame("a", `.supermax-divider.is-sized[data-divides="${coast.row("thumbnails")}"] .supermax-divider-reset`));
 	assert.equal(await widthReset.getAttribute("data-direction"), "right", "the reset arrow points to the preferred gutter position");
 	assert.equal(await widthReset.locator("svg path").count(), 1, "the reset icon is a line drawing");
-	assert.deepEqual(await widthReset.evaluate((button) => ({ ink: getComputedStyle(button).color, canvas: getComputedStyle(button.closest(".supermax-workspace")).getPropertyValue("--supermax-canvas").trim() })), await widthReset.evaluate((button) => { const canvas = getComputedStyle(button.closest(".supermax-workspace")).getPropertyValue("--supermax-canvas").trim(); const probe = document.createElement("span"); probe.style.color = canvas; button.append(probe); const ink = getComputedStyle(probe).color; probe.remove(); return { ink, canvas }; }), "the icon ink uses the canvas colour");
+	assert.deepEqual(await widthReset.evaluate((button) => ({ ink: getComputedStyle(button).color, canvas: getComputedStyle(button.closest(".supermax-workspace")).getPropertyValue("--supermax-default-canvas").trim() })), await widthReset.evaluate((button) => { const canvas = getComputedStyle(button.closest(".supermax-workspace")).getPropertyValue("--supermax-default-canvas").trim(); const probe = document.createElement("span"); probe.style.color = canvas; button.append(probe); const ink = getComputedStyle(probe).color; probe.remove(); return { ink, canvas }; }), "the icon ink uses the canvas colour");
 	const hairline = () => page.locator(divider).evaluate((element) => getComputedStyle(element, "::before").backgroundColor);
 	await page.mouse.move(box.x + box.width / 2 - 20, box.y + 400);
 	await page.waitForTimeout(400);
@@ -1933,7 +1935,7 @@ test("a modal knows its source, makes the cells behind it inert and closes befor
 	assert.equal(await page.locator(modal).count(), 1, "a second open request replaces the modal");
 	assert.equal(await page.locator(`${modal} .supermax-modal-title`).textContent(), "Second");
 	const groupsBefore = await groups("a");
-	assert.equal(await page.locator(inFrame("a", ".supermax-up")).isHidden(), true, "with nothing hidden above the window the modal leaves no Show control to compete with its own close");
+	assert.equal(await page.locator(inFrame("a", ".supermax-up:not([hidden])")).isHidden(), true, "with nothing hidden above the window the modal leaves no Show control to compete with its own close");
 	await page.click(`${modal} .supermax-modal-close`);
 	assert.equal(await page.locator(modal).count(), 0, "the replacing modal closes like the first");
 	assert.deepEqual(await groups("a"), groupsBefore, "and navigates nothing");
@@ -1968,7 +1970,7 @@ test("the demo shows persistent recovery, busy feedback, and host resolution", a
 	assert.equal(await notice.locator(".supermax-notice-text").textContent(), "Server is asleep");
 	assert.deepEqual(await notice.evaluate((element) => {
 		const style = getComputedStyle(element);
-		return { border: style.borderTopWidth, matchesCanvas: style.borderTopColor === getComputedStyle(document.querySelector('.frame[data-frame="a"] .supermax-workspace')).backgroundColor, radius: style.borderTopLeftRadius };
+		return { border: style.borderTopWidth, matchesCanvas: style.borderTopColor === getComputedStyle(document.querySelector('.frame[data-frame="a"] .supermax-canvas')).backgroundColor, radius: style.borderTopLeftRadius };
 	}), { border: "1px", matchesCanvas: true, radius: "2px" }, "a default notice uses the canvas hairline and the handle corner radius");
 	assert.equal(await page.evaluate(() => window.supermaxDemo.frames[0].workspace.notices.notices.get("recovery-demo").remaining), null);
 	await notice.locator(".supermax-notice-action").click();
@@ -1989,7 +1991,7 @@ test("a notice is a bubble in its source cell, and moves to the top of the viewp
 	assert.equal(await page.locator(cellNotice).evaluate((element) => element.classList.contains("is-success")), true);
 	const narrowNotice = inFrame("b", ".supermax-notices .supermax-notice");
 	assert.equal(await page.locator(`${narrowNotice} .supermax-notice-text`).textContent(), "Photo A (not open): Caption saved", "where the source is not open the workspace notice names it");
-	assert.equal(await page.locator(`${narrowNotice} .supermax-notice-go`).count(), 0, "and offers no way to reopen a closed source");
+	assert.equal(await page.locator(`${narrowNotice} .supermax-notice-go:not([hidden])`).count(), 0, "and offers no way to reopen a closed source");
 	await page.waitForSelector(cellNotice, { state: "detached", timeout: 9000 });
 	assert.equal(await page.locator(narrowNotice).count(), 0, "success notices expire on their own");
 	await page.evaluate(() => { const workspace = window.supermaxDemo.frames[0].workspace; workspace.notify({ id: "dup", scope: "workspace", kind: "action", message: "Once" }); workspace.notify({ id: "dup", scope: "workspace", kind: "action", message: "Once" }); });
@@ -2018,7 +2020,7 @@ test("a notice is a bubble in its source cell, and moves to the top of the viewp
 	assert.equal(await page.locator(inFrame("a", `.supermax-row[data-row="${coast.row("thumbnails")}"]`)).evaluate((element) => element.classList.contains("is-hidden")), true, "the source row is out of view");
 	const moved = inFrame("a", '.supermax-notices [data-notice="keep"]');
 	assert.equal(await page.locator(`${moved} .supermax-notice-text`).textContent(), "Photo A: Review the crop", "a notice whose source went out of view moves to the top and names it");
-	await page.click(`${moved} .supermax-notice-go`);
+	await page.click(`${moved} .supermax-notice-go:not([hidden])`);
 	await settle();
 	assert.equal(await page.locator(inFrame("a", `.supermax-row[data-row="${coast.row("thumbnails")}"]`)).evaluate((element) => element.classList.contains("is-hidden")), false, "Show brings the row back");
 	assert.equal(await page.locator(moved).count(), 0, "reaching the source retires the notice");
@@ -2047,7 +2049,7 @@ test("a notice is a bubble in its source cell, and moves to the top of the viewp
 	});
 	assert.equal(recess, true, "each bubble's frustum stays inside its own source cell");
 	assert.equal(await page.locator(inFrame("b", ".supermax-notice-veil.is-shown")).count(), 1, "the frame whose notices sit at the top dims a band behind them");
-	assert.equal(await page.locator(`${exportNotice} .supermax-notice-go`).count(), 0, "a source that is in view needs no Show control");
+	assert.equal(await page.locator(`${exportNotice} .supermax-notice-go:not([hidden])`).count(), 0, "a source that is in view needs no Show control");
 	await page.click(`${photoA} .caption-edit`);
 	await settle();
 	assert.equal(await page.locator(`${inFrame("a", ".supermax-notices")} .supermax-notice.is-action .supermax-notice-text`).textContent(), "Metadata A: Export of Coast is ready", "a modal moves bubbles to the top, out from under it, naming their source");
@@ -2122,9 +2124,10 @@ test("veil replaces a cell without turning it, keeps its surface and lifts the n
 	await page.evaluate(() => window.supermaxDemo.prepare("coast:photo:b"));
 	await page.click(inFrame("a", `[data-occurrence="${coast.row("thumbnails")}"] .thumb[data-destination="coast:photo:b"]`));
 	const replacing = await folds("a");
-	const surfaces = await page.locator(inFrame("a", ".supermax-cell")).first().evaluate((cell) => [getComputedStyle(cell, "::after").backgroundColor, getComputedStyle(cell.querySelector(":scope > .supermax-cell-body")).backgroundColor]);
+	const surfaces = await page.locator(inFrame("a", ".supermax-cell")).first().evaluate((cell) => [getComputedStyle(cell.querySelector(":scope > .supermax-material")).opacity, getComputedStyle(cell.querySelector(":scope > .supermax-material")).backgroundColor]);
 	await settle();
-	assert.equal(surfaces[0], surfaces[1], "the veil has the cell's own surface colour, so a cell never turns the canvas colour");
+	assert.equal(surfaces[0], "1", "the default material remains opaque while foreground is concealed");
+	assert.equal(surfaces[1], "rgb(255, 255, 255)", "the cell retains its surface colour during the replacement");
 	assert.ok(replacing.length > 0 && replacing.every((fold) => fold.first === "none"), `no cell turns or travels: ${JSON.stringify(replacing)}`);
 	const leaving = replacing.filter((fold) => fold.leaving);
 	const arriving = replacing.filter((fold) => !fold.leaving).sort((first, second) => first.delay - second.delay);
@@ -2144,7 +2147,7 @@ test("a narrow Back gives its departing child's room directly to the returning p
 	await page.evaluate(() => window.supermaxDemo.resize([[960, 640], [277, 633]]));
 	await settle();
 	const outgoing = inFrame("b", '[data-occurrence$="/depth:20"]');
-	await page.click(inFrame("b", ".supermax-up"));
+	await page.click(inFrame("b", ".supermax-up:not([hidden])"));
 	const trade = await page.evaluate(() => {
 		const strip = window.supermaxDemo.frames[1].workspace.chains.get("albums").strip;
 		const parent = strip.entries.find((entry) => entry.id.endsWith("/depth:19"));
@@ -2195,12 +2198,12 @@ test("a split draws its own title above its rows, which stays while the rows cha
 	});
 	assert.equal(measured.title, "Coast", "the split's bar carries the split's title");
 	const seam = await page.locator(inFrame("a", ".supermax-workspace")).evaluate((workspace) => {
-		workspace.style.setProperty("--supermax-canvas", "rgb(10, 20, 30)");
+		workspace.style.setProperty("--supermax-default-canvas", "rgb(10, 20, 30)");
 		const cell = workspace.querySelector('[data-occurrence="albums/album:coast"]');
 		const bar = cell.querySelector(':scope > .supermax-cell-title');
-		const colour = getComputedStyle(workspace).backgroundColor;
+		const colour = getComputedStyle(workspace.querySelector(".supermax-canvas")).backgroundColor;
 		const gap = { width: getComputedStyle(bar).marginBottom, border: getComputedStyle(bar).borderBottomWidth, cell: getComputedStyle(cell).backgroundColor };
-		workspace.style.removeProperty("--supermax-canvas");
+		workspace.style.removeProperty("--supermax-default-canvas");
 		return { colour, ...gap };
 	});
 	assert.deepEqual(seam, { colour: "rgb(10, 20, 30)", width: "1px", border: "0px", cell: "rgba(0, 0, 0, 0)" }, "the gap under the bar exposes the host's canvas without painting a line");
@@ -2365,12 +2368,12 @@ test("a twenty-cell chain stays navigable in both presentations", async () => {
 	assert.match(spec.text.find((line) => line.startsWith("width ")), /^width \d+ px$/);
 	await page.selectOption("[data-presentation]", "fold");
 	await settle();
-	await page.click(inFrame("a", ".supermax-up"));
+	await page.click(inFrame("a", ".supermax-up:not([hidden])"));
 	await settle();
 	assert.equal((await groups("a")).length, 19, "Show closes Depth 20 to show Depth 15");
 	assert.equal(await page.locator(inFrame("a", `[data-occurrence="${TWENTY_DEEP[19].from}/depth:20"]`)).count(), 0);
 	await page.evaluate((source) => window.supermaxDemo.frames[0].workspace.notify({ id: "deep-three", scope: "cell", source, kind: "action", message: "Look here", action: { label: "Ok", run() {} } }), "albums/depth:1/depth:2/depth:3");
-	await page.click(inFrame("a", '.supermax-notices [data-notice="deep-three"] .supermax-notice-go'));
+	await page.click(inFrame("a", '.supermax-notices [data-notice="deep-three"] .supermax-notice-go:not([hidden])'));
 	await settle();
 	assert.equal(await page.locator(inFrame("a", '[data-occurrence="albums/depth:1/depth:2/depth:3"]')).evaluate((element) => getComputedStyle(element).visibility === "visible" && element.getBoundingClientRect().width > 0), true, "Show reveals a cell hidden far to the left");
 	assert.equal(await page.locator(inFrame("a", '[data-notice="deep-three"]')).count(), 0, "the notice retires once its source is reached");
@@ -2520,7 +2523,7 @@ test("cells inside a hidden row are not painted and Back brings the row back", a
 	const visibility = await page.locator(inFrame("b", `.supermax-row[data-row="${coast.row("map")}"] .supermax-cell`)).evaluateAll((elements) => [...new Set(elements.map((element) => getComputedStyle(element).visibility))]);
 	assert.deepEqual(visibility, ["hidden"], "every cell inside the hidden row computes hidden");
 	for (let step = 0; step < 5 && (await hiddenRows("b"))[1]; step += 1) {
-		await page.click(inFrame("b", ".supermax-up"));
+		await page.click(inFrame("b", ".supermax-up:not([hidden])"));
 		await settle();
 	}
 	assert.deepEqual(await hiddenRows("b"), [true, false, false], "Back reaches the earlier row while the later nonfoldable row stays reachable");

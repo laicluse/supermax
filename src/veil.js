@@ -12,6 +12,7 @@ function lift(width = SMALL) {
 export const VEIL_PRESENTATION = Object.freeze({
 	name: "veil",
 	motion: Object.freeze({
+		concealContent: true,
 		follow: false,
 		travel: (distance) => Math.min(TIMING.travelLimit, TIMING.travel + 30 * Math.sqrt(distance / 100)),
 		open: (element, { order = 0, width, replaces = false }) => ({

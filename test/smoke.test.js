@@ -11,8 +11,8 @@ assert.equal(typeof packageApi.validateSplit, "function");
 assert.equal(typeof packageApi.validateDestinations, "function");
 assert.equal(typeof packageApi.SupermaxConfigurationError, "function");
 assert.equal(typeof packageApi.DEFAULT_STRINGS.up, "function");
-assert.equal(typeof packageApi.frustumOrigin, "function");
-assert.equal(typeof packageApi.defaultNoticeIcon, "function");
+assert.equal(typeof packageApi.DEFAULT_RENDERER.frustum, "function");
+assert.equal(typeof packageApi.DEFAULT_RENDERER.notice, "function");
 assert.equal(globalThis.Supermax, undefined, "the package leaves no global behind");
 
 const configs = [

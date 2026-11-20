@@ -1,17 +1,8 @@
+import { mountPart } from "./renderer.js";
 import { followEdge } from "./edge-drag.js";
 import { follow, unfollow } from "./follow.js";
 import { layoutWorkspace } from "./layout.js";
 import { TIMING } from "./motion.js";
-
-function resetIcon(document) {
-	const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
-	svg.setAttribute("viewBox", "0 0 16 16");
-	svg.setAttribute("aria-hidden", "true");
-	const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
-	path.setAttribute("d", "M4 4h5a4 4 0 0 1 0 8H4m3-3-3 3 3 3");
-	svg.append(path);
-	return svg;
-}
 
 function resetOffset(workspace, divider) {
 	const ids = new Set(divider.parts.map((part) => part.id));
@@ -54,7 +45,7 @@ export class DividerLayer {
 		}
 		for (const [key, divider] of this.dividers) {
 			if (divider.host === host && !wanted.has(key)) {
-				divider.element.remove();
+				this.remove(divider);
 				this.dividers.delete(key);
 			}
 		}
@@ -75,6 +66,7 @@ export class DividerLayer {
 		divider.element.ownerDocument.defaultView.clearTimeout(divider.resetTimer);
 		divider.dragging?.abort();
 		unfollow(divider.element);
+		divider.paint?.dispose(); divider.resetPaint?.dispose();
 		divider.element.remove();
 	}
 
@@ -83,7 +75,7 @@ export class DividerLayer {
 		let divider = this.dividers.get(key);
 		if (divider && divider.host === host && divider.element.isConnected) return divider;
 		if (divider) {
-			divider.element.remove();
+			this.remove(divider);
 			this.dividers.delete(key);
 		}
 		const element = workspace.create("div", `supermax-divider is-${orientation}`);
@@ -93,13 +85,14 @@ export class DividerLayer {
 		const reset = workspace.create("button", "supermax-divider-reset");
 		reset.type = "button";
 		reset.setAttribute("aria-label", this.workspace.strings.resetSize(title));
-		reset.append(resetIcon(workspace.document));
+		const resetPaint = mountPart(workspace, "reset", reset, { title, orientation });
+		const paint = mountPart(workspace, "divider", handle, { title, orientation });
 		reset.hidden = true;
 		const axis = orientation === "vertical" ? "width" : "height";
 		reset.addEventListener("click", () => this.reset(divider));
 		element.append(handle, reset);
 		host.append(element);
-		divider = { element, handle, reset, host, occurrenceId, orientation, axis, size: 0, parts: [], edge: 0, room: 0 };
+		divider = { paint, resetPaint, element, handle, reset, host, occurrenceId, orientation, title, axis, size: 0, parts: [], edge: 0, room: 0 };
 		handle.addEventListener("pointerdown", (event) => this.startDrag(divider, event));
 		element.addEventListener("pointermove", () => this.showReset(divider));
 		element.addEventListener("pointerenter", () => this.showReset(divider));
@@ -141,8 +134,8 @@ export class DividerLayer {
 		follow(divider.element, step);
 	}
 
-	update(divider, { size, sized, parts, edge, room, offset }) {
-		Object.assign(divider, { size, parts, edge, room, offset });
+	update(divider, { title, size, sized, parts, edge, room, offset }) {
+		Object.assign(divider, { title, size, parts, edge, room, offset });
 		divider.element.classList.toggle("is-sized", sized);
 		divider.reset.hidden = !sized && !divider.element.classList.contains("is-resetting");
 		if (sized) {
@@ -150,6 +143,8 @@ export class DividerLayer {
 			const distance = preferred === null ? 0 : preferred - offset;
 			divider.reset.dataset.direction = Math.abs(distance) < 1 ? "still" : divider.orientation === "vertical" ? distance > 0 ? "right" : "left" : distance > 0 ? "down" : "up";
 		}
+		const state = { title, size, sized, orientation: divider.orientation, direction: sized ? divider.reset.dataset.direction : null };
+		divider.paint.update(state); divider.resetPaint.update(state);
 	}
 
 	startDrag(divider, event) {

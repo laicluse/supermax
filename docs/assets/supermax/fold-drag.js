@@ -39,7 +39,7 @@ export class FoldDrag {
 		const owned = new Set();
 		for (const { strip } of this.workspace.chains.values()) {
 			for (const animation of strip.geometry) owned.add(animation);
-			for (const { animation } of strip.motions.values()) { owned.add(animation); if (animation.shade) owned.add(animation.shade); }
+			for (const { animation } of strip.motions.values()) { owned.add(animation); if (animation.shade) owned.add(animation.shade); for (const conceal of animation.conceal ?? []) owned.add(conceal); }
 		}
 		for (const row of this.workspace.rows.values()) {
 			if (row.animation) owned.add(row.animation);

@@ -49,13 +49,15 @@ function absolute(element, transform, origin) {
 
 function currentPose(element) {
 	const style = getComputedStyle(element);
-	return { matrix: absolute(element, style.transform, style.transformOrigin), shade: parseFloat(getComputedStyle(element, "::after").opacity) || 0 };
+	return { matrix: absolute(element, style.transform, style.transformOrigin), shade: parseFloat(element.supermaxPaint ? getComputedStyle(element.supermaxPaint.veil).opacity : getComputedStyle(element, "::after").opacity) || 0 };
 }
 
-// allow-comment: the shade runs on the ::after's own opacity, which the compositor animates, instead of a custom property every descendant would recalculate each frame.
+// allow-comment: paint and concealment use compositor opacity on the same managed timeline as geometry.
 function fold(element, frames, timing) {
 	const animation = element.animate(frames.map(({ transform }) => ({ transform })), timing);
-	animation.shade = element.animate(frames.map(({ shade }) => ({ opacity: shade })), { ...timing, pseudoElement: "::after" });
+	const paint = element.supermaxPaint;
+	animation.shade = paint ? paint.veil.animate(frames.map(({ shade }) => ({ opacity: shade })), timing) : element.animate(frames.map(({ shade }) => ({ opacity: shade })), { ...timing, pseudoElement: "::after" });
+	animation.conceal = paint?.concealContent() ? paint.foreground.map((foreground) => foreground.animate(frames.map(({ shade }) => ({ opacity: 1 - shade })), timing)) : [];
 	return animation;
 }
 
@@ -66,7 +68,7 @@ const remaining = (animation) => (animation.playState === "finished" ? 0 : Math.
 const moving = (animation) => (animation.playState === "running" || animation.playState === "paused") && started(animation);
 
 function undelay(animation) {
-	for (const part of [animation, animation.shade].filter(Boolean)) {
+	for (const part of [animation, animation.shade, ...animation.conceal ?? []].filter(Boolean)) {
 		const time = Math.max(0, (part.currentTime ?? 0) - delayOf(part));
 		part.effect.updateTiming({ delay: 0 });
 		part.currentTime = time;
@@ -74,12 +76,13 @@ function undelay(animation) {
 }
 
 function postpone(animation, delay) {
-	for (const part of [animation, animation.shade].filter(Boolean)) part.effect.updateTiming({ delay: (part.currentTime ?? 0) + delay });
+	for (const part of [animation, animation.shade, ...animation.conceal ?? []].filter(Boolean)) part.effect.updateTiming({ delay: (part.currentTime ?? 0) + delay });
 }
 
 function stop(animation) {
 	animation?.cancel();
 	animation?.shade?.cancel();
+	for (const conceal of animation?.conceal ?? []) conceal.cancel();
 }
 
 function poseMatrix(element, pose) {
@@ -512,6 +515,7 @@ export class CellStrip {
 		const motion = this.motions.get(entry.id);
 		motion.animation.reverse();
 		motion.animation.shade?.reverse();
+		for (const conceal of motion.animation.conceal ?? []) conceal.reverse();
 		motion.kind = kind;
 		motion.follows = this.follows();
 		motion.reversible = true;
@@ -573,6 +577,7 @@ export class CellStrip {
 		undelay(animation);
 		animation.reverse();
 		animation.shade?.reverse();
+		for (const conceal of animation.conceal ?? []) conceal.reverse();
 		this.track(entry, "enter", animation, false, true);
 	}
 

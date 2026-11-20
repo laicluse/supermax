@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8" />
+		<meta name="viewport" content="width=device-width,initial-scale=1" />
+		<title>Supermax renderers</title>
+		<link rel="stylesheet" href="assets/supermax/workspace.css" />
+		<link rel="stylesheet" href="assets/renderers.css" />
+	</head>
+	<body>
+		<main>
+			<a href="index.html">Supermax examples</a>
+			<h1>One workspace, two renderers</h1>
+			<p>The same notebook, navigation and transitions. The host draws every surface and control on the right.</p>
+			<nav aria-label="Examples">
+				<button data-action="source">Open source</button><button data-action="back">Notebook</button><button data-action="notice">Notice</button
+				><button data-action="modal">Dialog</button><button data-action="failure">Load failure</button>
+			</nav>
+			<div class="examples">
+				<section>
+					<h2>Default</h2>
+					<div class="example-frame" data-style="default"><div class="workspace"></div></div>
+				</section>
+				<section>
+					<h2>Paper and ink</h2>
+					<div class="example-frame" data-style="paper"><div class="workspace"></div></div>
+				</section>
+			</div>
+			<p class="reference">
+				Edit the draft, open a source and recover the notebook. The same content stays mounted in both renderers.
+				<a href="rendering.md">Renderer reference</a>
+			</p>
+		</main>
+		<script type="module" src="assets/renderers.js"></script>
+	</body>
+</html>

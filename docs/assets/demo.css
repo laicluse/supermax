@@ -9,7 +9,7 @@
 	--warn: light-dark(#b4261b, #ff8f80);
 	--fill: light-dark(#f1f2f4, #25282d);
 	--chosen: light-dark(#e4eefb, #1c2b40);
-	--supermax-canvas: light-dark(#dddddd, #c9ccd1);
+	--supermax-default-canvas: light-dark(#dddddd, #c9ccd1);
 	font-family: "Inter", "Helvetica Neue", Arial, sans-serif;
 	color: var(--ink);
 }

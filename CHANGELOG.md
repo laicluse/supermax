@@ -7,7 +7,7 @@ Start with [Migrating from v1 to v2](docs/migrating-to-v2.md). A dependency vers
 ### Breaking changes
 
 - Workspace cells and rows declare one `overflow` policy: `{ mode: "fold", size? }`, `{ mode: "hide" }` or `{ mode: "keep" }`. Omitting it permits zero-space folds. Destination placement uses `placement: "beside-split"`; `keep`, `fold` and `height` are rejected on Workspace destinations.
-- Theme tokens name component roles: `--supermax-navigation-divider`, `--supermax-load-error` and `--supermax-modal-surface` replace `--supermax-line`, `--supermax-warn` and `--supermax-raised` without aliases.
+- Paint tokens belong to the built-in renderer under `--supermax-default-*`. A host replaces part factories for its own style; geometry and transition timelines remain shell-owned.
 
 - Layouts report an actual vertical space shortage through `overflow`; the fixed-threshold `belowMinimum` field is removed. `minViewportHeight` remains the validation guarantee for every declared split, even when a particular folded layout fits below it.
 - The package no longer assigns `globalThis.Supermax`; use named ESM imports.
@@ -20,6 +20,9 @@ Start with [Migrating from v1 to v2](docs/migrating-to-v2.md). A dependency vers
 - `VEIL_PRESENTATION` is the Workspace default. Pass `ORIGAMI_PRESENTATION` explicitly for the 3D card-fold treatment.
 
 ### Added
+
+- Host renderers replace visual parts through one mount/update/dispose contract. Native action bindings retain shell semantics; cell material and foreground are separate, and frustum painters follow shell-owned geometry. The built-in renderer uses the same interface and its own paint namespace. Title-bar height comes from navigator chrome. The separate `foldContent`, `noticeIcon` and drawing `origin` options are replaced by renderer parts.
+
 
 - Responsive cell and row variants give unused space back to neighbouring content. Selection is deterministic across both axes, preserves fold and Show access, and supports content transitions on the shared animation lifecycle.
 

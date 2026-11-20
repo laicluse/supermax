@@ -15,7 +15,7 @@ async function example(title = "Photo view", options = {}) {
 	await page.addStyleTag({ url: `${server.url}/src/workspace.css` });
 	await page.evaluate(async ({ title, custom }) => {
 		const { Navigator, Workspace } = await import("/src/index.js");
-		const host = document.createElement("div"); host.style.cssText = "width:300px;height:200px;--supermax-canvas:#999;--supermax-surface:white"; document.body.append(host);
+		const host = document.createElement("div"); host.style.cssText = "width:300px;height:200px;--supermax-default-canvas:#999;--supermax-default-surface:white"; document.body.append(host);
 		const navigator = new Navigator({ root: "menu", minViewportHeight: 160, destinations: {
 			menu: { title: "Menu", min: 40, max: 40, overflow: { mode: "keep" } },
 			photo: { title, min: 200, max: 200 },
@@ -25,7 +25,7 @@ async function example(title = "Photo view", options = {}) {
 			details: { title: "Details", min: 200, max: "*", preferred: 260 },
 		} });
 		navigator.resize({ width: 300, height: 200 }); navigator.open("photo", { from: "menu" }); navigator.open("work", { from: "menu/photo" });
-		window.labels = new Workspace(host, { navigator, content: () => ({ element: document.createElement("input") }), ...(custom ? { foldContent: () => document.createTextNode("Custom fold") } : {}) });
+		window.labels = new Workspace(host, { navigator, content: () => ({ element: document.createElement("input") }), ...(custom ? { renderer: { fold: ({ root }) => { root.textContent = "Custom fold"; } } } : {}) });
 	}, { title, custom: !!options.custom });
 	return page;
 }
@@ -34,7 +34,7 @@ test("default folds name their content in Tiny5 without increasing thickness", a
 	const page = await example();
 	try {
 		const cue = page.locator('.supermax-fold-cue[data-fold-occurrence="menu/photo"]');
-		await page.waitForFunction(() => document.querySelector('.supermax-fold-label')?.textContent === "PHOTO VIEW");
+		await page.waitForFunction(() => document.querySelector('.supermax-fold-cue:not([hidden]) .supermax-fold-label')?.textContent === "PHOTO VIEW");
 		await page.evaluate(() => document.fonts.ready);
 		assert.equal(await page.evaluate(async () => (await document.fonts.load('8px "Supermax Tiny5"'))[0]?.weight), "400");
 		assert.equal(await cue.getAttribute("aria-label"), "Unfold Photo view");

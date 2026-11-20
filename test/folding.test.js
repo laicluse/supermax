@@ -96,11 +96,11 @@ test("zoom retains an exit when its ancestors were already hidden", async () => 
 			window.zoomCase = new Workspace(host, { navigator, content: () => ({}) });
 			window.zoomCase.zoom("root/parent/detail", { animate: false });
 		});
-		assert.equal(await page.locator(".supermax-up").isVisible(), true, "zoom cannot remove the only route to its ancestors");
-		assert.equal(await page.locator(".supermax-up").getAttribute("aria-label"), "Zoom out");
-		await page.locator(".supermax-up").click();
+		assert.equal(await page.locator(".supermax-up:not([hidden])").isVisible(), true, "zoom cannot remove the only route to its ancestors");
+		assert.equal(await page.locator(".supermax-up:not([hidden])").getAttribute("aria-label"), "Zoom out");
+		await page.locator(".supermax-up:not([hidden])").click();
 		assert.equal(await page.evaluate(() => window.zoomCase.navigator.zoomed), null);
-		await page.locator(".supermax-up").click();
+		await page.locator(".supermax-up:not([hidden])").click();
 		assert.equal(await page.evaluate(() => window.zoomCase.layout.cells.get("root/parent").full), true);
 	} finally {
 		await browser.close();
@@ -174,7 +174,7 @@ test("a reverse vertical page drag keeps a canvas gutter under its handle", asyn
 			return { cue: cue?.querySelector('.supermax-fold-mark').getBoundingClientRect().top, title: title.getBoundingClientRect().bottom, row: row.getBoundingClientRect().top };
 		});
 		assert.ok(Math.abs(titleSeam.cue - titleSeam.title) < .5, `the first page handle outlines the title's canvas gutter: ${JSON.stringify(titleSeam)}`);
-		for (let step = 0; step < 2; step += 1) await page.locator(`${frame} .supermax-up`).click();
+		for (let step = 0; step < 2; step += 1) await page.locator(`${frame} .supermax-up:not([hidden])`).click();
 		await page.waitForTimeout(400);
 		const handle = page.locator(`${frame} .supermax-fold-cue.is-vertical[data-fold-occurrence="albums/album:coast/coast:map"]`);
 		await handle.scrollIntoViewIfNeeded();
@@ -232,7 +232,7 @@ test("nonfoldable content after the active cell remains scrollable in a split", 
 				return { element };
 			} });
 			const body = host.querySelector(".supermax-body");
-			const item = host.querySelector('[data-occurrence="menu/split/list/item"] button');
+			const item = host.querySelector('[data-occurrence="menu/split/list/item"] button[data-supermax-content]');
 			const before = item.getBoundingClientRect();
 			body.scrollLeft = body.scrollWidth;
 			const after = item.getBoundingClientRect();
@@ -315,11 +315,12 @@ test("folded cells and rows trade space when their cues are clicked", async () =
 			} });
 			navigator.open("mail", { from: "mode" });
 			navigator.open("work", { from: "mode/mail" });
-			window.horizontal = new Workspace(host, { navigator, foldContent: (occurrence) => {
+			window.horizontal = new Workspace(host, { navigator, renderer: { fold: ({ root, state }) => {
 				const label = document.createElement("span");
-				label.textContent = occurrence.title.slice(0, 1);
-				return label;
-			}, content: (occurrence) => {
+				label.textContent = state.title.slice(0, 1);
+				root.append(label);
+				return { update(next) { label.textContent = next.title.slice(0, 1); } };
+			} }, content: (occurrence) => {
 				const element = document.createElement("button");
 				element.textContent = occurrence.title;
 				if (occurrence.destination !== "mail") return { element };
@@ -333,7 +334,7 @@ test("folded cells and rows trade space when their cues are clicked", async () =
 		assert.equal(await page.locator('.supermax-fold-cue[data-fold-occurrence="mode/mail"]').isVisible(), true);
 		assert.equal(await page.locator('.supermax-fold-cue[data-fold-occurrence="mode/mail"]').textContent(), "M");
 		assert.equal(await page.locator('.supermax-fold-cue[data-fold-occurrence="mode/mail"]').getAttribute("data-direction"), "right");
-		assert.equal(await page.locator('.supermax-up-label svg path').count(), 1, "navigation uses the single SVG chevron");
+		assert.equal(await page.locator('.supermax-up:not([hidden]) .supermax-up-label svg path').count(), 1, "navigation uses the single SVG chevron");
 		assert.equal(await page.evaluate(() => window.horizontal.presentation.name), "veil");
 		const groups = await page.evaluate(() => window.horizontal.navigator.groups.length);
 		const horizontalTarget = await page.locator('.supermax-fold-cue[data-fold-occurrence="mode/mail"]').boundingBox();
@@ -511,7 +512,7 @@ test("Show navigates backward through folds instead of toggling them", async () 
 		await page.getByRole("button", { name: "Folding: cells and rows" }).click();
 		const frame = page.locator('[data-frame="b"]');
 		await page.waitForTimeout(400);
-		assert.equal(await frame.locator('.supermax-up:visible').count(), 1, "folds remain discoverable through Show");
+		assert.equal(await frame.locator('.supermax-up:not([hidden]):visible').count(), 1, "folds remain discoverable through Show");
 		const result = await page.evaluate(() => {
 			const workspace = window.supermaxDemo.frames[1].workspace;
 			const navigator = workspace.navigator;

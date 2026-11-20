@@ -1,3 +1,4 @@
+import { mountPart, SupermaxRendererError } from "./renderer.js";
 import { ContentSlot } from "./content-slot.js";
 import { APPEAR, DISAPPEAR } from "./motion.js";
 
@@ -16,33 +17,39 @@ export class ModalHost {
 
 	open(definition, { from } = {}) {
 		const workspace = this.workspace;
-		if (this.current) this.close("replaced");
 		const source = workspace.navigator.get(from) ?? null;
 		const element = workspace.create("div", "supermax-modal-layer");
 		const dialog = workspace.create("section", "supermax-modal");
 		dialog.setAttribute("role", "dialog");
-		const header = workspace.create("header", "supermax-modal-header");
-		const title = workspace.create("strong", "supermax-modal-title", definition.title);
-		title.id = `supermax-modal-title-${(this.serial += 1)}`;
-		dialog.setAttribute("aria-labelledby", title.id);
-		const close = workspace.create("button", "supermax-modal-close", "×");
-		close.type = "button";
-		close.setAttribute("aria-label", workspace.strings.closeModal(definition.title));
-		close.addEventListener("click", () => this.close("close"));
+		dialog.setAttribute("aria-label", definition.title);
 		const controls = workspace.create("div", "supermax-modal-controls");
-		header.append(title, controls, close);
 		const body = workspace.create("div", "supermax-modal-body");
-		dialog.append(header, body);
+		const bindings = new AbortController();
+		const state = { title: definition.title, titleId: `supermax-modal-title-${(this.serial += 1)}`, actions: { close: { label: workspace.strings.closeModal(definition.title) } } };
+		const backdrop = workspace.create("div", "supermax-backdrop"); backdrop.setAttribute("aria-hidden", "true");
+		let part;
+		let backdropPart;
+		try {
+			part = mountPart(workspace, "modal", dialog, state, { slots: { utilities: controls, body }, actions: { close: { run: () => this.close("close") } }, dragHandle: (handle) => {
+				if (!dialog.contains(handle)) throw new SupermaxRendererError("modal", "drag handle must belong to the modal");
+				handle.addEventListener("pointerdown", (event) => this.drag(event, dialog, element), { signal: bindings.signal });
+			} });
+			backdropPart = mountPart(workspace, "backdrop", backdrop, { kind: "modal" });
+		} catch (error) {
+			bindings.abort(); part?.dispose(); backdropPart?.dispose();
+			throw error;
+		}
+		if (this.current) this.close("replaced");
+		element.append(backdrop);
 		dialog.supermaxBounds = { ...MODAL_BOUNDS, ...Object.fromEntries(Object.keys(MODAL_BOUNDS).filter((key) => definition[key] !== undefined).map((key) => [key, definition[key]])) };
 		this.size(dialog, dialog.supermaxBounds);
-		header.addEventListener("pointerdown", (event) => this.drag(event, dialog, element));
 		dialog.addEventListener("pointerdown", (event) => this.grip(event, dialog, element));
 		this.resizeObserver = new workspace.document.defaultView.ResizeObserver(() => workspace.scheduleOrigins());
 		this.resizeObserver.observe(dialog);
-		const originLayer = workspace.origin ? workspace.originLayer("supermax-origin is-modal") : null;
+		const originLayer = workspace.originLayer("supermax-origin is-modal");
 		element.append(...(originLayer ? [originLayer] : []), dialog);
 		element.addEventListener("pointerdown", (event) => { if (event.target === element) this.close("backdrop"); });
-		const modal = { element, dialog, body, title: definition.title, source: source?.id ?? null, originLayer, slot: null, retry: null };
+		const modal = { part, backdropPart, backdrop, bindings, element, dialog, body, title: definition.title, source: source?.id ?? null, originLayer, slot: null, retry: null };
 		modal.slot = new ContentSlot(workspace, { element, body, header: controls, onSettled: () => this.settled(modal) });
 		modal.retry = () => modal.slot.mount(definition.title, () => definition.content(modal, workspace), () => this.current === modal);
 		this.current = modal;
@@ -54,6 +61,7 @@ export class ModalHost {
 		workspace.element.append(element);
 		workspace.element.classList.add("has-modal");
 		this.place();
+		if (!workspace.reducedMotion.matches) modal.backdrop.animate([{ opacity: 0 }, { opacity: 1 }], workspace.time.timing(APPEAR));
 		this.appear(modal);
 		modal.retry();
 		workspace.dispatchEvent(new CustomEvent("modal", { detail: { state: "open", title: definition.title, source: modal.source } }));
@@ -65,7 +73,7 @@ export class ModalHost {
 		const workspace = this.workspace;
 		const view = workspace.document.defaultView;
 		const cell = modal.source && workspace.findCell(modal.source)?.full ? workspace.cells.get(modal.source)?.element : null;
-		if (!cell || view.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+		if (!cell || workspace.reducedMotion.matches) return;
 		const from = cell.getBoundingClientRect();
 		const to = modal.dialog.getBoundingClientRect();
 		if (to.width === 0 || to.height === 0) return;
@@ -96,7 +104,7 @@ export class ModalHost {
 		const view = workspace.document.defaultView;
 		const { element, dialog } = modal;
 		modal.entrance?.finish();
-		if (reason === "destroyed" || view.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+		if (reason === "destroyed" || workspace.reducedMotion.matches) {
 			element.remove();
 			removed();
 			return;
@@ -109,7 +117,7 @@ export class ModalHost {
 		dialog.style.transformOrigin = "0 0";
 		const gone = cell && to.width > 0 && to.height > 0 ? this.planeOver(cell.getBoundingClientRect(), to) : "scale(0.97)";
 		const exit = dialog.animate([{ transform: "none", opacity: 1 }, { transform: gone, opacity: 0 }], { ...workspace.time.timing(DISAPPEAR), fill: "forwards" });
-		element.animate([{ backgroundColor: "transparent" }], { ...workspace.time.timing(DISAPPEAR), fill: "forwards" });
+		modal.backdrop.animate([{ opacity: 1 }, { opacity: 0 }], { ...workspace.time.timing(DISAPPEAR), fill: "forwards" });
 		const follow = () => {
 			if (!element.isConnected) return;
 			workspace.drawModalOrigin(modal, 1 - (exit.effect.getComputedTiming().progress ?? 1));
@@ -144,7 +152,7 @@ export class ModalHost {
 
 	constrain(dialog, layer) {
 		const bounds = dialog.supermaxBounds;
-		const inset = parseFloat(getComputedStyle(layer).paddingLeft) || 0;
+		const inset = parseFloat(this.workspace.document.defaultView.getComputedStyle(layer).paddingLeft) || 0;
 		const room = layer.getBoundingClientRect();
 		const width = Math.max(0, room.width - parseFloat(dialog.style.left) - inset);
 		const height = Math.max(0, room.height - parseFloat(dialog.style.top) - inset);
@@ -165,7 +173,7 @@ export class ModalHost {
 		this.pin(dialog, layer);
 		const start = { x: event.clientX, y: event.clientY, left: parseFloat(dialog.style.left), top: parseFloat(dialog.style.top) };
 		const move = (next) => {
-			const inset = parseFloat(getComputedStyle(layer).paddingLeft) || 0;
+			const inset = parseFloat(this.workspace.document.defaultView.getComputedStyle(layer).paddingLeft) || 0;
 			const bounds = layer.getBoundingClientRect();
 			const left = Math.min(Math.max(inset, start.left + next.clientX - start.x), bounds.width - dialog.offsetWidth - inset);
 			const top = Math.min(Math.max(inset, start.top + next.clientY - start.y), bounds.height - dialog.offsetHeight - inset);
@@ -216,7 +224,7 @@ export class ModalHost {
 		this.resizeObserver = null;
 		modal.slot.cancel();
 		modal.slot.leave();
-		this.leave(modal, reason, () => modal.slot.dispose());
+		this.leave(modal, reason, () => { modal.slot.dispose(); modal.bindings.abort(); modal.part.dispose(); modal.backdropPart.dispose(); workspace.disposeOrigin(modal.originLayer); });
 		workspace.body.inert = false;
 		if (workspace.folds.layer) workspace.folds.layer.inert = false;
 		workspace.notices.render();

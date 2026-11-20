@@ -8,22 +8,26 @@ function fontReady(document) {
 }
 
 export class FoldLabel {
-	constructor(workspace, title, axis) {
-		this.workspace = workspace;
+	constructor(document, title, axis, onRefresh) {
+		this.document = document;
+		this.disposed = false;
 		this.title = title;
 		this.axis = axis;
-		this.element = workspace.create("span", "supermax-fold-mark");
+		this.element = document.createElement("span");
+		this.element.className = "supermax-fold-mark";
 		this.element.setAttribute("aria-hidden", "true");
-		this.canvas = workspace.document.createElement("canvas").getContext("2d");
-		const refresh = () => { this.key = null; workspace.folds.positionMarks(); };
-		fontReady(workspace.document).then(refresh, refresh);
+		this.canvas = document.createElement("canvas").getContext("2d");
+		const refresh = () => { if (!this.disposed) { this.key = null; onRefresh(); } };
+		fontReady(document).then(refresh, refresh);
 	}
+
+	dispose() { this.disposed = true; this.element.remove(); }
 
 	update(available) {
 		this.available = available;
-		const { document } = this.workspace;
+		const { document } = this;
 		const style = document.defaultView.getComputedStyle(this.element);
-		const declaredPadding = parseFloat(style.getPropertyValue("--supermax-fold-padding"));
+		const declaredPadding = parseFloat(style.getPropertyValue("--supermax-default-fold-padding"));
 		const padding = Number.isFinite(declaredPadding) ? declaredPadding : 3;
 		const gutter = parseFloat(style.getPropertyValue("--supermax-gutter")) || 0;
 		const title = typeof this.title === "string" ? this.title.trim().replace(/\s+/g, " ").toUpperCase() : "";

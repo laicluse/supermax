@@ -195,8 +195,8 @@ test("a surviving boundary keeps its gutter until its preceding surface has left
 		workspace.navigator.destinations.menu = { title: "Menu", min: 200, max: 200, overflow: { mode: "hide" } };
 		workspace.navigator.destinations.work = { title: "Work", min: 300, max: "*", preferred: 400 };
 		workspace.navigator.setSize("menu", null); workspace.navigator.setSize("menu/work", null);
-		workspace.element.style.setProperty("--supermax-canvas", "rgb(201,204,209)");
-		workspace.element.style.setProperty("--supermax-surface", "rgb(23,25,28)");
+		workspace.element.style.setProperty("--supermax-default-canvas", "rgb(201,204,209)");
+		workspace.element.style.setProperty("--supermax-default-surface", "rgb(23,25,28)");
 		resize(700, false); resize(400);
 		const strip = workspace.chains.get("menu").strip;
 		for (const animation of strip.geometry) { animation.pause(); const timing = animation.effect.getTiming(); animation.currentTime = timing.delay + timing.duration * .3; }
