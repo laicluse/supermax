@@ -6,11 +6,11 @@ const names = ["a", "b", "c", "d", "e"];
 const id = (name) => names.slice(0, names.indexOf(name) + 1).join("/");
 const rail = { a: { min: 50, preferred: 50, max: 50, overflow: { mode: "keep" } } };
 
-function chain(width, overrides = {}) {
+function chain(width, overrides = {}, last = "e") {
 	const destinations = Object.fromEntries(names.map((name) => [name, { title: name.toUpperCase(), min: 100, preferred: 200, max: "*", ...overrides[name] }]));
 	const model = new Navigator({ root: "a", minViewportHeight: 200, destinations });
 	model.resize({ width, height: 400 });
-	for (const name of names.slice(1)) model.open(name, { from: id(names[names.indexOf(name) - 1]) });
+	for (const name of names.slice(1, names.indexOf(last) + 1)) model.open(name, { from: id(names[names.indexOf(name) - 1]) });
 	return model;
 }
 
@@ -47,6 +47,15 @@ test("opening a fold takes its room from the trailing end and closes what no lon
 	assert.deepEqual(closed.map((cell) => cell.id), [id("e")]);
 	assert.deepEqual(model.unfold(id("c"), "horizontal").map((cell) => cell.id), [id("d")]);
 	assert.equal(picture(model), "A B C");
+});
+
+test("opening a fold opens every fold behind it that the freed room holds, as a reload would", () => {
+	const wide = { ...rail, e: { min: 500, preferred: 600 } };
+	const model = chain(900, wide);
+	assert.equal(picture(model), "A [B] [C] D E");
+	assert.deepEqual(model.unfold(id("c"), "horizontal").map((cell) => cell.id), [id("e")]);
+	assert.equal(picture(model), "A B C D");
+	assert.equal(picture(chain(900, wide, "d")), picture(model));
 });
 
 test("a cell the user opened folds last and gives way again when the leaf needs the room", () => {
