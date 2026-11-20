@@ -94,6 +94,22 @@ const scenarios = [
 			session.exportAlbum(model.get(coast.metadata("thumbnails", "a")), album);
 		},
 	},
+	{
+		label: "Notices: persistent recovery",
+		actions: [open("album:coast", "albums")],
+		local: (frame) => {
+			if (frame.key !== "a") return;
+			frame.workspace.notify({
+				id: "recovery-demo", scope: "workspace", kind: "action", persistent: true,
+				message: "Server is asleep",
+				action: { label: "Start server", run: async (workspace, id) => {
+					workspace.updateNotice(id, { message: "Starting server…" });
+					await new Promise((resolve) => setTimeout(resolve, workspace.time.ms(1800)));
+					workspace.dismiss(id, "resolved");
+				} },
+			});
+		},
+	},
 	{ label: "Empty album", actions: [open(ids(albums[1]).album, "albums")] },
 	{ label: "Twenty cells deep", actions: twentyDeep },
 	{ label: "Lab: exact fit", actions: [open(ids(albums[2]).album, "albums")] },
@@ -565,7 +581,10 @@ class Session {
 			sourceTitle: occurrence.title,
 			kind: "action",
 			message: `Export of ${album.title} is ready`,
-			action: { label: "Download", run: (workspace) => workspace.notify({ scope: "workspace", kind: "success", message: `Downloaded ${album.title}.zip` }) },
+			action: { label: "Download", run: (workspace, id) => {
+				workspace.dismiss(id, "acted");
+				workspace.notify({ scope: "workspace", kind: "success", message: `Downloaded ${album.title}.zip` });
+			} },
 		});
 	}
 
@@ -644,7 +663,10 @@ class Session {
 			departures.forEach((departure) => departure?.cancel());
 			const name = control?.getAttribute("aria-label") || control?.textContent.trim() || action.destination;
 			const from = origin.navigator.get(action.from)?.title;
-			origin.notify({ id: `prepare:${action.from}:${action.destination}`, scope: "workspace", kind: "error", message: `Could not open ${name}${from ? ` from ${from}` : ""}. ${error.message}`, action: { label: "Retry", run: () => this.dispatch(action, origin) } });
+			origin.notify({ id: `prepare:${action.from}:${action.destination}`, scope: "workspace", kind: "error", message: `Could not open ${name}${from ? ` from ${from}` : ""}. ${error.message}`, action: { label: "Retry", run: (workspace, id) => {
+				workspace.dismiss(id, "acted");
+				return this.dispatch(action, origin);
+			} } });
 		}).finally(() => {
 			control?.classList.remove("is-pending");
 			control?.removeAttribute("aria-busy");

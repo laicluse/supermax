@@ -235,6 +235,10 @@ export class Workspace extends EventTarget {
 		return this.notices.notify(options);
 	}
 
+	updateNotice(noticeId, changes) {
+		return this.notices.update(noticeId, changes);
+	}
+
 	dismiss(noticeId, state = "dismissed") {
 		return this.notices.dismiss(noticeId, state);
 	}

@@ -7,7 +7,6 @@ export class NoticeBoard {
 	constructor(workspace) {
 		this.workspace = workspace;
 		this.notices = new Map();
-		this.ids = new Set();
 		this.serial = 0;
 		this.region = NoticeBoard.stack(workspace);
 	}
@@ -27,17 +26,28 @@ export class NoticeBoard {
 		return region;
 	}
 
-	notify({ id = null, scope = "cell", source = null, sourceTitle = null, kind = "success", message, action = null, duration } = {}) {
-		if (id !== null) {
-			if (this.ids.has(id)) return null;
-			this.ids.add(id);
-		}
-		const notice = { id: id ?? `notice-${(this.serial += 1)}`, scope, source, sourceTitle, kind, message, action, element: null, host: null, timer: null, remaining: duration ?? (kind === "success" ? TIMING.noticeLife : null), startedAt: null, hovered: false };
+	notify({ id = null, scope = "cell", source = null, sourceTitle = null, kind = "success", message, action = null, persistent = kind !== "success", busy = false, duration = TIMING.noticeLife } = {}) {
+		if (id !== null && this.notices.has(id)) return null;
+		const notice = { id: id ?? `notice-${(this.serial += 1)}`, scope, source, sourceTitle, kind, message, action, persistent, busy, element: null, host: null, timer: null, remaining: persistent ? null : duration, startedAt: null, hovered: false };
 		this.notices.set(notice.id, notice);
 		this.place(notice);
 		this.resume(notice);
 		this.workspace.dispatchEvent(new CustomEvent("notice", { detail: { id: notice.id, state: "shown", scope: notice.scope } }));
 		return notice.id;
+	}
+
+	update(noticeId, changes = {}) {
+		const notice = this.notices.get(noticeId);
+		if (!notice) return false;
+		for (const key of ["message", "kind", "action", "busy"]) {
+			if (Object.hasOwn(changes, key)) notice[key] = changes[key];
+		}
+		this.paint(notice);
+		if (notice.busy) this.pause(notice);
+		else this.resume(notice);
+		this.workspace.scheduleOrigins();
+		this.workspace.dispatchEvent(new CustomEvent("notice", { detail: { id: noticeId, state: "updated", scope: notice.scope } }));
+		return true;
 	}
 
 	dismiss(noticeId, state = "dismissed") {
@@ -53,7 +63,6 @@ export class NoticeBoard {
 
 	dismissAll(state = "dismissed") {
 		for (const id of [...this.notices.keys()]) this.dismiss(id, state);
-		this.ids.clear();
 	}
 
 	render() {
@@ -66,7 +75,6 @@ export class NoticeBoard {
 			notice.element?.remove();
 		}
 		this.notices.clear();
-		this.ids.clear();
 		this.region.supermaxUsers -= 1;
 		if (this.region.supermaxUsers <= 0) {
 			this.region.supermaxVeil?.remove();
@@ -132,45 +140,16 @@ export class NoticeBoard {
 		const element = workspace.create("div", `supermax-notice is-${notice.kind}`);
 		element.dataset.notice = notice.id;
 		if (notice.source) element.dataset.source = notice.source;
-		if (notice.kind === "error") element.setAttribute("role", "alert");
-		const text = workspace.create("div", "supermax-notice-text");
-		if (named) {
-			const title = sourceOccurrence?.title ?? notice.sourceTitle ?? workspace.strings.closedCell();
-			const label = workspace.create("span", "supermax-notice-source", sourceOccurrence ? workspace.strings.noticeSource(title) : workspace.strings.noticeSourceClosed(title));
-			text.append(label, workspace.document.createTextNode(` ${notice.message}`));
-		} else {
-			text.textContent = notice.message;
-		}
-		const controls = workspace.create("div", "supermax-notice-controls");
-		if (named && reachable) {
-			const go = workspace.create("button", "supermax-notice-go", workspace.strings.noticeShow(sourceOccurrence.title));
-			go.type = "button";
-			go.addEventListener("click", () => { if (workspace.goTo(notice.source)) this.dismiss(notice.id, "acted"); });
-			controls.append(go);
-		}
-		if (notice.action) {
-			const act = workspace.create("button", "supermax-notice-action", notice.action.label);
-			act.type = "button";
-			act.addEventListener("click", () => { this.dismiss(notice.id, "acted"); notice.action.run?.(workspace); });
-			controls.append(act);
-		}
 		const close = workspace.create("button", "supermax-notice-dismiss", "×");
 		close.type = "button";
-		close.setAttribute("aria-label", workspace.strings.dismissNotice(notice.message));
 		close.addEventListener("click", () => this.dismiss(notice.id));
-		const icon = workspace.noticeIcon?.(notice.kind, workspace.document, notice) ?? null;
-		if (icon) {
-			const holder = workspace.create("span", "supermax-notice-icon");
-			holder.setAttribute("aria-hidden", "true");
-			holder.append(icon);
-			element.append(holder);
-		}
-		element.append(text, controls, close);
+		element.append(workspace.create("div", "supermax-notice-text"), workspace.create("div", "supermax-notice-controls"), close);
 		notice.hovered = false;
 		element.addEventListener("pointerenter", () => this.hold(notice, "hovered", true));
 		element.addEventListener("pointerleave", () => this.hold(notice, "hovered", false));
 		if (sourceOccurrence) notice.sourceTitle = sourceOccurrence.title;
 		Object.assign(notice, { element, host, named, sourceOpen: !!sourceOccurrence, reachable });
+		this.paint(notice);
 		if (previous) {
 			const container = previous.parentElement;
 			if (container === host) previous.replaceWith(element);
@@ -187,6 +166,80 @@ export class NoticeBoard {
 		workspace.scheduleOrigins();
 	}
 
+	paint(notice) {
+		const workspace = this.workspace;
+		const element = notice.element;
+		const source = notice.source ? workspace.navigator.get(notice.source) : null;
+		element.className = `supermax-notice is-${notice.kind}`;
+		if (notice.kind === "error") element.setAttribute("role", "alert");
+		else element.removeAttribute("role");
+		element.classList.toggle("is-busy", !!notice.busy);
+		const text = element.querySelector(".supermax-notice-text");
+		if (notice.named) {
+			const title = source?.title ?? notice.sourceTitle ?? workspace.strings.closedCell();
+			const label = workspace.create("span", "supermax-notice-source", source ? workspace.strings.noticeSource(title) : workspace.strings.noticeSourceClosed(title));
+			text.replaceChildren(label, workspace.document.createTextNode(` ${notice.message}`));
+		} else text.textContent = notice.message;
+		const controls = element.querySelector(".supermax-notice-controls");
+		controls.toggleAttribute("aria-busy", !!notice.busy);
+		let go = controls.querySelector(".supermax-notice-go");
+		if (notice.named && notice.reachable) {
+			if (!go) {
+				go = workspace.create("button", "supermax-notice-go");
+				go.type = "button";
+				go.addEventListener("click", () => { if (!notice.busy && workspace.goTo(notice.source)) this.dismiss(notice.id, "acted"); });
+				controls.prepend(go);
+			}
+			go.textContent = workspace.strings.noticeShow(source.title);
+			go.setAttribute("aria-disabled", String(!!notice.busy));
+		} else go?.remove();
+		let act = controls.querySelector(".supermax-notice-action");
+		if (notice.action) {
+			if (!act) {
+				act = workspace.create("button", "supermax-notice-action");
+				act.type = "button";
+				act.addEventListener("click", () => this.act(notice));
+				controls.append(act);
+			}
+			act.textContent = notice.action.label;
+			act.setAttribute("aria-disabled", String(!!notice.busy));
+		} else act?.remove();
+		let spinner = controls.querySelector(".supermax-notice-spinner");
+		if (notice.busy) {
+			if (!spinner) {
+				spinner = workspace.create("span", "supermax-notice-spinner");
+				spinner.setAttribute("aria-hidden", "true");
+				controls.append(spinner);
+			}
+		} else spinner?.remove();
+		element.querySelector(".supermax-notice-dismiss").setAttribute("aria-label", workspace.strings.dismissNotice(notice.message));
+		element.querySelector(".supermax-notice-icon")?.remove();
+		const icon = workspace.noticeIcon?.(notice.kind, workspace.document, notice) ?? null;
+		if (icon) {
+			const holder = workspace.create("span", "supermax-notice-icon");
+			holder.setAttribute("aria-hidden", "true");
+			holder.append(icon);
+			element.prepend(holder);
+		}
+	}
+
+	act(notice) {
+		if (this.notices.get(notice.id) !== notice || notice.busy) return;
+		const result = notice.action.run?.(this.workspace, notice.id);
+		if (this.notices.get(notice.id) !== notice) return;
+		if (result && typeof result.then === "function") {
+			this.update(notice.id, { busy: true });
+			Promise.resolve(result).then(
+				() => {
+					if (this.notices.get(notice.id) !== notice) return;
+					if (notice.persistent) this.update(notice.id, { busy: false });
+					else this.dismiss(notice.id, "acted");
+				},
+				() => { if (this.notices.get(notice.id) === notice) this.update(notice.id, { busy: false }); },
+			);
+		} else if (!notice.persistent && !notice.busy) this.dismiss(notice.id, "acted");
+	}
+
 	enter(notice) {
 		const view = this.workspace.document.defaultView;
 		if (view.matchMedia("(prefers-reduced-motion: reduce)").matches || !notice.element.animate) return;
@@ -199,7 +252,7 @@ export class NoticeBoard {
 	hold(notice, key, held) {
 		notice[key] = held;
 		this.workspace.scheduleOrigins();
-		if (notice.hovered) this.pause(notice);
+		if (notice.hovered || notice.busy) this.pause(notice);
 		else this.resume(notice);
 	}
 
@@ -212,7 +265,7 @@ export class NoticeBoard {
 	}
 
 	resume(notice) {
-		if (notice.remaining === null || notice.timer !== null || !this.notices.has(notice.id)) return;
+		if (notice.remaining === null || notice.timer !== null || notice.hovered || notice.busy || !this.notices.has(notice.id)) return;
 		const view = this.workspace.document.defaultView;
 		notice.startedAt = view.performance.now();
 		notice.scale = this.workspace.time.value;

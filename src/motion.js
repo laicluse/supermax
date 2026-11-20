@@ -5,7 +5,7 @@ export const TIMING = Object.freeze({
 	depart: 50,
 	noticeIn: 220,
 	noticeOut: 180,
-	noticeLife: 4000,
+	noticeLife: 7000,
 	frustum: 260,
 	spin: 900,
 	handle: 120,

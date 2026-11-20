@@ -48,7 +48,7 @@ test("the package stylesheet alone renders the chrome at the sizes the model com
 		window.workspace.navigate("gallery", { from: "root" });
 		document.getElementById("host").style.height = "300px";
 		return new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => {
-			document.getAnimations().forEach((animation) => animation.finish());
+			document.getAnimations().filter((animation) => animation.effect?.getTiming().iterations !== Infinity).forEach((animation) => animation.finish());
 			resolve({ bars, ...measureRows() });
 		})));
 		function measureRows() {
@@ -210,6 +210,100 @@ test("loading shows only a centered, accessibly named spinner in cells and modal
 	assert.equal(result.modal.label, "Loading Details");
 });
 
+test("persistent notices keep an action visible through busy work until the host dismisses them", async () => {
+	const initial = await page.evaluate(() => {
+		const workspace = window.workspace;
+		workspace.dismissAll();
+		const temporary = workspace.notify({ id: "temporary", scope: "workspace", message: "Saved" });
+		const duration = workspace.notices.notices.get(temporary).remaining;
+		workspace.dismiss(temporary);
+		const id = workspace.notify({
+			id: "recovery", scope: "workspace", kind: "action", persistent: true,
+			message: "Service is asleep",
+			action: { label: "Start", run: (instance, noticeId) => {
+				instance.updateNotice(noticeId, { message: "Starting service" });
+				return new Promise((resolve) => { window.resolveRecovery = resolve; });
+			} },
+		});
+		return { duration, id, remaining: workspace.notices.notices.get(id).remaining, duplicate: workspace.notify({ id, message: "Duplicate" }) };
+	});
+	assert.deepEqual(initial, { duration: 7000, id: "recovery", remaining: null, duplicate: null });
+	const notice = page.locator('.supermax-notices [data-notice="recovery"]');
+	await notice.locator(".supermax-notice-action").focus();
+	await page.evaluate(() => window.workspace.updateNotice("recovery", { message: "Service is still asleep" }));
+	assert.equal(await page.evaluate(() => document.activeElement?.className), "supermax-notice-action", "a status update preserves keyboard focus");
+	await notice.locator(".supermax-notice-action").click();
+	assert.equal(await notice.locator(".supermax-notice-text").textContent(), "Starting service");
+	assert.equal(await notice.locator(".supermax-notice-controls").getAttribute("aria-busy"), "", "busy state stays on the controls while text can be announced");
+	assert.equal(await notice.locator(".supermax-notice-spinner").count(), 1);
+	assert.equal(await notice.locator(".supermax-notice-action").getAttribute("aria-disabled"), "true", "the action cannot be repeated during work");
+	assert.equal(await page.evaluate(() => document.activeElement?.className), "supermax-notice-action", "busy feedback keeps focus on the action");
+	await page.emulateMedia({ reducedMotion: "reduce" });
+	assert.equal(await notice.locator(".supermax-notice-spinner").evaluate((element) => getComputedStyle(element).animationName), "none");
+	await page.emulateMedia({ reducedMotion: "no-preference" });
+	await page.waitForTimeout(80);
+	assert.equal(await notice.count(), 1, "the persistent notice does not expire while work is pending");
+	await page.evaluate(() => window.resolveRecovery());
+	await page.waitForFunction(() => document.querySelector('[data-notice="recovery"] .supermax-notice-action'));
+	assert.equal(await notice.locator(".supermax-notice-controls").getAttribute("aria-busy"), null);
+	const resolved = await page.evaluate(() => {
+		const workspace = window.workspace;
+		const removed = workspace.dismiss("recovery", "resolved");
+		const repeated = workspace.notify({ id: "recovery", scope: "workspace", message: "Service is asleep", persistent: true });
+		workspace.dismiss(repeated);
+		return { removed, repeated };
+	});
+	assert.deepEqual(resolved, { removed: true, repeated: "recovery" }, "a later incident can reuse the same stable id");
+});
+
+test("an old action cannot change a later notice with the same id", async () => {
+	const result = await page.evaluate(async () => {
+		const workspace = window.workspace;
+		workspace.notify({ id: "same", scope: "workspace", kind: "action", persistent: true, message: "First", action: { label: "Go", run: () => new Promise((resolve) => { window.resolveFirstNotice = resolve; }) } });
+		workspace.notices.region.querySelector('[data-notice="same"] .supermax-notice-action').click();
+		workspace.dismiss("same");
+		workspace.notify({ id: "same", scope: "workspace", kind: "action", persistent: true, busy: true, message: "Second" });
+		const before = workspace.notices.notices.get("same").busy;
+		window.resolveFirstNotice();
+		await Promise.resolve();
+		await Promise.resolve();
+		const after = workspace.notices.notices.get("same").busy;
+		workspace.dismiss("same");
+		return { before, after };
+	});
+	assert.deepEqual(result, { before: true, after: true });
+});
+
+test("an event-driven persistent action stays open while the host owns its busy state", async () => {
+	const result = await page.evaluate(() => {
+		const workspace = window.workspace;
+		workspace.notify({ id: "event", scope: "workspace", kind: "action", persistent: true, message: "Disconnected", action: { label: "Reconnect", run: (instance, id) => { instance.updateNotice(id, { message: "Connecting", busy: true }); } } });
+		workspace.notices.region.querySelector('[data-notice="event"] .supermax-notice-action').click();
+		const notice = workspace.notices.notices.get("event");
+		const state = { active: !!notice, busy: notice.busy, text: notice.element.querySelector(".supermax-notice-text").textContent };
+		workspace.dismiss("event", "resolved");
+		return state;
+	});
+	assert.deepEqual(result, { active: true, busy: true, text: "Connecting" });
+});
+
+test("a temporary interactive notice pauses its timeout while its action is busy", async () => {
+	await page.mouse.move(0, 0);
+	const initial = await page.evaluate(() => {
+		const workspace = window.workspace;
+		workspace.notify({ id: "temporary-action", scope: "workspace", kind: "action", persistent: false, duration: 120, message: "Upload pending", action: { label: "Send", run: () => new Promise((resolve) => { window.finishTemporaryAction = resolve; }) } });
+		workspace.notices.region.querySelector('[data-notice="temporary-action"] .supermax-notice-action').click();
+		const notice = workspace.notices.notices.get("temporary-action");
+		return { busy: notice.busy, remaining: notice.remaining };
+	});
+	assert.equal(initial.busy, true);
+	assert.ok(initial.remaining > 0 && initial.remaining <= 120);
+	await page.waitForTimeout(180);
+	assert.equal(await page.locator('[data-notice="temporary-action"]').count(), 1, "the timeout stays paused past its original expiry");
+	await page.evaluate(() => window.finishTemporaryAction());
+	await page.waitForFunction(() => !window.workspace.notices.notices.has("temporary-action"));
+});
+
 test("notices sit in their source cell by default, or at the top with noticePlacement top", async () => {
 	const result = await page.evaluate(async () => {
 		const { Navigator, Workspace } = await import("/src/index.js");
@@ -295,7 +389,7 @@ test("a cell whose left edge stays put keeps its content in place while it widen
 				document.getAnimations().forEach((animation) => { animation.pause(); animation.currentTime = time + (animation.effect.getTiming().delay ?? 0); });
 				samples.push(measure());
 			}
-			document.getAnimations().forEach((animation) => animation.finish());
+			document.getAnimations().filter((animation) => animation.effect?.getTiming().iterations !== Infinity).forEach((animation) => animation.finish());
 			await new Promise((resolve) => setTimeout(resolve, 50));
 			samples.push(measure());
 			return samples;
@@ -344,7 +438,7 @@ test("a render that turns a widening back narrows the cell's content with its ro
 			document.getAnimations().forEach((animation) => { animation.pause(); animation.currentTime = time + (animation.effect.getTiming().delay ?? 0); });
 			widths.push(Math.round(menu().getBoundingClientRect().width));
 		}
-		document.getAnimations().forEach((animation) => animation.finish());
+		document.getAnimations().filter((animation) => animation.effect?.getTiming().iterations !== Infinity).forEach((animation) => animation.finish());
 		await new Promise((resolve) => setTimeout(resolve, 50));
 		widths.push(Math.round(menu().getBoundingClientRect().width));
 		host.remove();
@@ -365,7 +459,7 @@ test("a closing modal keeps its content until it has gone, and tells the content
 		await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
 		window.workspace.closeModal("close");
 		events.push(["closed"]);
-		document.getAnimations().forEach((animation) => animation.finish());
+		document.getAnimations().filter((animation) => animation.effect?.getTiming().iterations !== Infinity).forEach((animation) => animation.finish());
 		await new Promise((resolve) => setTimeout(resolve, 50));
 		return { events, modal: !!modal };
 	});

@@ -310,6 +310,16 @@
 .supermax-notice-source { font-weight: 600; color: var(--supermax-muted); }
 .supermax-notice-controls { display: flex; align-items: center; gap: 4px; flex: none; }
 .supermax-notice-controls:empty { display: none; }
+.supermax-notice-spinner {
+	width: 14px;
+	height: 14px;
+	margin: 3px 10px;
+	border: 1px solid var(--supermax-canvas);
+	border-right-color: transparent;
+	border-radius: 50%;
+	animation: supermax-spin var(--supermax-time-spin) linear infinite;
+}
+@media (prefers-reduced-motion: reduce) { .supermax-notice-spinner { animation: none; } }
 .supermax-notice-go, .supermax-notice-action {
 	padding: 3px 10px;
 	border: 0;
@@ -322,6 +332,8 @@
 	white-space: nowrap;
 }
 .supermax-notice-go:hover, .supermax-notice-action:hover { background: color-mix(in srgb, var(--notice-ink) 20%, transparent); }
+.supermax-notice-go[aria-disabled="true"], .supermax-notice-action[aria-disabled="true"] { cursor: default; opacity: .6; }
+.supermax-notice-go[aria-disabled="true"]:hover, .supermax-notice-action[aria-disabled="true"]:hover { background: color-mix(in srgb, var(--notice-ink) 12%, transparent); }
 .supermax-notice-dismiss {
 	position: absolute;
 	top: 6px;

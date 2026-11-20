@@ -49,8 +49,8 @@ const readout = (key, part) => `${frame(key)} + .readout .readout-${part}`;
 
 async function settle() {
 	await page.waitForFunction(() => window.supermaxDemo.pending === 0 && !document.querySelector(".supermax-cell.is-loading"));
-	await page.evaluate(() => document.getAnimations().forEach((animation) => animation.finish()));
-	await page.waitForFunction(() => document.getAnimations().length === 0 && window.supermaxDemo.pending === 0 && !document.querySelector(".supermax-cell.is-loading"));
+	await page.evaluate(() => document.getAnimations().filter((animation) => animation.effect?.getTiming().iterations !== Infinity).forEach((animation) => animation.finish()));
+	await page.waitForFunction(() => document.getAnimations().every((animation) => animation.effect?.getTiming().iterations === Infinity) && window.supermaxDemo.pending === 0 && !document.querySelector(".supermax-cell.is-loading"));
 }
 
 async function opened() {
@@ -1780,6 +1780,20 @@ test("a modal knows its source, makes the cells behind it inert and closes befor
 	assert.equal(await page.locator(modal).count(), 0, "a modal whose source is out of view closes like any other");
 });
 
+test("the demo shows persistent recovery, busy feedback, and host resolution", async () => {
+	await page.goto(`${server.url}/?delay=0&presentation=veil`);
+	await page.waitForFunction(() => window.supermaxDemo?.frames.length === 2);
+	await page.getByRole("button", { name: "Notices: persistent recovery" }).click();
+	const notice = page.locator(inFrame("a", '[data-notice="recovery-demo"]'));
+	assert.equal(await notice.locator(".supermax-notice-text").textContent(), "Server is asleep");
+	assert.equal(await page.evaluate(() => window.supermaxDemo.frames[0].workspace.notices.notices.get("recovery-demo").remaining), null);
+	await notice.locator(".supermax-notice-action").click();
+	assert.equal(await notice.locator(".supermax-notice-text").textContent(), "Starting server…");
+	assert.equal(await notice.locator(".supermax-notice-spinner").count(), 1);
+	await notice.waitFor({ state: "detached", timeout: 5000 });
+	assert.equal(await page.evaluate(() => window.supermaxDemo.frames[0].workspace.notices.notices.has("recovery-demo")), false);
+});
+
 test("a notice is a bubble in its source cell, and moves to the top of the viewport naming a source out of view", async () => {
 	await openDemo([open("album:coast", "albums")]);
 	await resize([[1100, 640], [360, 640]]);
@@ -1792,7 +1806,7 @@ test("a notice is a bubble in its source cell, and moves to the top of the viewp
 	const narrowNotice = inFrame("b", ".supermax-notices .supermax-notice");
 	assert.equal(await page.locator(`${narrowNotice} .supermax-notice-text`).textContent(), "Photo A (not open): Caption saved", "where the source is not open the workspace notice names it");
 	assert.equal(await page.locator(`${narrowNotice} .supermax-notice-go`).count(), 0, "and offers no way to reopen a closed source");
-	await page.waitForSelector(cellNotice, { state: "detached", timeout: 6000 });
+	await page.waitForSelector(cellNotice, { state: "detached", timeout: 9000 });
 	assert.equal(await page.locator(narrowNotice).count(), 0, "success notices expire on their own");
 	await page.evaluate(() => { const workspace = window.supermaxDemo.frames[0].workspace; workspace.notify({ id: "dup", scope: "workspace", kind: "action", message: "Once" }); workspace.notify({ id: "dup", scope: "workspace", kind: "action", message: "Once" }); });
 	assert.equal(await page.locator(inFrame("a", '.supermax-notice[data-notice="dup"]')).count(), 1, "the same event id shows once");
@@ -1836,7 +1850,7 @@ test("a notice is a bubble in its source cell, and moves to the top of the viewp
 	assert.equal(await page.locator(`${late} .supermax-notice-text`).textContent(), "Photo B (not open): Caption saved", "a late response for a closed source names it");
 	assert.ok(!(await state("a")).occurrences.includes(coast.photo("people", "b")), "and does not reopen it");
 	await page.selectOption("[data-delay]", "0");
-	await page.waitForSelector(late, { state: "detached", timeout: 6000 });
+	await page.waitForSelector(late, { state: "detached", timeout: 9000 });
 	await page.click(inFrame("a", `[data-occurrence="${coast.metadata("thumbnails", "a")}"] .album-export`));
 	const exportNotice = inFrame("a", ".supermax-notice.is-action");
 	assert.equal(await page.locator(`${inFrame("a", `[data-occurrence="${coast.metadata("thumbnails", "a")}"]`)} .supermax-cell-notices .supermax-notice-text`).textContent(), "Export of Coast is ready", "the bubble in its source cell needs no name");
