@@ -892,6 +892,51 @@ test("closing without a replacement plays the opening backwards, and clicking ba
 	await settle();
 });
 
+test("the workspace warns once per kind when a host leaves out what its contract asks, and the demo never does", async () => {
+	const warnings = [];
+	const listen = (message) => { if (message.type() === "warning" && message.text().startsWith("Supermax:")) warnings.push(message.text()); };
+	page.on("console", listen);
+	try {
+		await openDemo([open("album:coast", "albums")]);
+		await page.evaluate(() => Promise.all(["coast:photo:b", "coast:photo:c", "coast:photo:d"].map((id) => window.supermaxDemo.prepare(id))));
+		await page.click(inFrame("a", `[data-occurrence="${coast.row("thumbnails")}"] .thumb[data-destination="coast:photo:b"]`));
+		await page.click(inFrame("a", `[data-occurrence="${coast.photo("thumbnails", "b")}"] .metadata-link`));
+		await page.click(inFrame("a", '.album-item[data-destination="album:empty"]'));
+		await page.click(inFrame("a", '.album-item[data-destination="album:coast"]'));
+		await settle();
+		assert.deepEqual(warnings, [], "the demo passes what the contract asks");
+		const kinds = () => warnings.map((warning) => warning.split(" ")[1]);
+		await page.evaluate((row) => {
+			const workspace = window.supermaxDemo.frames[0].workspace;
+			workspace.navigate("coast:photo:c", { from: row });
+			workspace.navigate("coast:photo:d", { from: row });
+			workspace.navigate("coast:photo:b", { from: row, origin: null });
+		}, coast.row("thumbnails"));
+		assert.deepEqual(kinds(), ["navigate()"], `a replacement without an origin warns once: ${warnings}`);
+		await page.evaluate((row) => {
+			const workspace = window.supermaxDemo.frames[0].workspace;
+			workspace.sync(["albums", "album:empty"]);
+			workspace.sync(["albums", "album:coast"], { origin: null });
+			workspace.depart(workspace.navigator.child(workspace.navigator.root).id);
+			workspace.depart(workspace.navigator.child(workspace.navigator.root).id, { origin: null }).cancel();
+			workspace.openModal({ title: "Unsourced", content: () => ({ element: document.createElement("p") }) });
+			workspace.openModal({ title: "Global", content: () => ({ element: document.createElement("p") }) }, { from: null });
+			workspace.closeModal();
+		}, coast.row("thumbnails"));
+		assert.deepEqual(kinds(), ["navigate()", "sync()", "depart()", "openModal()"], `so does a sync or departure without one, and a modal without a source, while null says there is none: ${warnings}`);
+		await page.evaluate(() => {
+			const workspace = window.supermaxDemo.frames[0].workspace;
+			const again = () => { workspace.removeEventListener("render", again); workspace.render(); };
+			workspace.addEventListener("render", again);
+			workspace.render();
+		});
+		assert.deepEqual(kinds().at(-1), "render()", `and a render from inside a render handler, which makes one click two renders: ${warnings}`);
+		await settle();
+	} finally {
+		page.off("console", listen);
+	}
+});
+
 test("sync brings a workspace to a list of destinations in one render, or leaves it as it was", async () => {
 	await openDemo();
 	const outcome = await page.evaluate(() => {

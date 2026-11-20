@@ -24,6 +24,9 @@ function normalizePresentation(presentation) {
 	return Object.freeze({ name: presentation.name, motion, source, createStrip });
 }
 
+// allow-comment: a host that leaves out part of its contract hears about it once per kind on the page, instead of degrading in silence.
+const warned = new Set();
+
 // How far spare space pushes the cells in from the start when no elastic cell takes it.
 const ALIGN = Object.freeze({ start: 0, center: 0.5, end: 1 });
 const JUSTIFY = Object.freeze({ start: "flex-start", center: "center", end: "flex-end" });
@@ -115,6 +118,22 @@ export class Workspace extends EventTarget {
 		this.render({ animate: false });
 	}
 
+	warn(kind, message) {
+		if (warned.has(kind)) return;
+		warned.add(kind);
+		console.warn(`Supermax: ${kind} ${message}`);
+	}
+
+	announce(event) {
+		const outer = this.announcing;
+		this.announcing = true;
+		try {
+			this.dispatchEvent(event);
+		} finally {
+			this.announcing = outer;
+		}
+	}
+
 	get timeScale() {
 		return this.time.value;
 	}
@@ -159,7 +178,7 @@ export class Workspace extends EventTarget {
 		if (previous === this.navigator.zoomed) return true;
 		this.closePeek();
 		this.render({ animate });
-		this.dispatchEvent(new CustomEvent("zoom", { detail: { occurrence: this.navigator.zoomed } }));
+		this.announce(new CustomEvent("zoom", { detail: { occurrence: this.navigator.zoomed } }));
 		return true;
 	}
 
@@ -237,6 +256,7 @@ export class Workspace extends EventTarget {
 	}
 
 	openModal(definition, options = {}) {
+		if (options.from === undefined) this.warn("openModal()", "got no source, so no frustum shows where the modal comes from. Pass the occurrence it belongs to as { from }, or from: null for a modal that belongs to no cell.");
 		const modal = this.modalHost.open(definition, options);
 		this.renderNavbar();
 		return modal;
@@ -294,7 +314,9 @@ export class Workspace extends EventTarget {
 	}
 
 	apply(action, { animate = true } = {}) {
+		const before = new Set(this.navigator.occurrences.keys());
 		const result = this.run(action);
+		if (action.type === "open" && result.ok && animate && action.origin === undefined && [...before].some((id) => !this.navigator.get(id))) this.warn("navigate()", "replaced cells without an origin, so they fold away on their far edge. Pass the element the user clicked as { origin } to navigate() or apply(), or origin: null when no element started it.");
 		if (result.ok && result.occurrence) this.remember(result.occurrence.id, action.origin);
 		if (result.ok && result.occurrence) this.navigator.bringIntoView(result.occurrence.id);
 		this.render({ animate });
@@ -320,7 +342,8 @@ export class Workspace extends EventTarget {
 		return true;
 	}
 
-	depart(occurrenceId, { after = TIMING.depart, origin = null } = {}) {
+	depart(occurrenceId, { after = TIMING.depart, origin } = {}) {
+		if (origin === undefined) this.warn("depart()", "got no origin, so the cells it folds away cannot fold towards the click. Pass the element the user clicked as { origin }, or origin: null when no element started it.");
 		const ids = new Set();
 		const visit = (occurrence) => {
 			if (!occurrence) return;
@@ -349,10 +372,11 @@ export class Workspace extends EventTarget {
 		for (const { strip } of this.chains.values()) strip.stay?.(ids);
 	}
 
-	sync(destinationIds, { animate = true, origin = null, ifRoom = [] } = {}) {
+	sync(destinationIds, { animate = true, origin, ifRoom = [] } = {}) {
 		const action = { type: "sync", destinations: [...destinationIds], ifRoom: [...ifRoom] };
 		const before = new Set(this.navigator.occurrences.keys());
 		const result = this.navigator.sync(destinationIds, { ifRoom });
+		if (result.ok && !result.noop && animate && origin === undefined && [...before].some((id) => !this.navigator.get(id))) this.warn("sync()", "replaced cells without an origin, so they fold away on their far edge. Pass the element the user clicked as { origin }, or origin: null when no element started it.");
 		if (result.ok && origin) {
 			let opened = this.navigator.root;
 			while (opened && before.has(opened.id)) opened = this.navigator.child(opened);
@@ -405,6 +429,7 @@ export class Workspace extends EventTarget {
 	}
 
 	render({ animate = true } = {}) {
+		if (this.announcing) this.warn("render()", "ran from inside a render or zoom handler, which turns one click into two renders. Act on the event without rendering again, or render from the action that started it.");
 		this.departure = null;
 		this.wasRendered = this.rendered;
 		this.rendered = true;
@@ -424,7 +449,7 @@ export class Workspace extends EventTarget {
 		this.renderNavbar();
 		this.modalHost.render();
 		this.notices.render();
-		this.dispatchEvent(new CustomEvent("render", { detail: { layout } }));
+		this.announce(new CustomEvent("render", { detail: { layout } }));
 		this.placeHorizon();
 		this.scheduleOrigins();
 		Promise.all([...this.chains.values()].map((entry) => entry.strip.finished)).then(() => this.scheduleOrigins());

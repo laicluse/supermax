@@ -113,14 +113,14 @@ function renderAlbumIcons(occurrence, workspace) {
 		button.type = "button";
 		button.setAttribute("aria-label", `Open ${album.title}`);
 		button.dataset.destination = ids(album).album;
-		button.addEventListener("click", () => workspace.navigate(ids(album).album, { from: occurrence.id }));
+		button.addEventListener("click", () => workspace.navigate(ids(album).album, { from: occurrence.id, origin: button }));
 		rail.append(button);
 	}
 	const lab = element("button", "album-icon album-icon-lab", "20");
 	lab.type = "button";
 	lab.setAttribute("aria-label", "Open the twenty cells lab");
 	lab.dataset.destination = depthId(1);
-	lab.addEventListener("click", () => workspace.navigate(depthId(1), { from: occurrence.id }));
+	lab.addEventListener("click", () => workspace.navigate(depthId(1), { from: occurrence.id, origin: lab }));
 	rail.append(lab);
 	return rail;
 }
@@ -189,7 +189,7 @@ function renderDepth(occurrence, data, workspace) {
 	if (data.n < depthCount) {
 		const next = element("button", "metadata-link depth-next", `Open depth ${data.n + 1}`);
 		next.type = "button";
-		next.addEventListener("click", () => workspace.navigate(depthId(data.n + 1), { from: occurrence.id }));
+		next.addEventListener("click", () => workspace.navigate(depthId(data.n + 1), { from: occurrence.id, origin: next }));
 		host.append(next);
 	} else {
 		host.append(element("p", "depth-end", "The end of the chain."));
@@ -204,7 +204,7 @@ function renderAlbums(occurrence, data, workspace) {
 		const button = element("button", "album-item", album.title);
 		button.type = "button";
 		button.dataset.destination = ids(album).album;
-		button.addEventListener("click", () => workspace.navigate(ids(album).album, { from: occurrence.id }));
+		button.addEventListener("click", () => workspace.navigate(ids(album).album, { from: occurrence.id, origin: button }));
 		item.append(button);
 		list.append(item);
 	}
@@ -212,7 +212,7 @@ function renderAlbums(occurrence, data, workspace) {
 	const depth = element("button", "album-item depth-start", "Lab: twenty cells deep");
 	depth.type = "button";
 	depth.dataset.destination = depthId(1);
-	depth.addEventListener("click", () => workspace.navigate(depthId(1), { from: occurrence.id }));
+	depth.addEventListener("click", () => workspace.navigate(depthId(1), { from: occurrence.id, origin: depth }));
 	lab.append(depth);
 	list.append(lab);
 	return {
@@ -286,7 +286,7 @@ function renderPhoto(occurrence, data, workspace) {
 	const link = element("button", "metadata-link", "Metadata");
 	link.type = "button";
 	link.dataset.destination = key.metadata(photo);
-	link.addEventListener("click", () => workspace.navigate(key.metadata(photo), { from: occurrence.id }));
+	link.addEventListener("click", () => workspace.navigate(key.metadata(photo), { from: occurrence.id, origin: link }));
 	const editCaption = element("button", "metadata-link caption-edit", "Edit caption");
 	editCaption.type = "button";
 	editCaption.addEventListener("click", () => workspace.openModal({
@@ -355,7 +355,7 @@ function renderMetadata(occurrence, data, workspace, content) {
 	const link = element("button", "metadata-link", "Edit history");
 	link.type = "button";
 	link.dataset.destination = key.history(photo);
-	link.addEventListener("click", () => workspace.navigate(key.history(photo), { from: occurrence.id }));
+	link.addEventListener("click", () => workspace.navigate(key.history(photo), { from: occurrence.id, origin: link }));
 	const exportButton = element("button", "metadata-link album-export", "Export album");
 	exportButton.type = "button";
 	exportButton.addEventListener("click", () => session.exportAlbum(occurrence, album));
@@ -381,7 +381,7 @@ function renderHistory(occurrence, data, workspace) {
 		button.type = "button";
 		button.dataset.destination = key.edit(photo, edit);
 		button.dataset.destination = key.edit(photo, edit);
-		button.addEventListener("click", () => workspace.navigate(key.edit(photo, edit), { from: occurrence.id }));
+		button.addEventListener("click", () => workspace.navigate(key.edit(photo, edit), { from: occurrence.id, origin: button }));
 		item.append(button);
 		host.append(item);
 		return button;
