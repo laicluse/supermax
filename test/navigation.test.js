@@ -906,3 +906,33 @@ scenario("room gives way in reading order through a split: the cells before it f
 	assert.ok(show.get(split), "the split stays with its summary");
 	assert.equal(show.layout().cells.get("modes/mailboxes/nav/conversations").visible, true, "and the list is back in view");
 });
+
+scenario("ifRoom may name a path into a row, and opens it whole or not at all", () => {
+	const E = "*";
+	const make = (width) => {
+		const chain = new Navigator({
+			destinations: {
+				modes: { title: "Modes", min: 192, max: 256, keep: true, compact: { min: 48 } },
+				conversations: { title: "Conversations", min: 320, max: E, preferred: 640 },
+				conversation: { title: "Subject", header: "title", rows: [{ destination: "metadata", minHeight: 240, maxHeight: E, preferredHeight: 560 }] },
+				metadata: { title: "Summary", min: 320, max: 640 },
+				messages: { title: "Messages", min: 320, max: E, preferred: 960 },
+			},
+			root: "modes",
+			minViewportHeight: 320,
+			chrome: { navbar: 36 },
+		});
+		chain.resize({ width, height: 900 });
+		return chain;
+	};
+	const wide = make(1400);
+	const offered = wide.sync(["modes", "conversations"], { ifRoom: [["conversation", "metadata", "messages"]] });
+	assert.deepEqual(offered.optional.map((id) => id.split("/").pop()), ["conversation", "messages"], "with room, the conversation opens with its messages inside its row, the row itself coming with the split");
+	assert.equal(wide.isAuto(wide.get("modes/conversations/conversation/metadata/messages")), true, "as automatic cells");
+	const tight = make(1000);
+	const refused = tight.sync(["modes", "conversations"], { ifRoom: [["conversation", "metadata", "messages"]] });
+	assert.deepEqual(refused.optional, [], "without room for the messages the conversation stays closed, whole or not at all");
+	assert.equal(tight.get("modes/conversations/conversation"), null);
+	const alone = tight.sync(["modes", "conversations"], { ifRoom: [["conversation"]] });
+	assert.deepEqual(alone.optional.map((id) => id.split("/").pop()), ["conversation"], "offered on its own the summary alone fits");
+});

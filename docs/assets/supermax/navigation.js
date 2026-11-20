@@ -390,7 +390,12 @@ export class Navigator {
 			let start = current;
 			let refused = false;
 			for (const id of ids) {
-				if (isSplit(this.definitionOf(start.destination))) { refused = true; break; }
+				if (isSplit(this.definitionOf(start.destination))) {
+					const row = start.children.map((childId) => this.get(childId)).find((candidate) => candidate?.destination === id) ?? null;
+					if (!row) { refused = true; break; }
+					start = row;
+					continue;
+				}
 				const existing = this.child(start);
 				if (existing) {
 					if (existing.destination !== id) { refused = true; break; }
