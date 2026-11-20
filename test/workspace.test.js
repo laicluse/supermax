@@ -2255,6 +2255,62 @@ for (const splitHeader of [true, false]) test(`a cell inside a row that declares
 	assert.deepEqual(measured, { splitBar: splitHeader ? "Coast" : undefined, title: "Photos", controls: "Import", barHeight: 28, barTop: 0, bodyTop: 28, bottom: 0, detailBars: 0 }, "the row cell carries its title and its content's controls in its own bar, its body below it within the row, and a row cell without the declaration stays headless");
 });
 
+test("the workspace announces each change of focus once, after the render that made it, for a menu to follow", async () => {
+	await page.goto(`${server.url}/blank`);
+	await page.addStyleTag({ url: "/src/workspace.css" });
+	const seen = await page.evaluate(async () => {
+		const { Navigator, Workspace } = await import("/src/index.js");
+		const host = Object.assign(document.body.appendChild(document.createElement("div")), { style: "position:relative;width:1200px;height:400px" });
+		const navigator = new Navigator({ root: "albums", minViewportHeight: 300, destinations: {
+			albums: { title: "Albums", min: 200, max: 200 },
+			"album:coast": { title: "Coast", min: 200, max: 300, defaultChild: "photo:a", menu: true },
+			"photo:a": { title: "Photo A", min: 200, max: "*", preferred: 300 },
+		} });
+		const events = [];
+		const workspace = new Workspace(host, { navigator, content: (occurrence) => ({ element: Object.assign(document.createElement("div"), { textContent: occurrence.title }) }) });
+		workspace.addEventListener("focus", (event) => events.push({ ...event.detail, rendered: !!workspace.findCell(event.detail.occurrence) }));
+		workspace.navigate("album:coast", { from: "albums", origin: null });
+		workspace.sync(["albums", "album:coast"]);
+		workspace.apply({ type: "close" });
+		workspace.destroy();
+		host.remove();
+		return events;
+	});
+	assert.deepEqual(seen, [
+		{ occurrence: "albums/album:coast", destinations: ["albums", "album:coast"], title: "Coast", menu: "album:coast", rendered: true },
+		{ occurrence: "albums", destinations: ["albums"], title: "Albums", menu: null, rendered: true },
+	], "the navigation and closing it each move the focus once, and a sync that changes nothing announces nothing; the event names the menu item to mark; the constructor's first render announces before a listener exists, so a host reads the start with navigator.focus()");
+});
+
+test("a sync that only moves the focus between open rows still announces it", async () => {
+	await page.goto(`${server.url}/blank`);
+	await page.addStyleTag({ url: "/src/workspace.css" });
+	const seen = await page.evaluate(async () => {
+		const { Navigator, Workspace } = await import("/src/index.js");
+		const host = Object.assign(document.body.appendChild(document.createElement("div")), { style: "position:relative;width:1200px;height:400px" });
+		const navigator = new Navigator({ root: "albums", minViewportHeight: 400, destinations: {
+			albums: { title: "Albums", min: 200, max: 200 },
+			split: { title: "Split", rows: [
+				{ destination: "left", minHeight: 150, maxHeight: "*", preferredHeight: 200 },
+				{ destination: "right", minHeight: 150, maxHeight: 200 },
+			] },
+			left: { title: "Left", min: 200, max: 300 },
+			right: { title: "Right", min: 200, max: 300 },
+			detail: { title: "Detail", min: 200, max: "*", preferred: 300 },
+		} });
+		const events = [];
+		const workspace = new Workspace(host, { navigator, content: (occurrence) => ({ element: Object.assign(document.createElement("div"), { textContent: occurrence.title }) }) });
+		workspace.sync(["albums", "split", "left", "detail"]);
+		workspace.sync(["albums", "split", "right", "detail"]);
+		workspace.addEventListener("focus", (event) => events.push(event.detail.occurrence));
+		const result = workspace.sync(["albums", "split", "left", "detail"]);
+		workspace.destroy();
+		host.remove();
+		return { noop: !!result.noop, events };
+	});
+	assert.deepEqual(seen, { noop: true, events: ["albums/split/left/detail"] }, "the sync changes nothing that is open, yet the menu hears that the focus moved to the left row");
+});
+
 test("a full-height cell opened from a row breaks out beside its split, and Back closes it alone", async () => {
 	await openDemo([open("album:coast", "albums"), open("coast:photo:b", coast.row("thumbnails"))]);
 	const photoB = coast.photo("thumbnails", "b");

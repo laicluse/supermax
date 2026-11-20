@@ -5,7 +5,7 @@ export const LAYOUT_SCHEMA = 2;
 const REQUIRED = ["title", "min", "max", "preferred", "defaultChild"];
 const REQUIRED_SPLIT = ["title", "rows"];
 const WIDTH = ["min", "max", "preferred"];
-const FIELDS = new Set([...REQUIRED, "keep", "fold", "rows", "zoomable", "height", "header", "variants"]);
+const FIELDS = new Set([...REQUIRED, "keep", "fold", "rows", "zoomable", "height", "header", "variants", "menu"]);
 const ROW_FIELDS = new Set(["destination", "minHeight", "maxHeight", "preferredHeight", "keep", "fold", "variants"]);
 
 export class SupermaxLayoutError extends Error {
@@ -26,6 +26,7 @@ export function layoutOf(definition) {
 			keep: !!definition.keep,
 			rows: definition.rows.map((row) => ({ destination: row.destination, minHeight: row.minHeight, maxHeight: row.maxHeight, preferredHeight: row.preferredHeight ?? null, keep: !!row.keep, ...(row.variants ? { variants: structuredClone(row.variants) } : {}), ...(row.fold === false ? { fold: false } : row.fold ? { fold: { size: row.fold.size } } : {}) })),
 			...(definition.header === "title" ? { header: "title" } : {}),
+			...(definition.menu != null ? { menu: definition.menu } : {}),
 		};
 	}
 	return {
@@ -41,6 +42,7 @@ export function layoutOf(definition) {
 		...(definition.zoomable ? { zoomable: true } : {}),
 		...(definition.height === "full" ? { height: "full" } : {}),
 		...(definition.header === "title" ? { header: "title" } : {}),
+		...(definition.menu != null ? { menu: definition.menu } : {}),
 	};
 }
 
@@ -60,6 +62,7 @@ function problemsOf(id, declaration) {
 	if (id.includes("/")) problems.push("invalid-id");
 	if (Object.keys(declaration).some((key) => !FIELDS.has(key))) problems.push("unknown-field");
 	if (declaration.header != null && declaration.header !== "title") problems.push("invalid-header");
+	if (declaration.menu != null && declaration.menu !== true && declaration.menu !== "exact") problems.push("invalid-menu");
 	if (typeof declaration.title !== "string" || declaration.title.trim().length === 0) problems.push("invalid-title");
 	if (declaration.rows != null) {
 		if (REQUIRED_SPLIT.some((key) => !Object.hasOwn(declaration, key))) problems.push("missing-field");

@@ -36,6 +36,7 @@ export function validateDestinations(destinations, { minViewportHeight, chrome =
 		if (destinations[id].height != null && (!isFull(destinations[id]) || isSplit(destinations[id]))) problems.push({ destination: id, reason: "invalid-height" });
 		if (isSplit(destinations[id]) && ["min", "max", "preferred"].some((key) => destinations[id][key] != null)) problems.push({ destination: id, reason: "split-with-width" });
 		if (destinations[id].header != null && destinations[id].header !== "title") problems.push({ destination: id, reason: "invalid-header" });
+		if (destinations[id].menu != null && destinations[id].menu !== true && destinations[id].menu !== "exact") problems.push({ destination: id, reason: "invalid-menu" });
 		if (destinations[id].fold != null && (isSplit(destinations[id]) || (destinations[id].fold !== false && (!Number.isFinite(destinations[id].fold.size) || destinations[id].fold.size < 0 || destinations[id].fold.size >= destinations[id].min)))) problems.push({ destination: id, reason: "invalid-fold" });
 	}
 	const elastic = Object.keys(destinations).filter((id) => destinations[id].max === ELASTIC);
@@ -73,6 +74,7 @@ export class Navigator {
 		this.rowStarts = new Map();
 		this.sizes = { width: new Map(), height: new Map() };
 		this.root = this.createOccurrence(this.rootDestination, null, 0, null);
+		this.focused = this.root.id;
 	}
 
 	focusFold(occurrenceId, axis) {
@@ -192,6 +194,7 @@ export class Navigator {
 		}
 		const existing = this.child(parent);
 		if (existing && existing.destination === destinationId) {
+			this.focused = existing.id;
 			if (!this.isAuto(existing)) return { ok: true, noop: true, occurrence: existing };
 			const group = this.promote(existing);
 			return { ok: true, promoted: true, occurrence: existing, group };
@@ -203,6 +206,7 @@ export class Navigator {
 		const group = this.createGroup(occurrence);
 		this.resetReveal(occurrence);
 		this.openDefaults(occurrence, group);
+		this.focused = occurrence.id;
 		return { ok: true, occurrence, group };
 	}
 
@@ -409,6 +413,7 @@ export class Navigator {
 		}
 		if (changed) this.bringIntoView(last.id);
 		const optional = this.openIfRoom(last, ifRoom);
+		this.focused = last.id;
 		if (!changed && optional.length === 0) return { ok: true, noop: true, occurrence: last };
 		return { ok: true, occurrence: last, optional, opened };
 	}
@@ -628,6 +633,19 @@ export class Navigator {
 		else this.rowStarts.delete(splitId);
 	}
 
+	// allow-comment: an occurrence id is its path from the root, so when the focused cell has closed, the longest beginning of that path that is still open takes over.
+	focus() {
+		let id = this.focused;
+		while (id && !this.get(id)) id = id.includes("/") ? id.slice(0, id.lastIndexOf("/")) : null;
+		const occurrence = this.get(id) ?? this.root;
+		const destinations = occurrence.id.split("/");
+		const menu = destinations.find((destination, index) => {
+			const rule = this.definitionOf(destination)?.menu;
+			return rule === true || (rule === "exact" && index === destinations.length - 1);
+		}) ?? null;
+		return { occurrence: occurrence.id, destinations, title: occurrence.title, menu };
+	}
+
 	locationInfo(layout = this.layout()) {
 		const roots = [...this.groups].reverse().map((group) => this.get(group.root)).filter(Boolean);
 		const occurrence = roots.find((root) => layout.cells.get(root.id)?.inView) ?? roots[0] ?? this.root;
@@ -654,6 +672,7 @@ export class Navigator {
 			groups: this.groups.map((group) => ({ ...group })),
 			groupSequence: this.groupSequence,
 			zoomed: this.zoomed,
+			focused: this.focused,
 			foldFocuses: this.foldFocuses,
 			windowStarts: [...this.windowStarts],
 			rowStarts: [...this.rowStarts],
@@ -674,6 +693,7 @@ export class Navigator {
 		this.rowStarts = new Map((snapshot.rowStarts ?? []).filter(([scope, id]) => inRows(scope, id)));
 		this.sizes = { width: new Map(snapshot.sizes?.width ?? []), height: new Map(snapshot.sizes?.height ?? []) };
 		this.root = this.get(this.rootDestination);
+		this.focused = snapshot.focused ?? this.root.id;
 		return true;
 	}
 

@@ -70,6 +70,11 @@ for (const context of ["ana", "ben"]) {
 	assert.deepEqual(headed({ header: "none" }), ["invalid-header"], "there is no other value: no bar is the default");
 	assert.deepEqual(validateDeclarationSet({ schemaVersion: 2, context: "ana", root: "s", destinations: { s: { title: "S", rows: [{ destination: "x", minHeight: 100, maxHeight: "*", preferredHeight: 200 }], header: "title" }, x: { title: "X", min: 200, max: 300, preferred: null, defaultChild: null } } }).map((problem) => problem.reason), [], "a split may draw its title above its rows the same way");
 	assert.equal(layoutOf({ title: "S", rows: [{ destination: "x", minHeight: 100, maxHeight: "*", preferredHeight: 200 }], header: "title" }).header, "title");
+	assert.equal(Object.hasOwn(plain, "menu"), false, "a cell without a menu item carries no menu field, so existing hashes stay the same");
+	assert.deepEqual(headed({ menu: true }), [], "menu: true is a valid declaration");
+	assert.deepEqual(headed({ menu: "exact" }), [], "menu: \"exact\" is a valid declaration");
+	assert.deepEqual(headed({ menu: "always" }), ["invalid-menu"], "there is no other value");
+	assert.equal(layoutOf({ title: "Day", min: 200, max: 300, menu: "exact" }).menu, "exact");
 }
 
 console.log("Layout declaration scenarios passed");

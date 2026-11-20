@@ -1040,3 +1040,74 @@ scenario("Show traverses folded vertical rows toward earlier context without tog
 	assert.equal(model.upTarget(), null, "later rows are not back targets");
 	assert.equal(model.occurrences.size, 5, "rows remain owned by the split");
 });
+
+scenario("focus names where the user navigated last, with its path of destinations, for a menu to match", () => {
+	const instance = new BaseNavigator({ root: "albums", minViewportHeight: 400, destinations: {
+		albums: { title: "Albums", min: 200, max: 200 },
+		"album:coast": { title: "Coast", min: 200, max: 300, defaultChild: "photo:a" },
+		"photo:a": { title: "Photo A", min: 200, max: "*", preferred: 300 },
+		"edit:1": { title: "Exposure", min: 200, max: 300 },
+		info: { title: "Info", min: 200, max: 300 },
+		split: { title: "Split", rows: [
+			{ destination: "left", minHeight: 150, maxHeight: "*", preferredHeight: 200 },
+			{ destination: "right", minHeight: 150, maxHeight: 200 },
+		] },
+		left: { title: "Left", min: 200, max: 300 },
+		right: { title: "Right", min: 200, max: 300 },
+		detail: { title: "Detail", min: 200, max: 300 },
+	} });
+	instance.resize({ width: 1600, height: 400 });
+	assert.deepEqual(instance.focus(), { occurrence: "albums", destinations: ["albums"], title: "Albums", menu: null }, "before any navigation the root has the focus");
+	instance.sync(["albums"], { ifRoom: ["info"] });
+	assert.equal(instance.focus().occurrence, "albums", "a cell that opens only because there is room does not take the focus");
+	instance.open("album:coast", { from: "albums" });
+	assert.deepEqual(instance.focus(), { occurrence: "albums/album:coast", destinations: ["albums", "album:coast"], title: "Coast", menu: null }, "a navigation takes the focus; the default it opens does not");
+	instance.open("edit:1", { from: "albums/album:coast/photo:a" });
+	assert.equal(instance.focus().occurrence, "albums/album:coast/photo:a/edit:1");
+	instance.closeNewestGroup();
+	assert.equal(instance.focus().occurrence, "albums/album:coast/photo:a", "closing the focused cell hands the focus to the nearest cell on its path that is still open");
+	instance.open("album:coast", { from: "albums" });
+	assert.equal(instance.focus().occurrence, "albums/album:coast", "opening what is already open focuses it");
+	instance.sync(["albums", "split", "left", "detail"]);
+	instance.sync(["albums", "split", "right", "detail"]);
+	assert.equal(instance.focus().occurrence, "albums/split/right/detail");
+	instance.sync(["albums", "split", "left", "detail"]);
+	assert.equal(instance.focus().occurrence, "albums/split/left/detail", "a sync to a branch that is already open focuses its tip, even when it changes nothing");
+	instance.sync(["albums", "split", "right"]);
+	assert.equal(instance.focus().occurrence, "albums/split/right", "a sync that ends at a row focuses that row");
+	assert.equal(instance.sync(["albums", "split", "nowhere"]).ok, false);
+	assert.equal(instance.focus().occurrence, "albums/split/right", "a refused sync leaves the focus where it was");
+	const snapshot = instance.snapshot();
+	instance.sync(["albums"]);
+	assert.equal(instance.focus().occurrence, "albums");
+	instance.restore(snapshot);
+	assert.equal(instance.focus().occurrence, "albums/split/right", "a snapshot carries the focus");
+});
+
+scenario("focus names the menu item to mark: the first destination on the path whose menu rule matches", () => {
+	const instance = new BaseNavigator({ root: "shell", minViewportHeight: 400, destinations: {
+		shell: { title: "Shell", min: 200, max: 200 },
+		day: { title: "My day", min: 200, max: 300, menu: "exact" },
+		albums: { title: "Albums", min: 200, max: 300, menu: true },
+		"album:coast": { title: "Coast", min: 200, max: "*", preferred: 300 },
+		"photo:a": { title: "Photo A", min: 200, max: 300 },
+	} });
+	instance.resize({ width: 1600, height: 400 });
+	assert.equal(instance.focus().menu, null, "before any navigation no item is active, because the root declares none");
+	instance.open("day", { from: "shell" });
+	assert.equal(instance.focus().menu, "day", "an exact item is active while the focus is on its own destination");
+	instance.open("album:coast", { from: "shell/day" });
+	assert.equal(instance.focus().menu, null, "an exact item goes dark when the user works in a cell it opened");
+	instance.sync(["shell", "albums", "album:coast", "photo:a"]);
+	assert.equal(instance.focus().menu, "albums", "a section item stays active for everything under it");
+	instance.sync(["shell", "albums", "album:coast", "photo:a", "albums"]);
+	assert.equal(instance.focus().menu, "albums", "when two items match, the one nearest the root wins");
+	instance.sync(["shell", "day", "albums"]);
+	assert.equal(instance.focus().menu, "albums", "past an exact item that does not match, the next item on the path decides");
+	const snapshot = instance.snapshot();
+	instance.sync(["shell"]);
+	assert.equal(instance.focus().menu, null);
+	instance.restore(snapshot);
+	assert.equal(instance.focus().menu, "albums", "a snapshot carries the active item with the focus");
+	assert.throws(() => new BaseNavigator({ root: "shell", minViewportHeight: 400, destinations: { shell: { title: "Shell", min: 200, max: "*", preferred: 200, menu: "always" } } }), /invalid-menu/, "menu is true or \"exact\"");
+});

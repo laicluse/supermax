@@ -116,6 +116,13 @@ export class Workspace extends EventTarget {
 		console.warn(`Supermax: ${kind} ${message}`);
 	}
 
+	announceFocus() {
+		const focus = this.navigator.focus();
+		if (focus.occurrence === this.announcedFocus) return;
+		this.announcedFocus = focus.occurrence;
+		this.announce(new CustomEvent("focus", { detail: focus }));
+	}
+
 	announce(event) {
 		const outer = this.announcing;
 		this.announcing = true;
@@ -392,7 +399,10 @@ export class Workspace extends EventTarget {
 			this.dispatchEvent(new CustomEvent("rejected", { detail: { action, result } }));
 			return result;
 		}
-		if (result.noop) return result;
+		if (result.noop) {
+			this.announceFocus();
+			return result;
+		}
 		if (this.modal) this.closeModal("navigation");
 		this.render({ animate });
 		this.dispatchEvent(new CustomEvent("change", { detail: { action, result } }));
@@ -465,6 +475,7 @@ export class Workspace extends EventTarget {
 			this.announcedZoom = this.navigator.zoomed ?? null;
 			this.announce(new CustomEvent("zoom", { detail: { occurrence: this.announcedZoom } }));
 		}
+		this.announceFocus();
 		this.placeHorizon();
 		this.scheduleOrigins();
 		Promise.all([...this.chains.values()].map((entry) => entry.strip.finished)).then(() => {
