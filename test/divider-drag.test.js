@@ -5,7 +5,7 @@ import { serveDocs } from "./serve-docs.js";
 
 test("a compact column's gutter follows the pointer through the widths between its forms", async () => {
 	const server = await serveDocs();
-	const browser = await chromium.launch({ headless: true });
+	const browser = await chromium.launch({ channel: "chrome", headless: true });
 	try {
 		const page = await browser.newPage({ viewport: { width: 1800, height: 900 } });
 		await page.goto(`${server.url}/blank`);
@@ -60,7 +60,7 @@ test("a compact column's gutter follows the pointer through the widths between i
 
 test("a horizontal divider sizes only its preceding row", async () => {
 	const server = await serveDocs();
-	const browser = await chromium.launch({ headless: true });
+	const browser = await chromium.launch({ channel: "chrome", headless: true });
 	try {
 		const page = await browser.newPage();
 		await page.goto(`${server.url}/blank`);
@@ -95,7 +95,7 @@ test("a horizontal divider sizes only its preceding row", async () => {
 
 test("a divider sizes only its preceding column while earlier columns stay put", async () => {
 	const server = await serveDocs();
-	const browser = await chromium.launch({ headless: true });
+	const browser = await chromium.launch({ channel: "chrome", headless: true });
 	try {
 		const page = await browser.newPage({ viewport: { width: 1000, height: 600 } });
 		await page.goto(`${server.url}/blank`);
