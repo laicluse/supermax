@@ -46,7 +46,7 @@ export class Workspace extends EventTarget {
 		this.onKeydown = (event) => {
 			if (event.key === "ArrowLeft" && event.altKey && !event.ctrlKey && !event.metaKey && !event.target.closest?.("input, textarea, select, [contenteditable]")) {
 				event.preventDefault();
-				this.requestBack();
+				this.requestUp();
 			}
 		};
 		this.element.addEventListener("keydown", this.onKeydown);
@@ -68,15 +68,16 @@ export class Workspace extends EventTarget {
 		this.element.style.setProperty("--supermax-navbar", `${navbar}px`);
 		this.navbar = this.create("nav", "supermax-navbar");
 		this.navbar.setAttribute("aria-label", "Workspace navigation");
-		this.backButton = this.create("button", "supermax-back");
-		this.backButton.type = "button";
-		this.backLabel = this.create("span", "supermax-back-label");
-		this.backLabel.textContent = "Back";
-		this.backTarget = this.create("span", "supermax-back-target");
-		this.backButton.append(this.backLabel, this.backTarget);
-		this.backButton.addEventListener("click", () => this.requestBack());
+		this.upButton = this.create("button", "supermax-up");
+		this.upButton.type = "button";
+		this.upLabel = this.create("span", "supermax-up-label");
+		this.upLabel.textContent = "‹";
+		this.upLabel.setAttribute("aria-hidden", "true");
+		this.upName = this.create("span", "supermax-up-target");
+		this.upButton.append(this.upLabel, this.upName);
+		this.upButton.addEventListener("click", () => this.requestUp());
 		this.navbarLeft = this.create("div", "supermax-navbar-left");
-		this.navbarLeft.append(this.backButton);
+		this.navbarLeft.append(this.upButton);
 		this.titleBox = this.create("div", "supermax-title");
 		this.titleText = this.create("strong", "supermax-title-text");
 		this.titleContext = this.create("span", "supermax-title-context");
@@ -98,24 +99,17 @@ export class Workspace extends EventTarget {
 		return this.intent({ type: "open", destination, from, hint: hint ?? null });
 	}
 
-	requestBack() {
+	requestUp() {
 		this.closePeek();
-		if (this.modal) {
-			this.closeModal("back");
-			return { ok: true, noop: true };
-		}
-		const target = this.navigator.backTarget(this.layout ?? undefined);
+		const target = this.navigator.upTarget(this.layout ?? undefined);
 		if (!target) return { ok: false, reason: "nothing-hidden" };
+		if (this.modal) this.closeModal("navigation");
 		this.goTo(target.id);
 		return { ok: true, destination: target.id };
 	}
 
 	intent(action) {
 		this.closePeek();
-		if (this.modal && action.type === "back") {
-			this.closeModal("back");
-			return { ok: true, noop: true };
-		}
 		if (this.modal) this.closeModal("navigation");
 		if (this.onIntent) return this.onIntent(action, this);
 		return this.apply(action, { focus: true });
@@ -224,8 +218,8 @@ export class Workspace extends EventTarget {
 	}
 
 	run(action) {
-		return action.type === "back"
-			? this.navigator.back()
+		return action.type === "close"
+			? this.navigator.closeNewestGroup()
 			: this.navigator.open(action.destination, { from: action.from, hint: action.hint ?? null });
 	}
 
@@ -247,6 +241,7 @@ export class Workspace extends EventTarget {
 		for (const rejection of result.rejected) {
 			this.dispatchEvent(new CustomEvent("rejected", { detail: { action: { type: "define", destination: id, occurrence: rejection.occurrence }, result: rejection.result } }));
 		}
+		if (result.completed.includes(this.navigator.focused)) this.navigator.bringIntoView(this.navigator.focused);
 		this.render({ animate: true });
 		return result;
 	}
@@ -319,7 +314,7 @@ export class Workspace extends EventTarget {
 
 	focusAfter(action, result) {
 		if (!result.ok) return;
-		if (action.type === "back") this.focusCell(result.focus);
+		if (action.type === "close") this.focusCell(result.focus);
 		else if (result.occurrence) this.focusCell(result.occurrence.id);
 	}
 
@@ -327,6 +322,10 @@ export class Workspace extends EventTarget {
 		const target = this.visibleCellFor(occurrenceId);
 		const entry = target ? this.cells.get(target) : null;
 		if (!entry) return;
+		if (target !== this.navigator.focused) {
+			this.navigator.focus(target, { resetReveal: false });
+			this.renderNavbar();
+		}
 		const focusable = (this.findCell(target)?.compact ? entry.rail : null) ?? entry.element;
 		this.programmaticFocus = true;
 		focusable.focus({ preventScroll: true });
@@ -337,13 +336,20 @@ export class Workspace extends EventTarget {
 		let current = this.navigator.get(occurrenceId);
 		while (current) {
 			const cell = this.findCell(current.id);
-			if (cell?.inView) return current.id;
+			if (cell?.inView) return this.contentCellIn(cell);
 			const chain = this.findChain(chainRootOf(this.navigator, current).id);
 			const inView = chain ? chain.cells.filter((candidate) => candidate.inView) : [];
-			if (inView.length > 0) return inView[0].occurrence;
+			if (inView.length > 0) return this.contentCellIn(inView.find((candidate) => !candidate.kept) ?? inView[0]);
 			current = current.parent ? this.navigator.get(current.parent) : null;
 		}
 		return null;
+	}
+
+	contentCellIn(cell) {
+		if (!cell.rows) return cell.occurrence;
+		const row = cell.rows.rows.find((candidate) => candidate.inView);
+		const first = row?.chain ? row.chain.cells.find((candidate) => candidate.inView && !candidate.kept) : null;
+		return first ? this.contentCellIn(first) : cell.occurrence;
 	}
 
 	findChain(chainRootId) {
@@ -376,11 +382,13 @@ export class Workspace extends EventTarget {
 		try {
 			layout = this.navigator.layout();
 			this.layout = layout;
-			this.backTo = this.navigator.backTarget(layout);
+			this.upDestination = this.navigator.upTarget(layout);
 			const animating = animate && !this.reducedMotion.matches;
 			const rootViewport = this.renderChain(layout.chain, this.body, animating);
 			rootViewport.style.height = `${layout.overflow ? layout.contentHeight : layout.chain.height}px`;
+			rootViewport.style.width = layout.overflowX ? `${layout.chain.contentWidth}px` : "";
 			this.body.classList.toggle("is-overflow", layout.overflow);
+			this.body.classList.toggle("is-overflow-x", layout.overflowX);
 			this.element.classList.toggle("is-below-minimum", layout.belowMinimum);
 			this.pruneClosed();
 			this.refreshContent();
@@ -397,13 +405,11 @@ export class Workspace extends EventTarget {
 	}
 
 	renderNavbar() {
-		const next = this.modal ? null : this.backTo;
-		this.backButton.hidden = !next && !this.modal;
-		this.backTarget.hidden = !next;
-		this.backTarget.textContent = next ? next.title : "";
-		this.backLabel.textContent = next ? "Back to" : "Back";
-		this.backButton.setAttribute("aria-label", next ? `Back to ${next.title}` : "Back");
-		const info = this.navigator.focusInfo();
+		const next = this.upDestination;
+		this.upButton.hidden = !next;
+		this.upName.textContent = next ? next.title : "";
+		this.upButton.setAttribute("aria-label", next ? `Show ${next.title}` : "Show");
+		const info = this.navigator.locationInfo();
 		this.titleText.textContent = info.title;
 		this.titleContext.replaceChildren(...info.trail.flatMap((step, index) => {
 			const crumb = this.create("button", "supermax-crumb", step.title);

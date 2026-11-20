@@ -2,7 +2,7 @@ export const minViewportHeight = 360;
 
 const widths = {
 	albums: { min: 200, max: 320, keep: true, compact: { min: 48 } },
-	album: { min: 320, max: 1600 },
+	album: { min: 300, max: 1600 },
 	selector: { min: 200, max: 360 },
 	map: { min: 220, max: 480 },
 	photo: { min: 240, max: 520, preferred: 360 },

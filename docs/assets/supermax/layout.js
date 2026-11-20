@@ -131,6 +131,7 @@ export function layoutWorkspace(model) {
 		height: model.size.height,
 		belowMinimum: model.size.height < model.minViewportHeight,
 		overflow: chain.overflow,
+		overflowX: chain.contentWidth > model.size.width,
 		contentHeight: Math.max(height, chain.contentHeight),
 		chain,
 		...index,
@@ -159,15 +160,19 @@ function offsetForStart(count, startIndex, startVisibleWith) {
 
 function layoutChain(model, chainRoot, width, height, containerInView) {
 	const cells = chainCells(model, chainRoot);
-	const allocate = (hiddenAtEnd) => allocateChain(model, cells.slice(0, cells.length - hiddenAtEnd), width);
+	const allocate = (hiddenAtEnd) => {
+		const shown = cells.filter((occurrence, index) => index < cells.length - hiddenAtEnd || model.definitionOf(occurrence.destination).keep);
+		const { allocation, compact } = allocateChain(model, shown, width);
+		return { compact, byId: new Map(allocation.cells.map((cell) => [cell.config.id, cell])) };
+	};
 	const startIndex = cells.findIndex((occurrence) => occurrence.id === model.windowStarts.get(chainRoot.id));
-	const offset = offsetForStart(cells.length, startIndex, (hiddenAtEnd) => allocate(hiddenAtEnd).allocation.cells[startIndex].visible);
-	const { allocation, compact } = allocate(offset);
+	const offset = offsetForStart(cells.length, startIndex, (hiddenAtEnd) => !!allocate(hiddenAtEnd).byId.get(cells[startIndex].id)?.visible);
+	const { byId, compact } = allocate(offset);
 	let overflow = false;
 	let contentHeight = height;
 	const layoutCells = cells.map((occurrence, index) => {
 		const definition = model.definitionOf(occurrence.destination);
-		const allocated = allocation.cells[index];
+		const allocated = byId.get(occurrence.id);
 		const visible = allocated ? allocated.visible : false;
 		const cellWidth = visible ? allocated.actual : definition.min;
 		const isCompact = visible && compact.has(occurrence.id);
@@ -180,10 +185,12 @@ function layoutChain(model, chainRoot, width, height, containerInView) {
 		}
 		return cell;
 	});
+	const contentWidth = layoutCells.reduce((sum, cell) => sum + (cell.visible ? cell.width : 0), 0);
 	return {
 		root: chainRoot.id,
 		width,
 		height,
+		contentWidth: Math.max(width, contentWidth),
 		cells: layoutCells,
 		revealOffset: offset,
 		overflow,
@@ -196,17 +203,18 @@ function layoutRows(model, split, width, height, containerInView) {
 	const roots = definition.map((row, index) => model.get(split.children[index]));
 	const budget = Math.max(0, height);
 	const allocate = (hiddenAtEnd) => {
-		const bounds = roots.slice(0, roots.length - hiddenAtEnd).map((root, index) => ({ min: definition[index].minHeight, max: definition[index].maxHeight, preferred: definition[index].preferredHeight ?? null, session: model.sizeOf(root.id, "height") }));
+		const shown = roots.map((root, index) => index).filter((index) => index < roots.length - hiddenAtEnd || definition[index].keep);
+		const bounds = shown.map((index) => ({ min: definition[index].minHeight, max: definition[index].maxHeight, preferred: definition[index].preferredHeight ?? null, session: model.sizeOf(roots[index].id, "height") }));
 		const hard = sessionsHold(bounds, budget);
-		return new CellCollection(bounds.map((base, index) => ({ id: roots[index].id, title: roots[index].title, keep: !!definition[index].keep, ...sessionBounds(base, base.session, hard) }))).distribute(budget);
+		const allocation = new CellCollection(shown.map((index, position) => ({ id: roots[index].id, title: roots[index].title, keep: !!definition[index].keep, ...sessionBounds(bounds[position], bounds[position].session, hard) }))).distribute(budget);
+		return new Map(allocation.cells.map((cell) => [cell.config.id, cell]));
 	};
 	const startIndex = roots.findIndex((root) => root.id === model.rowStarts.get(split.id));
-	const offset = offsetForStart(roots.length, startIndex, (hiddenAtEnd) => allocate(hiddenAtEnd).cells[startIndex].visible);
-	const shownCount = roots.length - offset;
+	const offset = offsetForStart(roots.length, startIndex, (hiddenAtEnd) => !!allocate(hiddenAtEnd).get(roots[startIndex].id)?.visible);
 	const allocation = allocate(offset);
 	let overflow = false;
 	const rows = roots.map((root, index) => {
-		const allocated = index < shownCount ? allocation.cells[index] : null;
+		const allocated = allocation.get(root.id);
 		const visible = !!allocated?.visible;
 		let rowHeight = visible ? allocated.actual : 0;
 		if (visible && rowHeight < definition[index].minHeight) {
@@ -226,5 +234,6 @@ function layoutRows(model, split, width, height, containerInView) {
 			chain: visible ? layoutChain(model, root, width, rowHeight, containerInView) : null,
 		};
 	});
-	return { rows, overflow, contentHeight: rows.reduce((sum, row) => sum + row.height, 0) };
+	const contentHeight = rows.reduce((sum, row) => sum + row.height, 0);
+	return { rows, overflow: overflow || contentHeight > budget, contentHeight };
 }

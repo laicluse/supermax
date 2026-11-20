@@ -144,6 +144,6 @@ export class ModalHost {
 		}
 		const first = workspace.visibleCellFor(workspace.navigator.focused) ?? workspace.visibleCellFor(workspace.navigator.root.id);
 		if (first) { workspace.focusCell(first); return; }
-		workspace.backButton.focus({ preventScroll: true });
+		workspace.upButton.focus({ preventScroll: true });
 	}
 }

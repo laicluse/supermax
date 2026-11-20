@@ -25,10 +25,10 @@ scenario("a wide workspace opens the gallery with its defaults as one group", ()
 	assert.ok(wide.get(detail("list", "a")), "item and detail auto-open in a row with room");
 	assert.ok(wide.get(`${detail("list", "a")}/notes:a`), "defaults chain over three levels");
 	assert.deepEqual(titles(wide), ["Gallery"]);
-	assert.deepEqual(closedTitles(wide.back()).slice(0, 2), ["Gallery", "List"], "Back reports every closed occurrence, root first");
+	assert.deepEqual(closedTitles(wide.closeNewestGroup()).slice(0, 2), ["Gallery", "List"], "Back reports every closed occurrence, root first");
 	assert.deepEqual(wide.state().occurrences, ["root"]);
-	assert.equal(wide.nextBack(), null);
-	assert.equal(wide.back().ok, false, "the end of history is a result, not an exception");
+	assert.equal(wide.newestGroup(), null);
+	assert.equal(wide.closeNewestGroup().ok, false, "the end of history is a result, not an exception");
 });
 
 scenario("a default opens only when the row has room, to the pixel", () => {
@@ -49,8 +49,8 @@ scenario("a narrow workspace reaches the same content through more groups", () =
 	assert.deepEqual(titles(narrow), ["Gallery", "Item A"]);
 	assert.equal(narrow.open("detail:a", { from: item("list", "a") }).ok, true);
 	assert.deepEqual(titles(narrow), ["Gallery", "Item A", "Detail A"]);
-	assert.deepEqual(closedTitles(narrow.back()), ["Detail A"]);
-	assert.deepEqual(closedTitles(narrow.back()), ["Item A"]);
+	assert.deepEqual(closedTitles(narrow.closeNewestGroup()), ["Detail A"]);
+	assert.deepEqual(closedTitles(narrow.closeNewestGroup()), ["Item A"]);
 	assert.deepEqual(titles(narrow), ["Gallery"]);
 });
 
@@ -60,7 +60,7 @@ scenario("Back closes groups in reverse opening order across rows", () => {
 		openGallery(instance);
 		const keys = ["list", "grid", "tags"];
 		order.forEach((id, index) => assert.equal(instance.open(`item:${id}`, { from: row(keys[index]) }).ok, true));
-		for (const title of expected) assert.deepEqual(closedTitles(instance.back()), [title]);
+		for (const title of expected) assert.deepEqual(closedTitles(instance.closeNewestGroup()), [title]);
 		for (const key of keys) assert.ok(instance.get(row(key)), `${key} survives`);
 		assert.deepEqual(titles(instance), ["Gallery"]);
 		assert.equal(instance.focused, row(keys[0]), "focus returns to the selector of the last closed group, which opened first");
@@ -77,8 +77,8 @@ scenario("an explicit click on auto-opened content promotes it, and its own chil
 	const child = wide.open("detail:a", { from: item("list", "a") });
 	assert.equal(child.promoted, true, "a later click on the moved detail promotes it again");
 	assert.deepEqual(titles(wide), ["Gallery", "Item A", "Detail A"]);
-	assert.deepEqual(closedTitles(wide.back()), ["Detail A", "Notes A"], "Back closes the detail with its own automatic notes");
-	assert.deepEqual(closedTitles(wide.back()), ["Item A"]);
+	assert.deepEqual(closedTitles(wide.closeNewestGroup()), ["Detail A", "Notes A"], "Back closes the detail with its own automatic notes");
+	assert.deepEqual(closedTitles(wide.closeNewestGroup()), ["Item A"]);
 	assert.ok(wide.get(row("list")));
 	assert.equal(wide.open("item:a", { from: row("list") }).ok, true);
 	assert.equal(wide.open("item:a", { from: row("list") }).noop, true, "clicking manual content again changes nothing");
@@ -90,7 +90,7 @@ scenario("promoting a parent after its child was promoted closes both on one Bac
 	wide.open("detail:a", { from: item("list", "a") });
 	wide.open("item:a", { from: row("list") });
 	assert.deepEqual(titles(wide), ["Gallery", "Detail A", "Item A"]);
-	const closed = wide.back();
+	const closed = wide.closeNewestGroup();
 	assert.deepEqual(closedTitles(closed), ["Item A", "Detail A", "Notes A"], "the subtree closes and is reported in full");
 	assert.deepEqual(titles(wide), ["Gallery"], "the orphaned detail group disappears");
 });
@@ -102,7 +102,7 @@ scenario("replacing content on a slot drops the old subtree without restore", ()
 	assert.ok(!wide.get(item("list", "a")));
 	assert.ok(wide.get(detail("list", "b")), "the replacement opens its own default");
 	assert.deepEqual(titles(wide), ["Gallery", "Item B"]);
-	assert.deepEqual(closedTitles(wide.back()), ["Item B", "Detail B"]);
+	assert.deepEqual(closedTitles(wide.closeNewestGroup()), ["Item B", "Detail B"]);
 	assert.ok(!wide.get(item("list", "a")), "Back returns to the selector, nothing is restored");
 	assert.equal(wide.focused, row("list"));
 });
@@ -192,36 +192,50 @@ scenario("a window start shifts the row window and never changes what is open", 
 	narrow.open("detail:a", { from: item("list", "a") });
 	assert.equal(narrow.layout().chain.cells[1].rows.rows[0].chain.revealOffset, 0, "an opening in the row resets the window");
 	narrow.startWindow(row("list"), row("list"));
-	narrow.back();
+	narrow.closeNewestGroup();
 	assert.equal(narrow.layout().chain.cells[1].rows.rows[0].chain.revealOffset, 1, "closing a group keeps the window");
 });
 
-scenario("the Back target climbs the focused branch first, then earlier branches, never down", () => {
+scenario("Up reaches every cell hidden above the window, newest branch first, never what lies after it", () => {
 	const narrow = new Navigator({ destinations: { ...destinations, root: { ...destinations.root, keep: true } }, root: "root", minViewportHeight, chrome });
 	narrow.resize({ width: 210, height: 500 });
 	openGallery(narrow);
-	assert.equal(narrow.backTarget(), null, "nothing above the focus is out of view, and the kept root never counts");
+	assert.equal(narrow.upTarget(), null, "nothing is above the window, and the kept root never counts");
 	narrow.open("item:a", { from: row("list") });
 	narrow.bringIntoView(item("list", "a"));
-	assert.deepEqual(narrow.backTarget(), { id: row("list"), title: "List" }, "the hidden parent of the focus comes first");
+	assert.deepEqual(narrow.upTarget(), { id: row("list"), title: "List" }, "the parent that hid above the item comes first");
 	narrow.bringIntoView(row("list"));
-	narrow.focus(row("list"), { resetReveal: false });
-	assert.equal(narrow.backTarget(), null, "the item now hidden to the right is below the focus, so Back does not go there");
+	assert.equal(narrow.upTarget(), null, "the item now after the window is not a target");
 	narrow.open("item:b", { from: row("grid") });
 	narrow.bringIntoView(item("grid", "b"));
 	narrow.focus(row("list"), { resetReveal: false });
-	assert.deepEqual(narrow.backTarget(), { id: row("grid"), title: "Grid" }, "with nothing hidden above the focus the newest other branch climbs next");
+	assert.deepEqual(narrow.upTarget(), { id: row("grid"), title: "Grid" }, "the newest branch climbs first, wherever the focus is");
 	assert.deepEqual(titles(narrow), ["Gallery", "Item A", "Item B"], "finding a target closes nothing");
+
+	const chain = new Navigator({ destinations: { menu: { title: "Menu", min: 100, max: 100, keep: true, compact: { min: 20 } }, a: { title: "A", min: 100, max: 100, defaultChild: "b" }, b: { title: "B", min: 100, max: 100, defaultChild: "c" }, c: { title: "C", min: 100, max: 100 } }, root: "menu", minViewportHeight, chrome });
+	chain.resize({ width: 400, height: 500 });
+	chain.open("a", { from: "menu" });
+	chain.resize({ width: 120, height: 500 });
+	chain.focus("menu", { resetReveal: false });
+	assert.deepEqual(chain.upTarget(), { id: "menu/a/b", title: "B" }, "cells hidden in the middle of a branch are reached from its tip");
+
+	const rows = model(1000, 300);
+	openGallery(rows);
+	rows.focus(row("tags"), { resetReveal: false });
+	assert.ok(rows.upTarget()?.id.startsWith(row("list")), "a row hidden above is reached although it is no parent of the focus, the last row to appear climbing first");
 });
 
 scenario("a revealed outer chain does not change which defaults open", () => {
-	const instance = model(350, 500);
-	openGallery(instance);
-	instance.startWindow("root", "root");
-	assert.equal(instance.layout().chain.cells[1].visible, false, "the gallery is hidden behind the revealed root");
-	assert.equal(instance.open("item:b", { from: row("grid") }).ok, true);
-	assert.ok(instance.get(detail("grid", "b")), "the row width ignores the reveal, so the detail still fits");
-	assert.equal(instance.layout().chain.revealOffset, 0, "an opening resets the reveal of every chain above it");
+	const plain = model(150, 500);
+	openGallery(plain);
+	plain.open("item:b", { from: row("grid") });
+	const revealed = model(150, 500);
+	openGallery(revealed);
+	revealed.startWindow("root", "root");
+	assert.equal(revealed.layout().chain.cells[1].visible, false, "the gallery is hidden behind the revealed root");
+	assert.equal(revealed.open("item:b", { from: row("grid") }).ok, true);
+	assert.deepEqual(revealed.state().occurrences, plain.state().occurrences, "the row width ignores the reveal, so the same defaults open");
+	assert.equal(revealed.layout().chain.revealOffset, 0, "an opening resets the reveal of every chain above it");
 });
 
 scenario("only a kept cell stays, compact when space runs out; every other cell is in view or gone", () => {
@@ -244,6 +258,9 @@ scenario("only a kept cell stays, compact when space runs out; every other cell 
 	assert.deepEqual(cells(), ["compact", "gone", "gone", "full"], "the kept cell outlasts every other cell");
 	instance.startWindow("menu", "menu/a");
 	assert.deepEqual(cells(), ["compact", "full", "gone", "gone"], "a window start shows an earlier cell next to the kept one");
+	instance.startWindow("menu", null);
+	instance.resize({ width: 110, height: 500 });
+	assert.deepEqual([instance.layout().overflowX, Math.round(instance.layout().chain.contentWidth)], [true, 120], "when the kept rail and the newest cell's minimum exceed the width the newest keeps its minimum and the workspace scrolls sideways");
 });
 
 scenario("a dragged size is a session preference inside min and max, and rows follow the same rule", () => {
@@ -275,10 +292,10 @@ scenario("a dragged size is a session preference inside min and max, and rows fo
 	instance.open("item:b", { from: `${item("list", "a")}/detail:a` });
 	instance.setSize(item("list", "a"), null, "width");
 	instance.resize({ width: 1000, height: 500 });
-	instance.back();
+	instance.closeNewestGroup();
 	instance.open("item:b", { from: row("list") });
 	instance.setSize(item("list", "b"), 190);
-	instance.back();
+	instance.closeNewestGroup();
 	assert.equal(instance.sizeOf(item("list", "b"), "width"), null, "closing drops the size of a closed cell");
 	assert.throws(() => instance.setSize(item("list", "a"), "abc"), TypeError, "a size that is not a positive number is refused");
 	instance.open("item:a", { from: row("list") });
@@ -322,7 +339,7 @@ scenario("a hinted destination opens provisionally and completes when its defini
 	closedByUser.define("remote:p", { title: "Remote P", min: 100, max: 200, defaultChild: "remote:q" });
 	assert.equal(closedByUser.get(`${item("list", "a")}/remote:p`).awaiting, "remote:q", "a parent remembers the default it could not open yet");
 	closedByUser.open("detail:b", { from: `${item("list", "a")}/remote:p` });
-	closedByUser.back();
+	closedByUser.closeNewestGroup();
 	assert.equal(closedByUser.get(`${item("list", "a")}/remote:p`).children[0], undefined, "the user closed what was open under the parent");
 	closedByUser.define("remote:q", { title: "Remote Q", min: 100, max: 200 });
 	assert.equal(closedByUser.get(`${item("list", "a")}/remote:p`).children[0], undefined, "a definition arriving after the user chose and closed opens nothing");
@@ -346,7 +363,7 @@ scenario("a hinted destination opens provisionally and completes when its defini
 	const gone = model(1000, 500);
 	openGallery(gone);
 	gone.open("remote:b", { from: item("tags", "a"), hint: { title: "Remote B", min: 100, max: 200 } });
-	gone.back();
+	gone.closeNewestGroup();
 	const after = gone.define("remote:b", { title: "Remote B", min: 100, max: 200, defaultChild: "detail:c" });
 	assert.deepEqual(after.completed, [], "a definition arriving after Back opens nothing");
 	assert.ok(!gone.get(`${item("tags", "a")}/remote:b`), "the closed group does not return");
@@ -385,13 +402,18 @@ scenario("default chains are finite and do not repeat a destination already in t
 	assert.deepEqual(chain.slice(-2), ["Loop A", "Loop B"], "the chain stops where a destination would repeat");
 });
 
-scenario("the focus title carries its ancestors as context", () => {
+scenario("the title names where the newest navigation went, with its ancestors as context", () => {
 	const wide = model(1000);
+	assert.deepEqual(wide.locationInfo(), { occurrence: "root", title: "Root", trail: [] });
 	openGallery(wide);
-	assert.deepEqual(wide.focusInfo(), { occurrence: GALLERY, title: "Gallery", trail: [{ occurrence: "root", title: "Root" }] });
+	assert.deepEqual(wide.locationInfo(), { occurrence: GALLERY, title: "Gallery", trail: [{ occurrence: "root", title: "Root" }] }, "defaults that opened along do not move the title");
 	wide.open("item:c", { from: row("tags") });
-	assert.deepEqual(wide.focusInfo().trail.map((step) => step.title), ["Root", "Gallery", "Tags"]);
+	assert.deepEqual(wide.locationInfo().trail.map((step) => step.title), ["Root", "Gallery", "Tags"]);
+	wide.focus(row("list"), { resetReveal: false });
+	assert.equal(wide.locationInfo().title, "Item C", "moving the focus elsewhere does not change where the application is");
 	assert.deepEqual(wide.child(wide.get(row("tags")))?.destination, "item:c");
+	wide.closeNewestGroup();
+	assert.equal(wide.locationInfo().title, "Gallery", "closing the newest group returns the title to the one before");
 });
 
 scenario("a snapshot restores the exact state, including groups and focus", () => {
@@ -405,11 +427,11 @@ scenario("a snapshot restores the exact state, including groups and focus", () =
 	assert.deepEqual(instance.state(), { occurrences: ["root"], groups: [], focused: "root" });
 	assert.equal(instance.restore(snapshot), true);
 	assert.deepEqual(instance.state(), expected);
-	assert.deepEqual(closedTitles(instance.back()), ["Item B", "Detail B"], "history continues from the restored state");
+	assert.deepEqual(closedTitles(instance.closeNewestGroup()), ["Item B", "Detail B"], "history continues from the restored state");
 	const stale = structuredClone(snapshot);
 	stale.occurrences[1].destination = "renamed";
 	assert.equal(instance.restore(stale), false, "a snapshot naming an unknown destination is refused");
-	assert.equal(instance.back().title, "Gallery", "the model is unchanged by the refused restore");
+	assert.equal(instance.closeNewestGroup().title, "Gallery", "the model is unchanged by the refused restore");
 	assert.deepEqual(instance.state().occurrences, ["root"]);
 });
 

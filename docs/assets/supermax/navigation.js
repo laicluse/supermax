@@ -289,12 +289,12 @@ export class Navigator {
 		this.groups = this.groups.filter((group) => live.has(group.id));
 	}
 
-	nextBack() {
+	newestGroup() {
 		const group = this.groups[this.groups.length - 1];
 		return group ? { id: group.id, title: group.title } : null;
 	}
 
-	back() {
+	closeNewestGroup() {
 		const group = this.groups[this.groups.length - 1];
 		if (!group) return { ok: false, reason: "history-empty" };
 		const root = this.get(group.root);
@@ -361,18 +361,33 @@ export class Navigator {
 		}
 	}
 
-	backTarget(layout = this.layout()) {
-		const outOfView = (occurrence) => !layout.cells.get(occurrence.id)?.inView && !this.definitionOf(occurrence.destination).keep;
-		const climb = (start) => {
-			for (let current = start?.parent ? this.get(start.parent) : null; current; current = current.parent ? this.get(current.parent) : null) {
-				if (outOfView(current)) return current;
+	placeOf(occurrence, layout = this.layout()) {
+		const root = chainRootOf(this, occurrence);
+		const split = root.parent ? this.get(root.parent) : null;
+		if (split) {
+			const container = this.placeOf(split, layout);
+			if (container !== "in") return container;
+			const rows = layout.cells.get(split.id)?.rows?.rows ?? [];
+			const index = rows.findIndex((row) => row.occurrence === root.id);
+			if (!rows[index]?.visible) return index < rows.findIndex((row) => row.visible) ? "above" : "after";
+		}
+		const cells = layout.chains.get(root.id)?.cells ?? [];
+		const index = cells.findIndex((cell) => cell.occurrence === occurrence.id);
+		if (cells[index]?.visible) return "in";
+		return index < cells.findIndex((cell) => cell.visible && !cell.kept) ? "above" : "after";
+	}
+
+	upTarget(layout = this.layout()) {
+		const appearance = [...this.occurrences.keys()];
+		const tipsOf = (members) => members.filter((occurrence) => !occurrence.children.some((childId) => members.some((member) => member.id === childId)));
+		const branches = [...this.groups].reverse().map((group) => appearance.map((id) => this.get(id)).filter((occurrence) => occurrence.group === group.id));
+		branches.push(appearance.map((id) => this.get(id)));
+		for (const members of branches) {
+			for (const tip of tipsOf(members).reverse()) {
+				for (let current = tip; current; current = current.parent ? this.get(current.parent) : null) {
+					if (this.placeOf(current, layout) === "above") return { id: current.id, title: current.title };
+				}
 			}
-			return null;
-		};
-		const branches = [this.get(this.focused), ...[...this.groups].reverse().map((group) => this.get(group.root))];
-		for (const branch of branches) {
-			const target = climb(branch);
-			if (target) return { id: target.id, title: target.title };
 		}
 		return null;
 	}
@@ -387,8 +402,9 @@ export class Navigator {
 		else this.rowStarts.delete(splitId);
 	}
 
-	focusInfo() {
-		const occurrence = this.get(this.focused) ?? this.root;
+	locationInfo() {
+		const newest = this.groups[this.groups.length - 1];
+		const occurrence = (newest && this.get(newest.root)) ?? this.root;
 		const trail = [];
 		let current = occurrence.parent ? this.get(occurrence.parent) : null;
 		while (current) {

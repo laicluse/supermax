@@ -62,7 +62,7 @@ export class NoticeBoard {
 		if (target) { workspace.focusCell(target); return; }
 		const next = this.region.querySelector(".supermax-notice-dismiss");
 		if (next) { next.focus({ preventScroll: true }); return; }
-		workspace.backButton.focus({ preventScroll: true });
+		workspace.upButton.focus({ preventScroll: true });
 	}
 
 	hostFor(notice) {

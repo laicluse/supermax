@@ -2,7 +2,7 @@
 
 Framework-free cell layout and navigation primitives for workspaces that open content below and to the right.
 
-The package has four parts. `CellCollection` allocates one horizontal chain of cells within a budget. `CellStrip` animates such a chain. `Navigator` models a workspace whose cells can split into independent rows, with one Back history across all rows; `validateSplit` checks a split against the declared minimum height. `Workspace` renders a navigator into the DOM with the stylesheet `@laicluse/supermax/workspace.css`, and `SLIDE_PRESENTATION` is its default motion. Hosts own their content and their routing. A GitHub Pages demo lives in `docs/` outside the package files.
+The package has four parts. `CellCollection` allocates one horizontal chain of cells within a budget. `CellStrip` animates such a chain. `Navigator` models a workspace whose cells can split into independent rows, with one Show control that brings back whatever hid above the window; `validateSplit` checks a split against the declared minimum height. `Workspace` renders a navigator into the DOM with the stylesheet `@laicluse/supermax/workspace.css`, and `SLIDE_PRESENTATION` is its default motion. Hosts own their content and their routing. A GitHub Pages demo lives in `docs/` outside the package files.
 
 ## A single row
 
@@ -28,7 +28,7 @@ const workspace = new Workspace(document.querySelector("#workspace"), {
 workspace.navigate("message:1", { from: "inbox" });
 ```
 
-One row is a chain: the inbox stays on the left, the message opens beside it, its attachments open automatically when the row has room, and when the row runs out of room the inbox hides entirely until Back brings it back. Mark the inbox `keep: true` with a `compact` form and it stays as a rail with a peek instead; the divider between message and attachments lets the user resize for the session.
+One row is a chain: the inbox stays on the left, the message opens beside it, its attachments open automatically when the row has room, and when the row runs out of room the inbox hides entirely until the Show control brings it back. Mark the inbox `keep: true` with a `compact` form and it stays as a rail with a peek instead; the divider between message and attachments lets the user resize for the session.
 
 ## Allocating one chain
 
@@ -76,28 +76,28 @@ const workspace = new Workspace(element, {
 });
 
 workspace.navigate("album:coast", { from: "albums" });
-workspace.requestBack();
+workspace.requestUp();
 ```
 
 A destination is a cell definition: a title, `min` and `max` width in pixels, optionally a `defaultChild` that opens automatically when the row has room, or `rows` that split the cell into vertically stacked rows. Each row runs its own horizontal chain starting from the row's destination. `data` is the host's own payload and comes back untouched in the `content` callback. An opened destination is an occurrence whose id is the path of destination ids from the root, so the same photo opened from two rows is two occurrences with their own state.
 
-`minViewportHeight` is the smallest window height the application supports. The navigator checks every split against it when it is created and throws a `SupermaxConfigurationError` for one that cannot fit; `validateDestinations` runs that check on its own, and a split that arrives later is checked before it opens. The optional `chrome` option names the sizes that validation counts with: `navbar` (default 44) and `maxRows` per split (default 4). The workspace writes `navbar` onto its element as `--supermax-navbar`, so the stylesheet draws what the model computed. Colours come from `--supermax-ink`, `--supermax-muted`, `--supermax-line`, `--supermax-surface`, `--supermax-muted-surface`, `--supermax-canvas`, `--supermax-accent` and `--supermax-warn`, each with a fallback. The navigation bar's own strings (Back and its accessible labels) are English in this version.
+`minViewportHeight` is the smallest window height the application supports. The navigator checks every split against it when it is created and throws a `SupermaxConfigurationError` for one that cannot fit; `validateDestinations` runs that check on its own, and a split that arrives later is checked before it opens. The optional `chrome` option names the sizes that validation counts with: `navbar` (default 44) and `maxRows` per split (default 4). The workspace writes `navbar` onto its element as `--supermax-navbar`, so the stylesheet draws what the model computed. Colours come from `--supermax-ink`, `--supermax-muted`, `--supermax-line`, `--supermax-surface`, `--supermax-muted-surface`, `--supermax-canvas`, `--supermax-accent` and `--supermax-warn`, each with a fallback. The navigation bar's own strings (Show and its accessible labels) are English in this version.
 
 The workspace element needs a height of its own; the workspace fills it, observes its size, computes the layout, and renders cells through the `content` callback. The callback returns `{ element, update?, dispose? }`, or a promise of it for content that loads: the workspace mounts the element once, calls `update(occurrence, workspace)` after every render, and `dispose()` when the occurrence closes. `workspace.navigator.child(occurrence)` answers what is open to the right of a cell, `isAuto(occurrence)` whether it opened by itself. Hidden content stays mounted, so drafts and scroll positions survive while a cell is out of view.
 
-`navigate(destination, { from })` is an intent. Without `onIntent` the workspace applies it itself, brings the opened content into view, moves keyboard focus to it, and returns the result. With `onIntent(action, workspace)` your layer decides what happens: call `apply(action, { focus })` on every workspace that should follow, with `focus: true` on the one that received the click. That is how the demo drives two workspaces from one click. `replay(actions)` rebuilds a workspace from a list of actions and renders once; `restore(snapshot)` puts back a `navigator.snapshot()` and returns false when the snapshot names destinations that no longer exist. The workspace emits `rejected` when the model refused an action or a late definition, `change` after every action, `render` with the computed layout, and `size`, `peek`, `content`, `modal`, `notice` and `presentation` for the features of the same names. `requestBack()` brings back the nearest parent of the focused cell that is out of view, or else of the branch opened before it, and focuses it; it closes nothing and stays local to its workspace. Alt+ArrowLeft inside the workspace is Back, and the ancestors in the title are links that focus that cell.
+`navigate(destination, { from })` is an intent. Without `onIntent` the workspace applies it itself, brings the opened content into view, moves keyboard focus to it, and returns the result. With `onIntent(action, workspace)` your layer decides what happens: call `apply(action, { focus })` on every workspace that should follow, with `focus: true` on the one that received the click. That is how the demo drives two workspaces from one click. `replay(actions)` rebuilds a workspace from a list of actions and renders once; `restore(snapshot)` puts back a `navigator.snapshot()` and returns false when the snapshot names destinations that no longer exist. The workspace emits `rejected` when the model refused an action or a late definition, `change` after every action, `render` with the computed layout, and `size`, `peek`, `content`, `modal`, `notice` and `presentation` for the features of the same names. `requestUp()`, the Show control, brings back the nearest parent of the focused cell that is out of view, or else of the branch opened before it, and focuses it; it closes nothing and stays local to its workspace. Alt+ArrowLeft inside the workspace is the Show control, and the ancestors in the title are links that focus that cell.
 
 A destination may also declare `keep: true` with an optional `compact: { min, content? }` (it stays in view, as a narrow rail with a peek when space runs out, see the guide), `preferred` (its share when the chain has room beyond every minimum; dividers between cells let the user override it for the session), and an action may carry a `hint` so a destination opens before its definition has loaded; `workspace.define(id, definition)` completes it in place. A promise from the `content` callback gives a cell that loads, with built-in loading and error states and a Retry control.
 
-The workspace also opens a modal that knows its source cell (`openModal`), shows feedback with a scope (`notify`), reloads content (`reload`), reports a definition that never came (`failDefinition`), and takes a `presentation` that replaces motion and surface while behaviour and accessibility stay. The navigation contract (the window and Back, groups, auto-opening, validation, deep links, kept cells, sizes, loading, modals, notices, presentation) is written down in the [application-shell guide](docs/application-shell.md).
+The workspace also opens a modal that knows its source cell (`openModal`), shows feedback with a scope (`notify`), reloads content (`reload`), reports a definition that never came (`failDefinition`), and takes a `presentation` that replaces motion and surface while behaviour and accessibility stay. The navigation contract (the window and Show, groups, auto-opening, validation, deep links, kept cells, sizes, loading, modals, notices, presentation) is written down in the [application-shell guide](docs/application-shell.md).
 
 ## Demo
 
-The demo in `docs/` shows two freely resizable frames side by side. Every click reaches both; each frame computes its own layout and auto-opening from its own size, and keeps its own window for Back. Its controls switch network delay, failures and viewer for the loading cells, and the presentation between slide and fold.
+The demo in `docs/` shows two freely resizable frames side by side. Every click reaches both; each frame computes its own layout and auto-opening from its own size, and keeps its own window. Its controls switch network delay, failures and viewer for the loading cells, and the presentation between slide and fold.
 
 ![Wide and narrow frames with the three-row album](docs/assets/captures/three-rows.png)
 
-![A short frame hides the top rows until Back brings them back](docs/assets/captures/short-frame.png)
+![A short frame hides the top rows until Show brings them back](docs/assets/captures/short-frame.png)
 
 ![The fold presentation restyles the same layout](docs/assets/captures/fold.png)
 

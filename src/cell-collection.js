@@ -46,8 +46,6 @@ export class CellCollection {
 			this.proxies[index].actual = 0;
 			if (this.sumOfActuals() <= maxColumns) return;
 		}
-		const others = this.sumOfActuals() - this.proxies[keepIndex].actual;
-		this.proxies[keepIndex].actual = Math.max(0, Math.min(this.proxies[keepIndex].actual, maxColumns - others));
 	}
 
 	distributeRemainingSpace(maxColumns) {

@@ -6,7 +6,7 @@ export const destinations = {
 	root: { title: "Root", min: 100, max: 100 },
 	gallery: {
 		title: "Gallery",
-		min: 300,
+		min: 100,
 		max: 1000,
 		rows: [
 			{ destination: "list", minHeight: 100, maxHeight: 200 },
