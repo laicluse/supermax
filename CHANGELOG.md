@@ -7,6 +7,7 @@ Start with [Migrating from v1 to v2](docs/migrating-to-v2.md). A dependency vers
 ### Breaking changes
 
 - Workspace cells and rows declare one `overflow` policy: `{ mode: "fold", size? }`, `{ mode: "hide" }` or `{ mode: "keep" }`. Omitting it permits zero-space folds. Destination placement uses `placement: "beside-split"`; `keep`, `fold` and `height` are rejected on Workspace destinations.
+- A split that declares `header: "title"` now reaches the `content` callback and returns only `{ header }`, so controls stand in its bar the way they do in a cell's. A callback that cannot answer for a split must return `{}` for it.
 - Paint tokens belong to the built-in renderer under `--supermax-default-*`. A host replaces part factories for its own style; geometry and transition timelines remain shell-owned.
 
 - Layouts report an actual vertical space shortage through `overflow`; the fixed-threshold `belowMinimum` field is removed. `minViewportHeight` remains the validation guarantee for every declared split, even when a particular folded layout fits below it.

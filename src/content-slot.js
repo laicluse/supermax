@@ -60,7 +60,8 @@ export class ContentSlot {
 		this.handle = handle;
 		if (handle.element) handle.element.setAttribute("data-supermax-content", "");
 		this.element.classList.remove("is-loading", "is-error");
-		this.body.replaceChildren(...(handle.element ? [handle.element] : []));
+		if (this.body) this.body.replaceChildren(...(handle.element ? [handle.element] : []));
+		else if (handle.element) this.workspace.warn("content() for a split", `returned an element for the split ${this.id}, whose body holds its rows. A split's content gives only { header } for its title bar.`);
 		if (handle.header) {
 			if (this.header) this.header.append(handle.header);
 			else this.body.prepend(handle.header);
@@ -71,6 +72,10 @@ export class ContentSlot {
 	}
 
 	loading(title) {
+		if (!this.body) {
+			this.workspace.dispatchEvent(new CustomEvent("content", { detail: { occurrence: this.id, state: "loading" } }));
+			return;
+		}
 		this.element.classList.add("is-loading");
 		this.element.classList.remove("is-error");
 		const box = this.workspace.create("div", "supermax-loading");
@@ -84,6 +89,11 @@ export class ContentSlot {
 	}
 
 	error(title, error) {
+		if (!this.body) {
+			this.workspace.warn("content() for a split failed", `on ${this.id}, so its title bar shows no controls (${error?.message ?? String(error)}).`);
+			this.workspace.dispatchEvent(new CustomEvent("content", { detail: { occurrence: this.id, state: "error", error } }));
+			return;
+		}
 		this.element.classList.add("is-error");
 		this.element.classList.remove("is-loading");
 		const box = this.workspace.create("div", "supermax-error");

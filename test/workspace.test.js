@@ -1283,6 +1283,55 @@ test("a cell inside a split row that declares a title header puts content contro
 	assert.deepEqual(placement, { bar: true, body: false }, "the history cell declares its bar, so its search goes there as it would outside a row");
 });
 
+test("a split that declares a title header puts content controls in its bar, the way a cell does", async () => {
+	await page.goto(`${server.url}/blank`);
+	await page.addStyleTag({ url: "/src/workspace.css" });
+	const seen = await page.evaluate(async () => {
+		const { Navigator, Workspace } = await import("/src/index.js");
+		const host = Object.assign(document.body.appendChild(document.createElement("div")), { style: "position:relative;width:1200px;height:400px" });
+		const navigator = new Navigator({ root: "albums", minViewportHeight: 300, destinations: {
+			albums: { title: "Albums", min: 200, max: 200 },
+			split: { title: "Coast", header: "title", rows: [
+				{ destination: "photos", minHeight: 120, maxHeight: "*", preferredHeight: 200 },
+				{ destination: "notes", minHeight: 120, maxHeight: 200 },
+			] },
+			plain: { title: "Plain", rows: [{ destination: "notes", minHeight: 120, maxHeight: "*", preferredHeight: 200 }] },
+			photos: { title: "Photos", min: 200, max: "*", preferred: 300 },
+			notes: { title: "Notes", min: 200, max: 300 },
+		} });
+		const asked = [];
+		const warnings = [];
+		const warn = console.warn;
+		console.warn = (message) => warnings.push(String(message));
+		const control = (label) => Object.assign(document.createElement("button"), { className: "host-copy", textContent: label });
+		const workspace = new Workspace(host, { navigator, content: (occurrence) => {
+			asked.push(occurrence.destination);
+			if (occurrence.destination === "split") return Promise.resolve({ header: control("Copy 48213") });
+			return { element: Object.assign(document.createElement("div"), { className: "host-body", textContent: occurrence.title }) };
+		} });
+		workspace.sync(["albums", "split"]);
+		await new Promise((resolve) => setTimeout(resolve, 50));
+		const split = host.querySelector('[data-occurrence="albums/split"]');
+		const result = {
+			bar: split.querySelector(":scope > .supermax-cell-title .supermax-cell-title-trailing .host-copy")?.textContent ?? null,
+			rows: split.querySelectorAll(":scope > .supermax-cell-body .supermax-row").length,
+			rowBodies: split.querySelectorAll(":scope > .supermax-cell-body .host-body").length,
+		};
+		workspace.content = (occurrence) => occurrence.destination === "split" ? { element: document.createElement("div"), header: control("Again") } : { element: Object.assign(document.createElement("div"), { className: "host-body" }) };
+		workspace.reload((occurrence) => occurrence.destination === "split");
+		result.reloaded = split.querySelector(":scope > .supermax-cell-title .host-copy")?.textContent ?? null;
+		result.rowsAfterElement = split.querySelectorAll(":scope > .supermax-cell-body .supermax-row").length;
+		result.warned = warnings.some((message) => message.includes("split"));
+		workspace.sync(["albums", "plain"]);
+		result.plainAsked = asked.includes("plain");
+		console.warn = warn;
+		workspace.destroy();
+		host.remove();
+		return result;
+	});
+	assert.deepEqual(seen, { bar: "Copy 48213", rows: 2, rowBodies: 2, reloaded: "Again", rowsAfterElement: 2, warned: true, plainAsked: false }, "the split's content gives its bar controls and nothing else: its rows keep the body, an element it returns is refused with a warning, and a split without a bar is not asked");
+});
+
 test("a cell's title can change after it opened, in its bar, accessible name and location", async () => {
 	await openDemo([open("album:coast", "albums")]);
 	const renamed = await page.evaluate(() => {

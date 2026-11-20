@@ -123,6 +123,7 @@ function element(tag, className, text) {
 }
 
 const renderers = {
+	album: () => ({}),
 	albums: renderAlbums,
 	depth: renderDepth,
 	selector: renderSelector,

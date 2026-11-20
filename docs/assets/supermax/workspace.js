@@ -36,6 +36,9 @@ const JUSTIFY = Object.freeze({ start: "flex-start", center: "center", end: "fle
 // allow-comment: the longest title the Show control spells out; a longer one would crowd the bar it stands in.
 const UP_NAME_LIMIT = 20;
 
+// allow-comment: a split's body holds its rows, so its content is asked only for the controls in its title bar.
+const asksContent = (definition) => !isSplit(definition) || definition.header === "title";
+
 export class Workspace extends EventTarget {
 	constructor(element, options) {
 		super();
@@ -279,7 +282,7 @@ export class Workspace extends EventTarget {
 			const occurrence = this.navigator.get(occurrenceId);
 			if (!occurrence) continue;
 			const definition = this.navigator.definitionOf(occurrence.destination);
-			if (isSplit(definition) || !predicate(occurrence, definition)) continue;
+			if (!asksContent(definition) || !predicate(occurrence, definition)) continue;
 			this.mountContent(entry, occurrence);
 		}
 		this.modal?.retry();
@@ -706,10 +709,10 @@ export class Workspace extends EventTarget {
 		const materialPart = mountPart(this, "cell", material, state);
 		const veilPart = mountPart(this, "veil", veil, state);
 		element.supermaxPaint = { veil, foreground: [chrome, body], concealContent: () => !!this.presentation.motion?.concealContent };
-		entry = { element, body, header, chromePart, materialPart, veilPart, slot: new ContentSlot(this, { element, body, header: header ? utilities : null, id: occurrenceId }), parent: occurrence.parent };
+		entry = { element, body, header, chromePart, materialPart, veilPart, slot: new ContentSlot(this, { element, body: isSplit(definition) ? null : body, header: header ? utilities : null, id: occurrenceId }), parent: occurrence.parent };
 		this.folds.mount(entry, occurrence, "horizontal");
 		this.cells.set(occurrenceId, entry);
-		if (!isSplit(definition)) this.mountContent(entry, occurrence);
+		if (asksContent(definition)) this.mountContent(entry, occurrence);
 		return element;
 	}
 

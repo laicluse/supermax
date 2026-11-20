@@ -156,6 +156,7 @@ for (const frame of document.querySelectorAll(".example-frame")) {
 		overlayRoot: frame,
 		renderer: frame.dataset.style === "paper" ? paper : {},
 		content(occurrence) {
+			if (occurrence.destination === "notebook") return {};
 			if (occurrence.destination === "source" && fail) {
 				fail = false;
 				throw Error("The source could not be reached.");

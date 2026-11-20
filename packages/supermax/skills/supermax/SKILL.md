@@ -123,7 +123,7 @@ The workspace warns once per kind in the console when a host leaves out an `orig
 ### Content and identity
 
 - **Content handle `{ element, header?, update?, transition?, leave?, dispose? }`**:
-  - `header`: the content's own lightweight utilities in the cell's title bar when it has one, otherwise at the start of its body; choose their scope and placement as above;
+  - `header`: the content's own lightweight utilities in the cell's title bar when it has one, otherwise at the start of its body; choose their scope and placement as above. A split with `header: "title"` is asked too and returns only `{ header }`: a control that belongs to the whole split, such as copying a record number, goes in its bar;
   - `update`: refresh after every render;
   - `leave()`: stop writing shared state the moment a cell starts to close, because it stays mounted while it folds away;
   - `dispose()`: clean up once it is gone.
