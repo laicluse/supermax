@@ -59,7 +59,7 @@ async function groups(key) {
 }
 
 async function backButton(key) {
-	return page.locator(inFrame(key, ".supermax-back")).evaluate((button) => ({ disabled: button.disabled, label: button.getAttribute("aria-label"), text: button.textContent }));
+	return page.locator(inFrame(key, ".supermax-back")).evaluate((button) => ({ hidden: button.hidden, label: button.getAttribute("aria-label"), text: button.textContent }));
 }
 
 async function closeNewest(key) {
@@ -85,12 +85,12 @@ const painted = (selector) => page.locator(selector).evaluate((element) => getCo
 
 test("the start state names the end of history and both frames receive a click", async () => {
 	await openDemo();
-	assert.deepEqual(await backButton("a"), { disabled: true, label: "Back", text: "Back" });
+	assert.deepEqual(await backButton("a"), { hidden: true, label: "Back", text: "Back" }, "with nothing out of view there is no Back");
 	await page.click(inFrame("a", '.album-item[data-destination="album:coast"]'));
 	await settle();
 	assert.ok((await state("a")).occurrences.includes(coast.metadata("thumbnails", "a")), "the wide frame auto-opens metadata once its layout metadata has arrived");
 	assert.ok(!(await state("b")).occurrences.includes(coast.photo("thumbnails", "a")), "the narrow frame keeps the default as a manual choice");
-	assert.equal((await backButton("a")).disabled, true, "Back stays off while every cell is in view");
+	assert.equal((await backButton("a")).hidden, true, "Back stays away while every cell is in view");
 	assert.equal(page.url().split("#")[1], "o:album:coast@albums");
 	assert.equal(await activeOccurrence(), coast.album, "the click moves focus to the opened content in the origin frame");
 });
@@ -149,7 +149,7 @@ test("a deeplink opens three rows in both frames; a fresh navigation replays it 
 test("Back names the nearest hidden cell and only shifts this frame's window", async () => {
 	await openDemo(TWENTY_DEEP);
 	await resize([[960, 640], [420, 640]]);
-	assert.deepEqual(await backButton("a"), { disabled: false, label: "Back to Depth 15", text: "Back toDepth 15" });
+	assert.deepEqual(await backButton("a"), { hidden: false, label: "Back to Depth 15", text: "Back toDepth 15" });
 	const before = { a: await groups("a"), b: await backButton("b"), url: page.url() };
 	await page.focus(inFrame("a", ".supermax-back"));
 	await page.keyboard.press("Enter");
@@ -159,11 +159,37 @@ test("Back names the nearest hidden cell and only shifts this frame's window", a
 	assert.deepEqual(await backButton("b"), before.b, "the other frame keeps its window");
 	assert.equal(await activeOccurrence(), TWENTY_DEEP[14].from + "/depth:15", "the revealed cell takes focus");
 	assert.equal((await backButton("a")).label, "Back to Depth 14");
+	const edges = await page.evaluate((id) => {
+		const frame = document.querySelector('.frame[data-frame="a"]');
+		return { menu: frame.querySelector('[data-occurrence="albums"]').getBoundingClientRect().right, revealed: frame.querySelector(`[data-occurrence="${id}"]`).getBoundingClientRect().left };
+	}, TWENTY_DEEP[14].from + "/depth:15");
+	assert.equal(Math.round(edges.revealed), Math.round(edges.menu), "the cells folded between the kept menu and the window take no room");
 	assert.equal(await page.locator(inFrame("a", ".supermax-reveal, .supermax-row-tab, .supermax-collapse")).count(), 0, "no chip, tab or collapse control competes with Back");
 	await page.click(inFrame("a", `[data-occurrence="${TWENTY_DEEP[19].from}"] .depth-next`));
 	await settle();
 	assert.equal(await activeOccurrence(), TWENTY_DEEP[19].from + "/depth:20", "clicking the content that opened a hidden cell brings it back");
 	assert.deepEqual(await groups("a"), before.a, "without reopening anything");
+});
+
+test("Back climbs the newest branch first, then the branch opened before it in another row", async () => {
+	await openDemo([open("album:coast", "albums")]);
+	assert.equal((await backButton("a")).hidden, true);
+	await page.click(inFrame("a", `[data-occurrence="${coast.metadata("map", "a")}"] .metadata-link`));
+	await settle();
+	assert.equal((await backButton("a")).label, "Back to Map", "opening History A in the Map row hides Map");
+	await page.click(inFrame("a", `[data-occurrence="${coast.metadata("thumbnails", "a")}"] .metadata-link`));
+	await settle();
+	assert.equal((await backButton("a")).label, "Back to Thumbnails", "the hidden parent of the newest branch comes back first");
+	await page.click(inFrame("a", ".supermax-back"));
+	await settle();
+	assert.equal(await activeOccurrence(), coast.row("thumbnails"));
+	assert.equal((await backButton("a")).label, "Back to Map", "with that branch whole, the branch opened before it climbs next");
+	await page.click(inFrame("a", ".supermax-back"));
+	await settle();
+	assert.equal(await activeOccurrence(), coast.row("map"));
+	assert.equal(await painted(inFrame("a", `[data-occurrence="${coast.row("map")}"]`)), true);
+	assert.equal((await backButton("a")).hidden, true, "with nothing above any branch out of view Back goes away");
+	assert.deepEqual(await groups("a"), ["Coast", "History A", "History A"], "nothing closed on the way back");
 });
 
 test("rows span the split and no cell crosses a row", async () => {
@@ -202,7 +228,7 @@ test("hiding rows and cells keeps navigation, draft and scroll, and the content 
 	assert.equal(await page.inputValue(captionSelector), "Lighthouse at dusk", "the draft survives while its cell is hidden");
 	await page.click(inFrame("a", ".supermax-back"));
 	await settle();
-	assert.equal(await activeOccurrence(), coast.photo("people", "c"), "Back brings the photo back first, the nearest earlier cell");
+	assert.equal(await activeOccurrence(), coast.photo("people", "c"), "Back climbs from the focus to its hidden parent, Photo C");
 	const afterBack = await state("a");
 	assert.deepEqual({ occurrences: afterBack.occurrences, groups: afterBack.groups }, { occurrences: before.occurrences, groups: before.groups });
 	await resize([[960, 640], [420, 640]]);
@@ -756,7 +782,7 @@ test("reset restores both frames and clears the URL", async () => {
 	await page.waitForFunction(() => !location.hash);
 	for (const key of ["a", "b"]) {
 		assert.deepEqual(await state(key), { occurrences: ["albums"], groups: [], focused: "albums" }, `frame ${key}`);
-		assert.equal((await backButton(key)).disabled, true);
+		assert.equal((await backButton(key)).hidden, true);
 	}
 });
 
@@ -809,8 +835,8 @@ test("cells inside a hidden row are not painted and Back brings the row back", a
 		await page.click(inFrame("b", ".supermax-back"));
 		await settle();
 	}
-	assert.deepEqual(await hiddenRows("b"), [true, false, true], "Back reaches the row above once its own row has nothing hidden");
-	assert.equal(await page.locator(inFrame("b", ".supermax-title-text")).textContent(), "Photo B", "the title follows the cell Back brought back");
+	assert.deepEqual(await hiddenRows("b"), [true, false, true], "Back reaches the row of the branch opened before, once nothing above the focus is hidden");
+	assert.equal(await page.locator(inFrame("b", ".supermax-title-text")).textContent(), "Map", "the title follows the parent Back brought back");
 });
 
 test("motion: an opening animates, an immediate close leaves nothing behind, reduced motion animates nothing", async () => {

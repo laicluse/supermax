@@ -304,6 +304,54 @@ export class Navigator {
 		return this.sizes[axis]?.get(occurrenceId) ?? null;
 	}
 
+	bringIntoView(occurrenceId) {
+		const occurrence = this.get(occurrenceId);
+		const path = [];
+		for (let current = occurrence; current; current = current.parent ? this.get(current.parent) : null) path.unshift(current);
+		for (const step of path) {
+			const parent = step.parent ? this.get(step.parent) : null;
+			if (parent && isSplit(this.definitionOf(parent.destination))) {
+				const rows = parent.children.map((id) => (id ? this.get(id) : null));
+				this.reachWindow(rows, step, (layout, id) => layout.rows.get(id), (id) => this.startRows(parent.id, id));
+			}
+			if (step !== occurrence && !isSplit(this.definitionOf(step.destination))) continue;
+			const chainRoot = chainRootOf(this, step);
+			this.reachWindow(chainCells(this, chainRoot), step, (layout, id) => layout.cells.get(id), (id) => this.startWindow(chainRoot.id, id));
+		}
+	}
+
+	reachWindow(members, target, find, start) {
+		const shown = (id) => !!find(this.layout(), id)?.visible;
+		if (shown(target.id)) return;
+		const layout = this.layout();
+		const targetIndex = members.findIndex((member) => member?.id === target.id);
+		const first = members.findIndex((member) => member && find(layout, member.id)?.visible && !find(layout, member.id).kept);
+		if (first === -1 || targetIndex < first) {
+			start(target.id);
+			return;
+		}
+		for (let index = first + 1; index <= targetIndex; index += 1) {
+			start(members[index].id);
+			if (shown(target.id)) return;
+		}
+	}
+
+	backTarget(layout = this.layout()) {
+		const outOfView = (occurrence) => !layout.cells.get(occurrence.id)?.inView && !this.definitionOf(occurrence.destination).keep;
+		const climb = (start) => {
+			for (let current = start?.parent ? this.get(start.parent) : null; current; current = current.parent ? this.get(current.parent) : null) {
+				if (outOfView(current)) return current;
+			}
+			return null;
+		};
+		const branches = [this.get(this.focused), ...[...this.groups].reverse().map((group) => this.get(group.root))];
+		for (const branch of branches) {
+			const target = climb(branch);
+			if (target) return { id: target.id, title: target.title };
+		}
+		return null;
+	}
+
 	startWindow(chainRootId, occurrenceId) {
 		if (occurrenceId) this.windowStarts.set(chainRootId, occurrenceId);
 		else this.windowStarts.delete(chainRootId);

@@ -44,13 +44,16 @@ export class CellStrip {
 		const departing = this.entries.filter((entry) => !ids.has(entry.id));
 		this.entries = entries.map((entry) => ({ ...entry, departing: false }));
 		this.entries.push(...departing.map((entry) => ({ ...entry, visible: false, departing: true })));
+		const firstVisible = this.entries.findIndex((entry) => entry.visible);
+		const lastVisible = this.entries.findLastIndex((entry) => entry.visible);
 		let offset = 0;
-		let foundVisible = false;
 		let totalWidth = 0;
-		for (const entry of this.entries) {
-			if (entry.visible) foundVisible = true;
-			if (!foundVisible) offset += entry.width;
-			totalWidth += entry.width;
+		this.entries.forEach((entry, index) => {
+			entry.displayWidth = !entry.visible && index > firstVisible && index < lastVisible ? 0 : entry.width;
+		});
+		for (const [index, entry] of this.entries.entries()) {
+			if (firstVisible === -1 || index < firstVisible) offset += entry.displayWidth;
+			totalWidth += entry.displayWidth;
 			const old = previous.get(entry.id);
 			if (old && old.element !== entry.element) old.element.replaceWith(entry.element);
 			entry.element.style.flex = "0 0 auto";
@@ -61,7 +64,8 @@ export class CellStrip {
 			entry.element.style.visibility = "";
 			entry.element.inert = !entry.visible;
 			entry.element.toggleAttribute("data-supermax-exiting", entry.departing);
-			entry.element.style.width = `${entry.width}px`;
+			entry.element.toggleAttribute("data-supermax-folded", entry.displayWidth === 0);
+			entry.element.style.width = `${entry.displayWidth}px`;
 			if (!this.strip.contains(entry.element)) this.strip.append(entry.element);
 		}
 		const siblings = new Map();
@@ -116,8 +120,8 @@ export class CellStrip {
 	animateWidths(previous) {
 		for (const entry of this.entries) {
 			const old = previous.get(entry.id);
-			if (old && Math.abs(old.currentWidth - entry.width) > 0.01) {
-				this.animations.push(entry.element.animate([{ width: `${old.currentWidth}px` }, { width: `${entry.width}px` }], this.timing()));
+			if (old && Math.abs(old.currentWidth - entry.displayWidth) > 0.01) {
+				this.animations.push(entry.element.animate([{ width: `${old.currentWidth}px` }, { width: `${entry.displayWidth}px` }], this.timing()));
 			}
 		}
 	}
@@ -151,7 +155,7 @@ export class CellStrip {
 			else entry.element.style.visibility = entry.visible ? "" : "hidden";
 		}
 		this.entries = this.entries.filter((entry) => !entry.departing);
-		this.strip.style.width = `${this.entries.reduce((width, entry) => width + entry.width, 0)}px`;
+		this.strip.style.width = `${this.entries.reduce((width, entry) => width + entry.displayWidth, 0)}px`;
 	}
 
 	cancelAnimations() {

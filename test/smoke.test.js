@@ -37,6 +37,8 @@ const kept = configs.map((config) => (config.id === "vault" ? { ...config, keep:
 result = new CellCollection(kept).distribute(19);
 assert.deepEqual(result.cells.map((cell) => cell.visible), [true, false, true, true], "a kept cell stays while its right neighbour hides");
 assert.equal(result.hiddenCount, 1);
+result = new CellCollection(kept).distribute(9);
+assert.deepEqual(result.cells.map((cell) => Math.round(cell.actual)), [3, 0, 0, 6], "when the kept cell and the newest cell exceed the space the newest takes what is left, never pushing past the edge");
 
 const preferred = [
 	{ id: "list", title: "List", min: 200, max: 600, preferred: 280 },

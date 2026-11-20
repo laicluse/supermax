@@ -199,6 +199,24 @@ scenario("a window start shifts the row window and never changes what is open", 
 	assert.equal(narrow.layout().chain.cells[1].rows.rows[0].chain.revealOffset, 1, "closing a group keeps the window");
 });
 
+scenario("the Back target climbs the focused branch first, then earlier branches, never down", () => {
+	const narrow = new Navigator({ destinations: { ...destinations, root: { ...destinations.root, keep: true } }, root: "root", minViewportHeight, chrome });
+	narrow.resize({ width: 210, height: 500 });
+	openGallery(narrow);
+	assert.equal(narrow.backTarget(), null, "nothing above the focus is out of view, and the kept root never counts");
+	narrow.open("item:a", { from: row("list") });
+	narrow.bringIntoView(item("list", "a"));
+	assert.deepEqual(narrow.backTarget(), { id: row("list"), title: "List" }, "the hidden parent of the focus comes first");
+	narrow.bringIntoView(row("list"));
+	narrow.focus(row("list"), { resetReveal: false });
+	assert.equal(narrow.backTarget(), null, "the item now hidden to the right is below the focus, so Back does not go there");
+	narrow.open("item:b", { from: row("grid") });
+	narrow.bringIntoView(item("grid", "b"));
+	narrow.focus(row("list"), { resetReveal: false });
+	assert.deepEqual(narrow.backTarget(), { id: row("grid"), title: "Grid" }, "with nothing hidden above the focus the newest other branch climbs next");
+	assert.deepEqual(titles(narrow), ["Gallery", "Item A", "Item B"], "finding a target closes nothing");
+});
+
 scenario("a revealed outer chain does not change which defaults open", () => {
 	const instance = model(350, 500);
 	openGallery(instance);

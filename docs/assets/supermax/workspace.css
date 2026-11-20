@@ -26,8 +26,9 @@
 	flex: none;
 }
 
-.supermax-navbar-left { display: flex; align-items: center; gap: 6px; min-width: 0; flex: 0 1 auto; }
+.supermax-navbar-left { display: flex; align-items: center; gap: 6px; flex: none; }
 
+.supermax-back[hidden] { display: none; }
 .supermax-back {
 	display: inline-flex;
 	align-items: baseline;
@@ -43,7 +44,6 @@
 	cursor: pointer;
 	white-space: nowrap;
 }
-.supermax-back:disabled { background: var(--supermax-muted-surface, #f5f7fa); border-color: var(--supermax-line, #d6dde5); color: var(--supermax-muted, #5c6b7a); cursor: default; }
 .supermax-back-label::before { content: "← "; }
 .supermax-back-target { font-weight: 600; }
 
@@ -174,6 +174,7 @@
 .supermax-rows { position: relative; display: flex; flex-direction: column; height: 100%; }
 .supermax-row { position: relative; overflow: hidden; border-bottom: 1px solid var(--supermax-line, #d6dde5); flex: none; }
 .supermax-row.is-hidden { border-bottom: 0; }
+[data-supermax-folded] { border-width: 0 !important; padding: 0 !important; overflow: hidden; }
 .supermax-row-chain { position: absolute; inset: 0 0 auto 0; }
 
 .supermax-divider { position: absolute; z-index: 4; }

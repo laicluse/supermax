@@ -4,7 +4,7 @@
 import { CellStrip, STRIP_TIMING } from "./cell-strip.js";
 import { ContentSlot } from "./content-slot.js";
 import { DividerLayer } from "./dividers.js";
-import { chainCells, chainRootOf, isSplit } from "./layout.js";
+import { chainRootOf, isSplit } from "./layout.js";
 import { ModalHost } from "./modal.js";
 import { NoticeBoard } from "./notices.js";
 import { PeekController } from "./peek.js";
@@ -104,36 +104,10 @@ export class Workspace extends EventTarget {
 			this.closeModal("back");
 			return { ok: true, noop: true };
 		}
-		const destination = this.backDestination();
-		if (!destination) return { ok: false, reason: "nothing-hidden" };
-		this.goTo(destination.id);
-		return { ok: true, destination: destination.id };
-	}
-
-	readingOrder() {
-		const order = [];
-		const visit = (chainRoot) => {
-			for (const occurrence of chainCells(this.navigator, chainRoot)) {
-				order.push(occurrence);
-				for (const childId of isSplit(this.navigator.definitionOf(occurrence.destination)) ? occurrence.children : []) {
-					const row = childId ? this.navigator.get(childId) : null;
-					if (row) visit(row);
-				}
-			}
-		};
-		visit(this.navigator.root);
-		return order;
-	}
-
-	backDestination(layout = this.layout ?? this.navigator.layout()) {
-		const order = this.readingOrder();
-		const focusIndex = order.findIndex((occurrence) => occurrence.id === this.navigator.focused);
-		for (let index = (focusIndex === -1 ? order.length : focusIndex) - 1; index >= 0; index -= 1) {
-			const occurrence = order[index];
-			if (isSplit(this.navigator.definitionOf(occurrence.destination))) continue;
-			if (!layout.cells.get(occurrence.id)?.inView) return { id: occurrence.id, title: occurrence.title };
-		}
-		return null;
+		const target = this.navigator.backTarget(this.layout ?? undefined);
+		if (!target) return { ok: false, reason: "nothing-hidden" };
+		this.goTo(target.id);
+		return { ok: true, destination: target.id };
 	}
 
 	intent(action) {
@@ -230,7 +204,7 @@ export class Workspace extends EventTarget {
 	goTo(occurrenceId) {
 		const occurrence = this.navigator.get(occurrenceId);
 		if (!occurrence) return false;
-		this.bringIntoView(occurrence);
+		this.navigator.bringIntoView(occurrenceId);
 		this.navigator.focus(occurrenceId, { resetReveal: false });
 		this.render({ animate: true });
 		const target = this.findCell(occurrenceId);
@@ -241,37 +215,6 @@ export class Workspace extends EventTarget {
 		}
 		this.focusCell(occurrenceId);
 		return target?.full ?? false;
-	}
-
-	bringIntoView(occurrence) {
-		const path = [];
-		for (let current = occurrence; current; current = current.parent ? this.navigator.get(current.parent) : null) path.unshift(current);
-		for (const step of path) {
-			const parent = step.parent ? this.navigator.get(step.parent) : null;
-			if (parent && isSplit(this.navigator.definitionOf(parent.destination))) {
-				const rows = parent.children.map((id) => (id ? this.navigator.get(id) : null));
-				this.reachWindow(rows, step, (layout, id) => layout.rows.get(id), (id) => this.navigator.startRows(parent.id, id));
-			}
-			if (step !== occurrence && !isSplit(this.navigator.definitionOf(step.destination))) continue;
-			const chainRoot = chainRootOf(this.navigator, step);
-			this.reachWindow(chainCells(this.navigator, chainRoot), step, (layout, id) => layout.cells.get(id), (id) => this.navigator.startWindow(chainRoot.id, id));
-		}
-	}
-
-	reachWindow(members, target, find, start) {
-		const shown = (id) => !!find(this.navigator.layout(), id)?.visible;
-		if (shown(target.id)) return;
-		const layout = this.navigator.layout();
-		const targetIndex = members.findIndex((member) => member?.id === target.id);
-		const first = members.findIndex((member) => member && find(layout, member.id)?.visible && !find(layout, member.id).kept);
-		if (first === -1 || targetIndex < first) {
-			start(target.id);
-			return;
-		}
-		for (let index = first + 1; index <= targetIndex; index += 1) {
-			start(members[index].id);
-			if (shown(target.id)) return;
-		}
 	}
 
 	setSize(occurrenceId, size, axis = "width") {
@@ -344,7 +287,7 @@ export class Workspace extends EventTarget {
 
 	apply(action, { animate = true, focus = false } = {}) {
 		const result = this.run(action);
-		if (result.ok && result.occurrence) this.bringIntoView(result.occurrence);
+		if (result.ok && result.occurrence) this.navigator.bringIntoView(result.occurrence.id);
 		this.render({ animate });
 		if (!result.ok) this.dispatchEvent(new CustomEvent("rejected", { detail: { action, result } }));
 		this.dispatchEvent(new CustomEvent("change", { detail: { action, result } }));
@@ -354,7 +297,11 @@ export class Workspace extends EventTarget {
 
 	replay(actions) {
 		this.navigator.reset();
-		const results = actions.map((action) => this.run(action));
+		const results = actions.map((action) => {
+			const result = this.run(action);
+			if (result.ok && result.occurrence) this.navigator.bringIntoView(result.occurrence.id);
+			return result;
+		});
 		this.render({ animate: false });
 		actions.forEach((action, index) => {
 			if (!results[index].ok) this.dispatchEvent(new CustomEvent("rejected", { detail: { action, result: results[index] } }));
@@ -429,7 +376,7 @@ export class Workspace extends EventTarget {
 		try {
 			layout = this.navigator.layout();
 			this.layout = layout;
-			this.backTo = this.backDestination(layout);
+			this.backTo = this.navigator.backTarget(layout);
 			const animating = animate && !this.reducedMotion.matches;
 			const rootViewport = this.renderChain(layout.chain, this.body, animating);
 			rootViewport.style.height = `${layout.overflow ? layout.contentHeight : layout.chain.height}px`;
@@ -451,7 +398,7 @@ export class Workspace extends EventTarget {
 
 	renderNavbar() {
 		const next = this.modal ? null : this.backTo;
-		this.backButton.disabled = !next && !this.modal;
+		this.backButton.hidden = !next && !this.modal;
 		this.backTarget.hidden = !next;
 		this.backTarget.textContent = next ? next.title : "";
 		this.backLabel.textContent = next ? "Back to" : "Back";
