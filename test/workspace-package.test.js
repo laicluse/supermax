@@ -178,3 +178,93 @@ test("notice icons are opt-out: line icons by default, a host function or null",
 	});
 	assert.deepEqual(result, { byDefault: "svg", custom: "b", none: null, refused: "TypeError" });
 });
+
+test("a cell whose left edge stays put keeps its content in place while it widens, and starts a narrowing where it is", async () => {
+	const frames = await page.evaluate(async () => {
+		const { Navigator, Workspace } = await import("/src/index.js");
+		const host = document.createElement("div");
+		host.style.cssText = "width:1180px;height:500px";
+		document.body.append(host);
+		const navigator = new Navigator({
+			destinations: {
+				menu: { title: "Menu", min: 195, max: 256 },
+				mailboxes: { title: "Mailboxes", min: 259, max: 320 },
+				list: { title: "List", min: 320, max: "*", preferred: 640 },
+				detail: { title: "Detail", min: 320, max: 640 },
+			},
+			root: "menu",
+			minViewportHeight: window.fixture.minViewportHeight,
+			chrome: window.fixture.chrome,
+		});
+		const workspace = new Workspace(host, { navigator, content: (occurrence) => { const element = document.createElement("div"); element.textContent = occurrence.title; return { element }; } });
+		workspace.sync(["menu", "mailboxes", "list", "detail"], { animate: false, origin: null });
+		await new Promise((resolve) => requestAnimationFrame(resolve));
+		const menu = () => host.querySelector('[data-occurrence="menu"]');
+		const room = () => menu().closest(".supermax-room") ?? menu().parentElement;
+		const measure = () => ({ room: Math.round(room().getBoundingClientRect().left), cell: Math.round(menu().getBoundingClientRect().left), width: Math.round(room().getBoundingClientRect().width) });
+		const run = async (destinations) => {
+			workspace.sync(destinations, { origin: null });
+			await new Promise((resolve) => setTimeout(resolve, 60));
+			const samples = [];
+			for (const time of [0, 40, 80, 120, 160, 199]) {
+				document.getAnimations().forEach((animation) => { animation.pause(); animation.currentTime = time + (animation.effect.getTiming().delay ?? 0); });
+				samples.push(measure());
+			}
+			document.getAnimations().forEach((animation) => animation.finish());
+			await new Promise((resolve) => setTimeout(resolve, 50));
+			samples.push(measure());
+			return samples;
+		};
+		const before = measure();
+		const widen = await run(["menu", "mailboxes", "list"]);
+		const narrow = await run(["menu", "mailboxes", "list", "detail"]);
+		host.remove();
+		return { before, widen, narrow };
+	});
+	const { before, widen, narrow } = frames;
+	assert.ok(widen.at(-1).width > before.width, `the menu widens once the detail closes: ${before.width} to ${widen.at(-1).width}px`);
+	for (const sample of widen) assert.ok(Math.abs(sample.cell - sample.room) <= 1, `while widening, the menu's content stays at its left edge: cell at ${sample.cell}px, room at ${sample.room}px`);
+	assert.ok(Math.abs(narrow[0].cell - narrow[0].room) <= 1, `narrowing starts with the content where it was: cell at ${narrow[0].cell}px, room at ${narrow[0].room}px`);
+	assert.ok(Math.abs(narrow.at(-1).cell - narrow.at(-1).room) <= 1, "and ends with it at its left edge");
+});
+
+test("a render that turns a widening back narrows the cell's content with its room instead of jumping at the end", async () => {
+	const result = await page.evaluate(async () => {
+		const { Navigator, Workspace } = await import("/src/index.js");
+		const host = document.createElement("div");
+		host.style.cssText = "width:1180px;height:500px";
+		document.body.append(host);
+		const navigator = new Navigator({
+			destinations: {
+				menu: { title: "Menu", min: 195, max: 256 },
+				mailboxes: { title: "Mailboxes", min: 259, max: 320 },
+				list: { title: "List", min: 320, max: "*", preferred: 640 },
+				detail: { title: "Detail", min: 320, max: 640 },
+			},
+			root: "menu",
+			minViewportHeight: window.fixture.minViewportHeight,
+			chrome: window.fixture.chrome,
+		});
+		const workspace = new Workspace(host, { navigator, content: (occurrence) => { const element = document.createElement("div"); element.textContent = occurrence.title; return { element }; } });
+		const full = ["menu", "mailboxes", "list", "detail"];
+		workspace.sync(full, { animate: false, origin: null });
+		await new Promise((resolve) => requestAnimationFrame(resolve));
+		const menu = () => host.querySelector('[data-occurrence="menu"]');
+		workspace.sync(["menu", "mailboxes", "list"], { origin: null });
+		await new Promise((resolve) => setTimeout(resolve, 120));
+		workspace.sync(full, { origin: null });
+		await new Promise((resolve) => setTimeout(resolve, 60));
+		const widths = [];
+		for (const time of [0, 100, 199]) {
+			document.getAnimations().forEach((animation) => { animation.pause(); animation.currentTime = time + (animation.effect.getTiming().delay ?? 0); });
+			widths.push(Math.round(menu().getBoundingClientRect().width));
+		}
+		document.getAnimations().forEach((animation) => animation.finish());
+		await new Promise((resolve) => setTimeout(resolve, 50));
+		widths.push(Math.round(menu().getBoundingClientRect().width));
+		host.remove();
+		return widths;
+	});
+	const [, , last, settled] = result;
+	assert.ok(Math.abs(last - settled) <= 2, `the content's width at the end of the motion is its settled width, not a jump: ${result.join(", ")}px`);
+});

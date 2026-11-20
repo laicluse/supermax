@@ -891,8 +891,9 @@ test("closing without a replacement plays the opening backwards, and clicking ba
 	await settle();
 	await closeNewest("a");
 	const closing = await pose([150, 100, 50].map((time) => time + SETTLE));
-	const near = (a, b) => a.every((cell, index) => cell.every((value, axis) => Math.abs(value - b[index][axis]) <= 2));
-	assert.ok(opening.every((moment, index) => near(moment, closing[index])), `each moment of the close mirrors the opening: ${JSON.stringify({ opening, closing })}`);
+	const near = (a, b) => a.every((cell, index) => cell.every((value, axis) => index === 0 || Math.abs(value - b[index][axis]) <= 2));
+	assert.ok(opening.every((moment, index) => near(moment, closing[index])), `each moment of the close mirrors the opening for the cells that close, whose left edge is the shared edge: ${JSON.stringify({ opening, closing })}`);
+	assert.ok(closing.every((moment) => Math.abs(moment[0][0] - closing[0][0][0]) <= 1), `the neighbour that widens keeps its content at its left edge instead of jumping left and sliding back: ${JSON.stringify(closing.map((moment) => moment[0]))}`);
 	await finish();
 	await settle();
 	await page.evaluate((selector) => document.querySelector(selector).click(), `${cells[0]} .thumb[data-destination="coast:photo:c"]`);

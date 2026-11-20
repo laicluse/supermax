@@ -191,6 +191,7 @@ export class CellStrip {
 		let offset = 0;
 		let totalWidth = 0;
 		next.forEach((entry, index) => {
+			entry.position = totalWidth;
 			entry.displayWidth = !entry.visible && index > firstVisible && index < lastVisible ? 0 : entry.width;
 			if (firstVisible === -1 || index < firstVisible) offset += entry.displayWidth;
 			totalWidth += entry.displayWidth;
@@ -237,6 +238,7 @@ export class CellStrip {
 		if (startingTransform !== view.getComputedStyle(this.strip).transform) {
 			this.geometry.push(this.strip.animate([{ transform: startingTransform }, { transform: targetTransform }], timing(start)));
 		}
+		const origin = this.strip.getBoundingClientRect().left - new DOMMatrix(startingTransform === "none" ? undefined : startingTransform).m41 - offset;
 		for (const entry of this.entries) {
 			if (entry.overlay || this.driven.has(entry.id)) continue;
 			const old = previous.get(entry.id);
@@ -248,8 +250,12 @@ export class CellStrip {
 			const box = this.boxOf(entry);
 			if (entry.card) {
 				const card = parseFloat(box.style.width) || 0;
-				this.geometry.push(box.animate([{ marginRight: `${from - card}px` }, { marginRight: `${to - card}px` }], delay));
-				this.geometry.push(entry.element.animate([{ marginLeft: `${from - card}px` }, { marginLeft: `${to - card}px` }], delay));
+				const left = origin + (entry.position ?? 0);
+				const anchoredLeft = to > from && old && !old.overlay && Math.abs(left - old.currentRect) + STILL < Math.abs(left + to - old.currentRect - from);
+				if (anchoredLeft || entry.follows) this.geometry.push(box.animate([{ width: `${from}px`, marginRight: "0px" }, { width: `${to}px`, marginRight: "0px" }], delay));
+				else this.geometry.push(box.animate([{ marginRight: `${from - card}px` }, { marginRight: `${to - card}px` }], delay));
+				if (entry.follows) this.geometry.push(entry.element.animate([{ width: `${from}px` }, { width: `${to}px` }], delay));
+				else if (!anchoredLeft) this.geometry.push(entry.element.animate([{ marginLeft: `${from - card}px` }, { marginLeft: `${to - card}px` }], delay));
 			} else {
 				this.geometry.push(box.animate([{ width: `${from}px` }, { width: `${to}px` }], delay));
 			}
@@ -359,7 +365,9 @@ export class CellStrip {
 			} else {
 				for (const property of ["position", "top", "left"]) style.removeProperty(property);
 				const kept = old?.overlay ? 0 : ownWidth || old?.currentWidth || 0;
-				const card = entry.card ? Math.max(kept, entry.displayWidth) : entry.displayWidth;
+				const shown = old && !old.overlay ? old.currentWidth + old.currentMargin : 0;
+				entry.follows = entry.card && shown > 0 && shown < kept - 0.5 && entry.displayWidth < shown;
+				const card = entry.follows ? shown : entry.card ? Math.max(kept, entry.displayWidth) : entry.displayWidth;
 				style.width = `${card}px`;
 				if (entry.card) entry.element.style.width = `${card}px`;
 				if (entry.card) style.marginRight = `${entry.displayWidth - card}px`;
