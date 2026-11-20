@@ -3,7 +3,7 @@ import { LAYOUT_SCHEMA, layoutOf } from "./supermax/layout-declaration.js";
 export const minViewportHeight = 360;
 
 const widths = {
-	albums: { min: 48, max: 320, preferred: 240, overflow: { mode: "keep" }, header: "title", variants: [{ id: "labels", when: { minWidth: 161 } }, { id: "icons", min: 48, preferred: 48, max: 48 }] },
+	albums: { min: 48, max: 320, preferred: 240, overflow: { mode: "keep" }, header: "title", variants: [{ id: "labels", when: { minWidth: 161 } }, { id: "icons", min: 48, preferred: 48, max: 160 }] },
 	selector: { min: 200, max: "*", preferred: 240 },
 	map: { min: 220, max: "*", preferred: 320 },
 	photo: { min: 240, max: "*", preferred: 300, zoomable: true },

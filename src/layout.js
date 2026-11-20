@@ -39,7 +39,7 @@ export function breakoutOf(model, split) {
 
 export function widthBounds(definition) {
 	const elastic = definition.max === ELASTIC;
-	return { min: definition.min, max: elastic ? definition.preferred : definition.max, reach: elastic ? Infinity : definition.max, preferred: definition.preferred ?? null, ask: definition.preferred ?? definition.min, elastic };
+	return { min: definition.min, max: elastic ? definition.preferred : definition.max, reach: elastic ? Infinity : definition.reach ?? definition.max, preferred: definition.preferred ?? null, ask: definition.preferred ?? definition.min, elastic };
 }
 
 function widthDefinition(model, occurrence, resizing) {
@@ -89,7 +89,7 @@ export function boundsOf(model, occurrence, resizing = false) {
 
 export function heightBounds(row) {
 	const elastic = row.maxHeight === ELASTIC;
-	return { min: row.minHeight, max: elastic ? row.preferredHeight : row.maxHeight, reach: elastic ? Infinity : row.maxHeight, preferred: row.preferredHeight ?? null, elastic };
+	return { min: row.minHeight, max: elastic ? row.preferredHeight : row.maxHeight, reach: elastic ? Infinity : row.reach ?? row.maxHeight, preferred: row.preferredHeight ?? null, elastic };
 }
 
 function snapAllocation(allocation) {

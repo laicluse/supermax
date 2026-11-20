@@ -3,7 +3,7 @@ import { test } from "node:test";
 import { chromium } from "playwright";
 import { serveDocs } from "./serve-docs.js";
 
-test("a stationary responsive gutter does not resize a different column", async () => {
+test("a compact column's gutter follows the pointer through the widths between its forms", async () => {
 	const server = await serveDocs();
 	const browser = await chromium.launch({ headless: true });
 	try {
@@ -19,7 +19,7 @@ test("a stationary responsive gutter does not resize a different column", async 
 			const host = document.createElement("div"); host.style.cssText = "width:1800px;height:800px";
 			document.body.append(host);
 			const menu = (title, min, max, preferred, compact) => ({ title, min, max, preferred, variants: [
-				{ id: "labels", when: { minWidth: min } }, { id: "icons", min: compact, max: compact, preferred: compact },
+				{ id: "labels", when: { minWidth: min } }, { id: "icons", min: compact, max: min - 1, preferred: compact },
 			] });
 			const navigator = new Navigator({ root: "mode", minViewportHeight: 100, destinations: {
 				mode: { ...menu("Mode", 192, 256, 208, 52), overflow: { mode: "keep" } },
@@ -42,15 +42,16 @@ test("a stationary responsive gutter does not resize a different column", async 
 		}));
 		const handle = page.locator('[data-divides="mode/mailboxes/views"] .supermax-divider-handle');
 		const before = await geometry();
-		assert.equal(before[2][1], 72, "the views column is in its fixed compact form");
+		assert.equal(before[2][1], 72, "the views column is in its compact form at the width it prefers");
 		const edge = await handle.boundingBox();
 		await page.mouse.move(edge.x + 4, edge.y + 40);
 		await page.mouse.down();
 		await page.mouse.move(edge.x + 34, edge.y + 40, { steps: 3 });
-		assert.equal((await handle.boundingBox()).x, edge.x, "the grabbed gutter did not move");
-		assert.deepEqual(await geometry(), before, "a blocked drag leaves every other column alone");
-		assert.equal(await page.locator(".supermax-divider.is-dragging").count(), 0, "a blocked drag never enters the active resize state");
-		assert.deepEqual(await page.evaluate(() => sizeEvents), [], "a blocked drag stores no session sizes");
+		const after = await geometry();
+		assert.equal((await handle.boundingBox()).x, edge.x + 30, "the grabbed gutter follows the pointer");
+		assert.equal(after[2][1], 102, "the column takes a width between its compact and its labelled form");
+		assert.deepEqual(after.slice(0, 2), before.slice(0, 2), "the columns before the gutter keep their widths");
+		assert.equal(await page.locator('.supermax-cell[data-occurrence="mode/mailboxes/views"]').getAttribute("data-variant"), "icons", "below the labelled form's threshold the column stays compact");
 		await page.mouse.up();
 	} finally {
 		await browser.close(); await server.close();

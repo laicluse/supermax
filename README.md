@@ -146,12 +146,16 @@ albums: {
   title: "Albums", min: 48, preferred: 240, max: 320, overflow: { mode: "keep" },
   variants: [
     { id: "labels", when: { minWidth: 161 } },
-    { id: "icons", min: 48, preferred: 48, max: 48 },
+    { id: "icons", min: 48, preferred: 48, max: 160 },
   ],
 }
 ```
 
-The label form uses the ordinary 48/240/320 space request, but is admitted only when its calculated width is at least 161px. Otherwise the icon form requests exactly 48px and other cells receive the released width. Setting only `preferred: 48` would still let the icon form grow toward its maximum. Style the chosen form through `.supermax-cell[data-variant="icons"]`; the allocator owns the choice, including at the exact breakpoint. A cell that folds keeps the `data-variant` it was last shown with, so it never changes form while out of view.
+The label form uses the ordinary 48/240/320 space request, but is admitted only when its calculated width is at least 161px. Otherwise the icon form takes the 48px it prefers and other cells receive the released width. Its `max` of 160px reaches the label form's threshold: allocation never gives a smaller form with a finite `max` more than it prefers, and the room above that is the user's to drag into with the divider. A smaller form with `max: "*"` stays elastic and takes what is left.
+
+![The Albums column in its icon form at 110px, between the 48px it prefers and the 161px at which labels return](docs/assets/captures/variant-between-forms.png)
+
+**Between two forms:** the divider left Albums at 110px. It stays in its icon form until the label form fits at 161px. Together the forms must admit every size from the smallest `min` to the largest `max`. A declaration that leaves sizes between two forms that neither admits is refused with `variant-gap`, because a divider dragged through them would make the cell jump. Style the chosen form through `.supermax-cell[data-variant="icons"]`; the allocator owns the choice, including at the exact breakpoint. A cell that folds keeps the `data-variant` it was last shown with, so it never changes form while out of view.
 
 `when` accepts positive finite `minWidth` and/or `minHeight`, both inclusive and both required when present. Conditions refer to the allocated cell rectangle, not the browser viewport. Variants inherit omitted bounds from their owner. Split rows may declare their own `variants`, using `minHeight`, `preferredHeight`, and `maxHeight` overrides; their choice is available as `data-row-variant` on each cell in that row and `variant` on the layout row. Row conditions use the whole allocated row rectangle, including when its first cell is horizontally folded or hidden. A row variant retains the row's elastic status, and its fallback must fit the declared supported height. An admission threshold beyond the form's own finite maximum is invalid. Cell and row forms may trade width against height through their conditions; both axes are checked together. A split itself has no variants: its width derives from its rows.
 
@@ -163,7 +167,7 @@ rows: [
     destination: "context", minHeight: 48, preferredHeight: 240, maxHeight: 320,
     variants: [
       { id: "expanded", when: { minHeight: 180 } },
-      { id: "summary", minHeight: 48, preferredHeight: 48, maxHeight: 48 },
+      { id: "summary", minHeight: 48, preferredHeight: 48, maxHeight: 179 },
     ],
   },
   { destination: "work", minHeight: 160, preferredHeight: 400, maxHeight: "*" },

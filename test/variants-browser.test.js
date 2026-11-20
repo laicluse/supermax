@@ -16,7 +16,7 @@ before(async () => {
 		const host = document.createElement("div"); host.style.cssText = "width:700px;height:400px"; document.body.append(host);
 		const navigator = new Navigator({ root: "menu", minViewportHeight: 100, destinations: {
 			menu: { title: "Menu", min: 48, max: 320, preferred: 240, overflow: { mode: "keep" }, variants: [
-				{ id: "labels", when: { minWidth: 161 } }, { id: "icons", min: 48, max: 48, preferred: 48 },
+				{ id: "labels", when: { minWidth: 161 } }, { id: "icons", min: 48, max: 160, preferred: 48 },
 			] },
 			work: { title: "Work", min: 200, max: "*", preferred: 500 },
 		} });
@@ -146,7 +146,7 @@ test("a form can change while its asynchronous content is loading", async () => 
 		const { Navigator, Workspace } = await import("/src/index.js");
 		const element = document.createElement("div"); element.style.cssText = "width:700px;height:200px"; document.body.append(element);
 		const navigator = new Navigator({ root: "pending", minViewportHeight: 100, destinations: {
-			pending: { title: "Pending", min: 48, max: "*", preferred: 240, variants: [{ id: "labels", when: { minWidth: 161 } }, { id: "icons", max: 48, preferred: 48 }] },
+			pending: { title: "Pending", min: 48, max: "*", preferred: 240, variants: [{ id: "labels", when: { minWidth: 161 } }, { id: "icons", max: 160, preferred: 48 }] },
 		} });
 		let resolve;
 		const pending = new Promise((done) => { resolve = done; });
@@ -167,7 +167,7 @@ test("fixed content width accounts for the gutter inside a non-leading cell", as
 		const element = document.createElement("div"); element.style.cssText = "width:700px;height:200px"; document.body.append(element);
 		const navigator = new Navigator({ root: "menu", minViewportHeight: 100, destinations: {
 			menu: { title: "Menu", min: 48, max: 48, overflow: { mode: "keep" } },
-			work: { title: "Work", min: 200, max: "*", preferred: 500, header: "title", variants: [{ id: "expanded", when: { minWidth: 400 } }, { id: "compact", max: 200, preferred: 200 }] },
+			work: { title: "Work", min: 200, max: "*", preferred: 500, header: "title", variants: [{ id: "expanded", when: { minWidth: 400 } }, { id: "compact", max: 399, preferred: 200 }] },
 		} }); navigator.open("work");
 		const view = new Workspace(element, { navigator, content: () => {
 			const element = document.createElement("div"); element.style.width = "100%";

@@ -1067,7 +1067,7 @@ test("a cell that folds keeps the responsive form it was last shown in", async (
 			const navigator = new Navigator({ root: "modes", minViewportHeight: 320, destinations: {
 				modes: { title: "Modes", min: 52, max: 52, overflow: { mode: "keep" } },
 				mailboxes: { title: "Mailboxes", min: 208, max: 320, preferred: 256 },
-				nav: { title: "Nav", min: 208, max: 320, preferred: 240, variants: [{ id: "labels", when: { minWidth: 208 } }, { id: "icons", min: 72, preferred: 72, max: 72 }] },
+				nav: { title: "Nav", min: 208, max: 320, preferred: 240, variants: [{ id: "labels", when: { minWidth: 208 } }, { id: "icons", min: 72, preferred: 72, max: 207 }] },
 				list: { title: "List", min: 320, max: "*", preferred: 400 },
 				detail: { title: "Detail", min: 320, max: 640, preferred: 320, overflow: { mode: "keep" } },
 				messages: { title: "Messages", min: 320, max: "*", preferred: 800, overflow: { mode: "keep" } },

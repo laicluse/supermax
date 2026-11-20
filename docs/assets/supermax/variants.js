@@ -28,6 +28,22 @@ export function variantProblems(owner, axis = "width") {
 			if (!variant.when || typeof variant.when !== "object" || Object.keys(variant.when).length === 0 || Object.entries(variant.when).some(([key, value]) => !["minWidth", "minHeight"].includes(key) || !Number.isFinite(value) || value <= 0)) return ["invalid-variant-condition"];
 		}
 	}
+	// allow-comment: a user drags a divider through every size between the smallest and the largest form, so the forms together must admit all of them; a size no form admits would make the cell jump over it.
+	const [condition, across] = axis === "width" ? ["minWidth", "minHeight"] : ["minHeight", "minWidth"];
+	const gapped = (forms) => {
+		const admitted = forms.map((variant) => {
+			const bounds = { ...owner, ...variant };
+			return [Math.max(bounds[minimum], variant.when?.[condition] ?? 0), bounds[maximum] === "*" ? Infinity : bounds[maximum]];
+		}).sort((first, second) => first[0] - second[0]);
+		let reach = admitted[0][1];
+		for (const [from, until] of admitted.slice(1)) {
+			if (Math.ceil(from) > Math.floor(reach) + 1) return true;
+			reach = Math.max(reach, until);
+		}
+		return false;
+	};
+	// allow-comment: a form that also waits for room on the other axis is not always there, so the forms without such a condition must close the range by themselves as well.
+	if (gapped(variants) || gapped(variants.filter((variant) => variant.when?.[across] == null))) return ["variant-gap"];
 	return [];
 }
 
@@ -38,6 +54,14 @@ export function resizeBounds(owner, axis = "width") {
 		min: Math.min(...forms.map((form) => form[minimum] ?? owner[minimum])),
 		max: Math.max(...forms.map((form) => (form[maximum] ?? owner[maximum]) === "*" ? Infinity : form[maximum] ?? owner[maximum])),
 	};
+}
+
+// allow-comment: a smaller form reaches up to where the next form takes over, so a divider can stop at every size between them. Allocation gives it no more than it prefers; the room above that is the user's to drag into.
+function formOf(owner, variant, axis) {
+	const form = { ...owner, ...variant };
+	const [maximum, preferred] = axis === "width" ? ["max", "preferred"] : ["maxHeight", "preferredHeight"];
+	if (variant === owner.variants[0] || form[maximum] === "*" || form[preferred] == null) return form;
+	return { ...form, [maximum]: Math.min(form[maximum], form[preferred]), reach: form[maximum] };
 }
 
 export function definitionFor(model, occurrence) {
@@ -137,10 +161,11 @@ export function selectVariants(model, allocate) {
 	const assign = (position, variant) => {
 		const choice = choices[position];
 		selected[position] = variant;
-		if (choice.axis === "width") candidate.variantDefinitions.set(choice.occurrence.id, { ...choice.owner, ...variant });
+		const form = formOf(choice.owner, variant, choice.axis);
+		if (choice.axis === "width") candidate.variantDefinitions.set(choice.occurrence.id, form);
 		else {
 			const rows = [...rowDefinitions(candidate, choice.split)];
-			rows[choice.index] = { ...choice.owner, ...variant };
+			rows[choice.index] = form;
 			candidate.variantRows.set(choice.split.id, rows);
 		}
 	};

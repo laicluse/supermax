@@ -5,7 +5,7 @@ import { layoutOf, sameLayout, validateDeclarationSet } from "../src/layout-decl
 
 const variants = [
 	{ id: "labels", when: { minWidth: 161 } },
-	{ id: "icons", min: 48, preferred: 48, max: 48 },
+	{ id: "icons", min: 48, preferred: 48, max: 160 },
 ];
 function menuModel() {
 	const model = new Navigator({ root: "menu", minViewportHeight: 100, destinations: {
@@ -54,13 +54,13 @@ function rowsModel() {
 		split: { title: "Split", header: "title", rows: [
 			{ destination: "one", minHeight: 40, preferredHeight: 160, maxHeight: 160, variants: [
 				{ id: "expanded", when: { minHeight: 100 } },
-				{ id: "compact", minHeight: 40, preferredHeight: 40, maxHeight: 40 },
+				{ id: "compact", minHeight: 40, preferredHeight: 40, maxHeight: 99 },
 			] },
 			{ destination: "two", minHeight: 40, preferredHeight: 160, maxHeight: "*" },
 		] },
 		one: { title: "One", min: 40, preferred: 300, max: 300, variants: [
 			{ id: "wide", when: { minWidth: 180 } },
-			{ id: "narrow", min: 40, preferred: 100, max: 100 },
+			{ id: "narrow", min: 40, preferred: 100, max: 179 },
 		] },
 		two: { title: "Two", min: 40, preferred: 300, max: "*", variants: [
 			{ id: "wide", when: { minWidth: 180 } },
@@ -91,7 +91,8 @@ const focused = signature(rows.layout());
 rows.resize({ width: 700, height: 400 }); rows.layout();
 rows.resize({ width: 200, height: 120 });
 assert.equal(signature(rows.layout()), focused, "fold history never supplies responsive bounds");
-assert.throws(() => rows.setVariants("split", [{ id: "expanded", when: { minHeight: 100 } }, { id: "compact", minHeight: 500, preferredHeight: 500, maxHeight: 500 }], { row: "one" }), /supported-height/);
+assert.throws(() => rows.setVariants("split", [{ id: "expanded", when: { minHeight: 100 } }, { id: "compact", minHeight: 150, preferredHeight: 150, maxHeight: 160 }], { row: "one" }), /supported-height/);
+assert.throws(() => rows.setVariants("split", [{ id: "expanded", when: { minHeight: 100 } }, { id: "compact", minHeight: 40, preferredHeight: 40, maxHeight: 40 }], { row: "one" }), /variant-gap/, "forms that leave heights between them unserved are refused");
 
 for (const broken of [
 	[{ id: "one" }, { id: "two" }],
@@ -104,6 +105,17 @@ for (const broken of [
 	menu: { title: "Menu", min: 48, max: "*", preferred: 240, variants: broken },
 } }), /variant/);
 
+const gapped = { title: "Menu", min: 48, max: 320, preferred: 240, variants: [{ id: "labels", when: { minWidth: 161 } }, { id: "icons", min: 48, preferred: 48, max: 48 }] };
+assert.deepEqual(validateDeclarationSet({ schemaVersion: 2, root: "menu", destinations: { menu: layoutOf(gapped) } }), [{ destination: "menu", reason: "variant-gap" }], "a width between two forms that neither admits is a declaration error");
+assert.throws(() => new Navigator({ root: "menu", minViewportHeight: 100, destinations: { menu: gapped } }), /variant-gap/);
+const reasons = (forms) => validateDeclarationSet({ schemaVersion: 2, root: "menu", destinations: { menu: layoutOf({ ...gapped, variants: forms }) } }).map((problem) => problem.reason);
+assert.deepEqual(reasons([{ id: "labels", when: { minWidth: 161.2 } }, { id: "icons", min: 48, preferred: 48, max: 160.2 }]), ["variant-gap"], "fractional bounds may not skip a whole pixel");
+assert.deepEqual(reasons([{ id: "large", when: { minWidth: 180 } }, { id: "medium", min: 100, preferred: 100, max: 179, when: { minWidth: 100, minHeight: 500 } }, { id: "small", min: 48, preferred: 48, max: 99 }]), ["variant-gap"], "a form that waits for height cannot be the only one to cover a width");
+assert.deepEqual(reasons([{ id: "large", when: { minWidth: 180 } }, { id: "medium", min: 100, preferred: 100, max: 179, when: { minWidth: 100, minHeight: 500 } }, { id: "small", min: 48, preferred: 48, max: 179 }]), []);
+const dragged = menuModel();
+dragged.resize({ width: 479, height: 616 });
+dragged.setSize("menu", 120);
+assert.deepEqual([dragged.layout().cells.get("menu").variant, dragged.layout().cells.get("menu").width], ["icons", 120], "a divider stops at a width between the forms, in the smaller form");
 const declaration = { title: "Menu", min: 48, max: 320, preferred: 240, variants };
 assert.ok(sameLayout(declaration, structuredClone(declaration)));
 assert.ok(!sameLayout(declaration, { ...declaration, variants: variants.map((variant) => variant.id === "icons" ? { ...variant, max: 50 } : variant) }));
@@ -111,7 +123,7 @@ assert.deepEqual(validateDeclarationSet({ schemaVersion: 2, root: "menu", destin
 
 const crowded = new Navigator({ root: "item-0", minViewportHeight: 100, destinations: Object.fromEntries(Array.from({ length: 20 }, (_, index) => [`item-${index}`, {
 	title: `Item ${index}`, min: 20, preferred: 120, max: index === 19 ? "*" : 220, overflow: index === 0 ? { mode: "keep" } : undefined,
-	variants: [{ id: "expanded", when: { minWidth: 120 } }, { id: "compact", preferred: 20, max: index === 19 ? "*" : 20 }],
+	variants: [{ id: "expanded", when: { minWidth: 120 } }, { id: "compact", preferred: 20, max: index === 19 ? "*" : 119 }],
 }])) });
 crowded.resize({ width: 200, height: 300 });
 let parent = "item-0";
@@ -127,7 +139,7 @@ const repeated = new Navigator({ root: "home", minViewportHeight: 150, destinati
 	split: { title: "Split", rows: [{ destination: "one", minHeight: 100, maxHeight: 100 }, { destination: "two", minHeight: 100, preferredHeight: 100, maxHeight: "*" }] },
 	one: { title: "One", min: 20, max: 20, overflow: { mode: "keep" } },
 	two: { title: "Two", min: 100, max: 100, overflow: { mode: "keep" } },
-	common: { title: "Common", min: 30, preferred: 200, max: "*", variants: [{ id: "expanded", when: { minWidth: 180 } }, { id: "compact", preferred: 30, max: 30 }] },
+	common: { title: "Common", min: 30, preferred: 200, max: "*", variants: [{ id: "expanded", when: { minWidth: 180 } }, { id: "compact", preferred: 30, max: 179 }] },
 } });
 repeated.resize({ width: 280, height: 400 }); repeated.open("split");
 repeated.open("common", { from: "home/split/one" }); repeated.open("common", { from: "home/split/two" });
@@ -149,12 +161,19 @@ assert.equal(branching.layout().rows.get("home/split/one").variant, "expanded", 
 
 const boundedDefinitions = structuredClone(rowsModel().destinations);
 boundedDefinitions.two.max = 300;
-boundedDefinitions.two.variants[1].max = 100;
+boundedDefinitions.two.variants[1].max = 179;
 boundedDefinitions.extra = { title: "Extra", min: 20, max: "*", preferred: 20 };
 const bounded = new Navigator({ root: "home", minViewportHeight: 80, destinations: boundedDefinitions });
 bounded.resize({ width: 140, height: 400 }); bounded.open("split");
 assert.equal(bounded.layout().cells.get("home/split").resizeMax, 300, "a split divider can reach richer forms inside its rows");
 
+// allow-comment: a smaller form on its own is what allocation sees of it: its bounds up to its preference.
+const materialized = (owner, form) => {
+	const merged = { ...owner, ...form };
+	delete merged.variants;
+	if (form !== owner.variants[0]) for (const [maximum, preferred] of [["max", "preferred"], ["maxHeight", "preferredHeight"]]) if (Number.isFinite(merged[maximum]) && merged[preferred] != null) merged[maximum] = Math.min(merged[maximum], merged[preferred]);
+	return merged;
+};
 for (const width of [60, 119, 179, 200, 320]) for (const height of [40, 80, 120, 200, 400]) {
 	const source = rowsModel(); source.resize({ width, height });
 	const actual = source.layout();
@@ -163,7 +182,7 @@ for (const width of [60, 119, 179, 200, 320]) for (const height of [40, 80, 120,
 		const definitions = structuredClone(source.destinations);
 		const owners = [definitions.split.rows[0], definitions.one, definitions.two];
 		const forms = owners.map((owner, index) => owner.variants[combination >> (2 - index) & 1]);
-		owners.forEach((owner, index) => { Object.assign(owner, forms[index]); delete owner.variants; });
+		owners.forEach((owner, index) => { const merged = materialized(owner, forms[index]); delete owner.variants; Object.assign(owner, merged); });
 		const candidate = new Navigator({ root: "home", minViewportHeight: 80, destinations: definitions });
 		candidate.resize({ width, height }); candidate.open("split");
 		const layout = candidate.layout();
@@ -182,9 +201,10 @@ const random = (limit) => { seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0
 for (let sample = 0; sample < 40; sample += 1) {
 	const definitions = Object.fromEntries(Array.from({ length: 5 }, (_, index) => {
 		const min = 20 + random(30);
+		const expands = min + 50 + random(100);
 		return [`cell-${index}`, { title: `Cell ${index}`, min, preferred: min + 100, max: index === 4 ? "*" : min + 200, overflow: index === 0 ? { mode: "keep" } : sample % 2 ? { mode: "hide" } : { mode: "fold", size: 4 }, variants: [
-			{ id: "expanded", when: { minWidth: min + 50 + random(100) } },
-			{ id: "compact", min, preferred: min, max: index === 4 ? "*" : min },
+			{ id: "expanded", when: { minWidth: expands } },
+			{ id: "compact", min, preferred: min, max: index === 4 ? "*" : expands - 1 },
 		] }];
 	}));
 	const width = random(1000);
@@ -202,8 +222,7 @@ for (let sample = 0; sample < 40; sample += 1) {
 		const forms = Array.from({ length: 5 }, (_, index) => combination >> (4 - index) & 1);
 		const candidateDefinitions = Object.fromEntries(Object.entries(definitions).map(([id, definition], index) => {
 			const selected = definition.variants[forms[index]];
-			const candidate = { ...definition, ...selected }; delete candidate.variants;
-			return [id, candidate];
+			return [id, materialized(definition, selected)];
 		}));
 		const candidate = make(candidateDefinitions).layout();
 		const cells = [...candidate.cells.values()];
