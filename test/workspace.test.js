@@ -297,6 +297,19 @@ test("in dark mode the frustum is lighter than what lies behind it, still lit fr
 	}
 });
 
+test("a modal whose content arrives late already stands at the height that content needs", async () => {
+	await page.goto("about:blank");
+	await page.goto(`${server.url}/?delay=400${PRESENTATION === "origami" ? "" : `&presentation=${PRESENTATION}`}#${encodeLog([open("album:coast", "albums"), open("coast:photo:b", coast.row("map"))])}`);
+	await page.waitForFunction(() => window.supermaxDemo?.frames.length === 2);
+	await settle();
+	await page.click(inFrame("a", `[data-occurrence="${coast.photo("map", "b")}"] .caption-edit`));
+	const height = () => page.evaluate(() => window.supermaxDemo.frames[0].workspace.modal.dialog.offsetHeight);
+	assert.ok(await page.locator(inFrame("a", ".supermax-modal .supermax-loading")).count() > 0, "the content is still loading");
+	const loading = await height();
+	await settle();
+	assert.equal(await height(), loading, "the modal keeps its height when the editor arrives");
+});
+
 test("a modal opens at its preferred size, moves by its header and resizes only within its bounds and its viewport", async () => {
 	await openDemo([open("album:coast", "albums")]);
 	await page.evaluate(() => window.supermaxDemo.frames[0].workspace.openModal({ title: "Sized", min: 300, max: 520, preferred: 480, minHeight: 200, preferredHeight: 260, content: () => ({ element: document.createElement("p") }) }, {}));

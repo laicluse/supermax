@@ -293,6 +293,7 @@ function renderPhoto(occurrence, data, workspace) {
 	editCaption.type = "button";
 	editCaption.addEventListener("click", () => workspace.openModal({
 		title: `Caption for ${photo.title}`,
+		preferredHeight: 295,
 		content: (modal, host) => session.fetchContent(key.photo(photo)).then((content) => renderCaptionEditor(modal, host, { photo, caption, content })),
 	}, { from: occurrence.id }));
 	const save = element("button", "metadata-link caption-save", "Save");
