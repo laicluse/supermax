@@ -1,7 +1,10 @@
 import { follow, projectionAlong, unfollow } from "./follow.js";
-import { APPEAR, DISAPPEAR } from "./motion.js";
+import { APPEAR, DISAPPEAR, EASING, TIMING, TimeScale } from "./motion.js";
 
-export const STRIP_TIMING = Object.freeze({ duration: 200, easing: "cubic-bezier(0.25, 0.1, 0.25, 1)" });
+export const STRIP_TIMING = Object.freeze({ duration: TIMING.stroke, easing: EASING.room, settle: TIMING.settle });
+
+// allow-comment: a room whose target moves less than this many pixels takes it without motion.
+export const STILL = 2;
 
 const depthOf = (id) => String(id).split("/").length;
 
@@ -50,6 +53,24 @@ function fold(element, frames, timing) {
 	return animation;
 }
 
+const delayOf = (animation) => animation.effect?.getTiming().delay ?? 0;
+const started = (animation) => animation.playState === "finished" || (animation.currentTime ?? 0) > delayOf(animation);
+const ahead = (animation) => (started(animation) ? 0 : delayOf(animation) - (animation.currentTime ?? 0));
+const remaining = (animation) => (animation.playState === "finished" ? 0 : Math.max(0, delayOf(animation) + animation.effect.getTiming().duration - (animation.currentTime ?? 0)));
+const moving = (animation) => (animation.playState === "running" || animation.playState === "paused") && started(animation);
+
+function undelay(animation) {
+	for (const part of [animation, animation.shade].filter(Boolean)) {
+		const time = Math.max(0, (part.currentTime ?? 0) - delayOf(part));
+		part.effect.updateTiming({ delay: 0 });
+		part.currentTime = time;
+	}
+}
+
+function postpone(animation, delay) {
+	for (const part of [animation, animation.shade].filter(Boolean)) part.effect.updateTiming({ delay: (part.currentTime ?? 0) + delay });
+}
+
 function stop(animation) {
 	animation?.cancel();
 	animation?.shade?.cancel();
@@ -64,8 +85,13 @@ function poseMatrix(element, pose) {
 }
 
 export class CellStrip {
-	constructor(viewport, { duration = STRIP_TIMING.duration, easing = STRIP_TIMING.easing, motion = null, horizon = null } = {}) {
+	constructor(viewport, { duration = STRIP_TIMING.duration, easing = STRIP_TIMING.easing, settle = STRIP_TIMING.settle, time = new TimeScale(), motion = null, horizon = null, toward = null } = {}) {
+		this.time = time;
+		this.settling = settle;
+		this.departures = new Map();
+		this.roomDelay = 0;
 		this.viewport = viewport;
+		this.toward = toward;
 		this.horizon = horizon;
 		this.driven = new Set();
 		this.drivenWaiters = [];
@@ -103,6 +129,18 @@ export class CellStrip {
 		if (!animate || this.reducedMotion.matches || this.duration <= 0 || (firstPaint && !arrive)) return this.sync(entries);
 
 		const view = this.viewport.ownerDocument.defaultView;
+		const departed = this.resolveDepartures(ids);
+		for (const entry of this.entries) {
+			const motion = this.motions.get(entry.id);
+			if (!entry.departing || entry.overlay || !motion || ahead(motion.animation) <= 0) continue;
+			stop(motion.animation);
+			this.motions.delete(entry.id);
+			entry.element.style.removeProperty("transform-origin");
+			entry.departing = false;
+		}
+		const running = [...this.geometry, ...[...this.motions.values()].map((motion) => motion.animation)];
+		const hold = running.some(moving) ? 0 : this.time.ms(this.settling);
+		const pending = Math.max(0, ...running.map(ahead));
 		const startingTransform = view.getComputedStyle(this.strip).transform;
 		const previous = new Map(this.entries.map((entry) => {
 			const box = this.boxOf(entry);
@@ -127,8 +165,14 @@ export class CellStrip {
 			const partner = newlyLeaving.find((candidate) => depthOf(candidate.id) === depthOf(entry.id) && ![...partners.values()].includes(candidate));
 			if (partner) partners.set(entry.id, partner);
 		}
-		const fromRest = [...partners.values()].some((partner) => !this.motions.has(partner.id));
-		const wait = fromRest ? this.duration : 0;
+		let wait = 0;
+		for (const partner of partners.values()) {
+			const departure = departed.get(partner.id);
+			wait = Math.max(wait, departure ? remaining(departure) : this.motions.has(partner.id) ? 0 : this.time.ms(this.duration));
+		}
+		const start = Math.max(wait, hold, pending);
+		const gone = (entry) => Math.max(hold, pending, departed.has(entry.id) ? remaining(departed.get(entry.id)) : 0);
+		this.roomDelay = start;
 
 		for (const entry of leaving) {
 			const motion = this.motions.get(entry.id);
@@ -158,27 +202,37 @@ export class CellStrip {
 		if (this.motion) {
 			for (const entry of newlyLeaving) {
 				if (entry.still) continue;
+				if (departed.has(entry.id)) {
+					this.track(entry, "leave", departed.get(entry.id));
+					continue;
+				}
 				const motion = this.motions.get(entry.id);
 				if (entry.overlay) {
-					if (motion?.kind === "enter" || motion?.kind === "return") this.tearAway(entry);
-					else this.foldAway(entry);
+					const successor = [...partners].find(([, partner]) => partner === entry)?.[0];
+					const toward = successor ? this.toward?.(entry.id, successor) ?? null : null;
+					if (motion?.kind === "enter" || motion?.kind === "return") this.tearAway(entry, toward);
+					else this.foldAway(entry, toward);
 				} else if (motion) this.reverse(entry, "leave");
-				else this.foldIn(entry);
+				else this.foldIn(entry, start);
 			}
 			for (const entry of returning) {
 				if (entry.still) continue;
 				if (this.motions.get(entry.id)?.reversible) this.reverse(entry, "enter");
 				else this.foldBack(entry);
 			}
-			for (const entry of arriving) if (!entry.still) this.foldOpen(entry, wait, !partners.has(entry.id));
+			for (const motion of this.motions.values()) {
+				const delay = motion.kind === "enter" ? ahead(motion.animation) : 0;
+				if (delay > 0 && delay < start) postpone(motion.animation, start);
+			}
+			for (const entry of arriving) if (!entry.still) this.foldOpen(entry, start, !partners.has(entry.id));
 		}
 		this.drive(arriving, newlyLeaving, partners);
 
 		const closingOnly = arriving.length === 0 && returning.length === 0 && newlyLeaving.some((entry) => !entry.overlay);
 		const easing = closingOnly ? reversedEasing(this.easing) : this.easing;
-		const timing = (delay) => ({ duration: this.duration, easing, delay, fill: "both" });
+		const timing = (delay) => ({ duration: this.time.ms(this.duration), easing, delay, fill: "both" });
 		if (startingTransform !== view.getComputedStyle(this.strip).transform) {
-			this.geometry.push(this.strip.animate([{ transform: startingTransform }, { transform: targetTransform }], timing(wait)));
+			this.geometry.push(this.strip.animate([{ transform: startingTransform }, { transform: targetTransform }], timing(start)));
 		}
 		for (const entry of this.entries) {
 			if (entry.overlay || this.driven.has(entry.id)) continue;
@@ -186,8 +240,8 @@ export class CellStrip {
 			const room = (record) => record.currentWidth + record.currentMargin;
 			const from = old && !old.overlay ? room(old) : partners.has(entry.id) ? room(previous.get(partners.get(entry.id).id)) : 0;
 			const to = entry.displayWidth;
-			if (Math.abs(from - to) <= 0.01) continue;
-			const delay = timing(entry.departing ? 0 : wait);
+			if (Math.abs(from - to) < STILL) continue;
+			const delay = timing(entry.departing ? gone(entry) : start);
 			const box = this.boxOf(entry);
 			if (entry.card) {
 				const card = parseFloat(box.style.width) || 0;
@@ -197,7 +251,7 @@ export class CellStrip {
 				this.geometry.push(box.animate([{ width: `${from}px` }, { width: `${to}px` }], delay));
 			}
 		}
-		if (!this.motion) this.slide(previous, timing(wait));
+		if (!this.motion) this.slide(previous, timing(start));
 		if (this.driven.size) {
 			this.step();
 			follow(this.strip, () => this.step());
@@ -227,6 +281,10 @@ export class CellStrip {
 			return false;
 		}
 		return true;
+	}
+
+	roomTiming() {
+		return { duration: this.time.ms(this.duration), easing: this.easing, delay: this.roomDelay };
 	}
 
 	followPapers() {
@@ -347,14 +405,14 @@ export class CellStrip {
 	foldOpen(entry, delay, follows) {
 		const pose = this.motion.open(entry.element, this.axisOf(entry));
 		entry.element.style.transformOrigin = pose.origin;
-		const animation = fold(entry.element, [{ transform: pose.transform, shade: pose.shade ?? 1 }, { transform: "none", shade: 0 }], { duration: this.duration, delay, easing: APPEAR.easing, fill: "both" });
+		const animation = fold(entry.element, [{ transform: pose.transform, shade: pose.shade ?? 1 }, { transform: "none", shade: 0 }], { duration: this.time.ms(this.duration), delay, easing: APPEAR.easing, fill: "both" });
 		this.track(entry, "enter", animation, follows, true);
 	}
 
-	foldIn(entry) {
+	foldIn(entry, delay = 0) {
 		const pose = this.motion.open(entry.element, this.axisOf(entry));
 		entry.element.style.transformOrigin = pose.origin;
-		const animation = fold(entry.element, [{ transform: pose.transform, shade: pose.shade ?? 1 }, { transform: "none", shade: 0 }], { duration: this.duration, easing: APPEAR.easing, fill: "both", direction: "reverse" });
+		const animation = fold(entry.element, [{ transform: pose.transform, shade: pose.shade ?? 1 }, { transform: "none", shade: 0 }], { duration: this.time.ms(this.duration), delay, easing: APPEAR.easing, fill: "both", direction: "reverse" });
 		this.track(entry, "leave", animation, true, true);
 	}
 
@@ -367,20 +425,20 @@ export class CellStrip {
 		motion.reversible = true;
 	}
 
-	foldAway(entry) {
-		const pose = this.motion.close(entry.element, this.axisOf(entry));
+	foldAway(entry, toward = null) {
+		const pose = this.motion.close(entry.element, { ...this.axisOf(entry), toward });
 		entry.element.style.transformOrigin = pose.origin;
-		const animation = fold(entry.element, [{ transform: "none", shade: 0 }, { transform: pose.transform, shade: pose.shade ?? 1 }], { duration: this.duration, easing: DISAPPEAR.easing, fill: "forwards" });
+		const animation = fold(entry.element, [{ transform: "none", shade: 0 }, { transform: pose.transform, shade: pose.shade ?? 1 }], { duration: this.time.ms(this.duration), easing: DISAPPEAR.easing, fill: "forwards" });
 		this.track(entry, "leave", animation, !entry.overlay);
 	}
 
-	tearAway(entry) {
+	tearAway(entry, toward = null) {
 		const from = currentPose(entry.element);
-		const pose = this.motion.close(entry.element, this.axisOf(entry));
+		const pose = this.motion.close(entry.element, { ...this.axisOf(entry), toward });
 		const to = poseMatrix(entry.element, pose);
 		stop(this.motions.get(entry.id)?.animation);
 		entry.element.style.transformOrigin = "0 0";
-		const animation = fold(entry.element, [{ transform: from.matrix.toString(), shade: from.shade }, { transform: to.toString(), shade: pose.shade ?? 1 }], { duration: this.duration, easing: DISAPPEAR.easing, fill: "forwards" });
+		const animation = fold(entry.element, [{ transform: from.matrix.toString(), shade: from.shade }, { transform: to.toString(), shade: pose.shade ?? 1 }], { duration: this.time.ms(this.duration), easing: DISAPPEAR.easing, fill: "forwards" });
 		this.track(entry, "tear", animation);
 	}
 
@@ -388,8 +446,55 @@ export class CellStrip {
 		const from = currentPose(entry.element);
 		stop(this.motions.get(entry.id)?.animation);
 		entry.element.style.transformOrigin = "0 0";
-		const animation = fold(entry.element, [{ transform: from.matrix.toString(), shade: from.shade }, { transform: new DOMMatrix().toString(), shade: 0 }], { duration: this.duration, easing: APPEAR.easing, fill: "both" });
+		const animation = fold(entry.element, [{ transform: from.matrix.toString(), shade: from.shade }, { transform: new DOMMatrix().toString(), shade: 0 }], { duration: this.time.ms(this.duration), easing: APPEAR.easing, fill: "both" });
 		this.track(entry, "return", animation, true);
+	}
+
+	// allow-comment: a departure folds a cell away in its own room before the host knows what replaces it; the room stays reserved until the next update decides.
+	depart(ids, { after = 0, toward = null } = {}) {
+		if (!this.motion || this.reducedMotion.matches || this.duration <= 0) return;
+		for (const entry of this.entries) {
+			if (!ids.has(entry.id) || entry.departing || entry.still || !entry.visible || this.departures.has(entry.id) || this.motions.has(entry.id)) continue;
+			const pose = this.motion.close(entry.element, { ...this.axisOf(entry), toward });
+			entry.element.style.transformOrigin = pose.origin;
+			entry.element.inert = true;
+			this.departures.set(entry.id, fold(entry.element, [{ transform: "none", shade: 0 }, { transform: pose.transform, shade: pose.shade ?? 1 }], { duration: this.time.ms(this.duration), delay: this.time.ms(after), easing: DISAPPEAR.easing, fill: "forwards" }));
+		}
+	}
+
+	stay(ids) {
+		for (const [id, animation] of this.departures) {
+			if (!ids.has(id)) continue;
+			this.departures.delete(id);
+			this.comeBack(this.entries.find((entry) => entry.id === id), animation);
+		}
+	}
+
+	comeBack(entry, animation) {
+		entry.element.inert = !entry.visible;
+		if (!started(animation)) {
+			stop(animation);
+			entry.element.style.removeProperty("transform-origin");
+			return;
+		}
+		undelay(animation);
+		animation.reverse();
+		animation.shade?.reverse();
+		this.track(entry, "enter", animation, false, true);
+	}
+
+	resolveDepartures(ids) {
+		const departed = new Map();
+		for (const [id, animation] of this.departures) {
+			const entry = this.entries.find((candidate) => candidate.id === id);
+			if (ids.has(id) || !started(animation)) this.comeBack(entry, animation);
+			else {
+				undelay(animation);
+				departed.set(id, animation);
+			}
+		}
+		this.departures = new Map();
+		return departed;
 	}
 
 	track(entry, kind, animation, follows = false, reversible = false) {
@@ -469,7 +574,10 @@ export class CellStrip {
 		this.driven = new Set();
 		this.step();
 		for (const motion of this.motions.values()) stop(motion.animation);
+		for (const animation of this.departures.values()) stop(animation);
 		this.motions = new Map();
+		this.departures = new Map();
+		this.roomDelay = 0;
 		for (const entry of this.entries) {
 			if (!entries.some((candidate) => candidate.element === entry.element)) this.drop(entry);
 		}

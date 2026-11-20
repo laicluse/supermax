@@ -4,9 +4,11 @@ import { chromium } from "playwright";
 import { albums, depthCount, depthId, paths } from "../docs/assets/album.js";
 import { appendAction, decodeLog, encodeLog } from "../docs/assets/deeplink.js";
 import { STRIP_TIMING } from "../src/cell-strip.js";
+import { TIMING } from "../src/motion.js";
 import { serveDocs } from "./serve-docs.js";
 
 const coast = paths(albums[0]);
+const SETTLE = STRIP_TIMING.settle;
 const open = (destination, from) => ({ type: "open", destination, from });
 const THREE_ROWS = [open("album:coast", "albums"), open("coast:photo:a", coast.row("thumbnails")), open("coast:photo:b", coast.row("map")), open("coast:photo:c", coast.row("people"))];
 
@@ -736,25 +738,25 @@ test("neighbours that move together stay joined at their shared edge, opening an
 	const across = [[cellIn(coast.row("thumbnails")), cellIn(coast.photo("thumbnails", "c")), "x"], [cellIn(coast.photo("thumbnails", "c")), cellIn(coast.metadata("thumbnails", "c")), "x"]];
 	const joined = (moments) => moments.every((gaps) => gaps.every((gap) => gap > -1 && gap < 2));
 	await closeNewest("a");
-	const closing = await seams(across, [40, 100, 160]);
+	const closing = await seams(across, [40, 100, 160].map((time) => time + SETTLE));
 	assert.ok(joined(closing), `closing: each folding paper starts one gutter from where its neighbour ends: ${JSON.stringify(closing)}`);
 	await play();
 	await settle();
 	await page.evaluate(() => window.supermaxDemo.prepare("coast:photo:c"));
 	await page.evaluate((selector) => document.querySelector(selector).click(), `${cellIn(coast.row("thumbnails"))} .thumb[data-destination="coast:photo:c"]`);
-	const edges = await page.evaluate(async (selector) => {
+	const edges = await page.evaluate(async ({ selector, times }) => {
 		const cell = document.querySelector(selector);
 		const moments = [];
-		for (const time of [40, 100, 160]) {
+		for (const time of times) {
 			document.getAnimations().forEach((animation) => { animation.pause(); animation.currentTime = time; });
 			await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
 			const room = cell.parentElement.getBoundingClientRect();
 			moments.push(Math.round(room.left + room.width + parseFloat(getComputedStyle(cell.parentElement).marginRight) - cell.getBoundingClientRect().right) || 0);
 		}
 		return moments;
-	}, cellIn(coast.row("thumbnails")));
+	}, { selector: cellIn(coast.row("thumbnails")), times: [40, 100, 160].map((time) => time + SETTLE) });
 	assert.deepEqual(edges, [0, 0, 0], "the shrinking cell moves with that edge as a whole, its own right edge on it, never cut off");
-	const opening = await seams(across, [40, 100, 160]);
+	const opening = await seams(across, [40, 100, 160].map((time) => time + SETTLE));
 	assert.ok(joined(opening), `opening: the same: ${JSON.stringify(opening)}`);
 	await play();
 	await settle();
@@ -762,14 +764,14 @@ test("neighbours that move together stay joined at their shared edge, opening an
 	await page.evaluate(() => window.supermaxDemo.prepare("album:coast"));
 	await page.evaluate(() => document.querySelector('.frame[data-frame="a"] .album-item[data-destination="album:coast"]').click());
 	const down = [[cellIn(coast.row("thumbnails")), cellIn(coast.row("map")), "y"], [cellIn(coast.row("map")), cellIn(coast.row("people")), "y"]];
-	const gutter = await seams(down, [100]);
+	const gutter = await seams(down, [100 + SETTLE]);
 	assert.ok(joined(gutter), `opening rows: each folding row starts one gutter below the one above: ${JSON.stringify(gutter)}`);
-	const later = await seams(down, [40, 160]);
+	const later = await seams(down, [40, 160].map((time) => time + SETTLE));
 	assert.ok(joined(later), `at every moment: ${JSON.stringify(later)}`);
 	await play();
 	await settle();
 	await closeNewest("a");
-	const folding = await seams(down, [40, 100, 160]);
+	const folding = await seams(down, [40, 100, 160].map((time) => time + SETTLE));
 	assert.ok(joined(folding), `and while the rows fold away: ${JSON.stringify(folding)}`);
 	await play();
 	await settle();
@@ -830,11 +832,11 @@ test("closing without a replacement plays the opening backwards, and clicking ba
 	});
 	await page.evaluate(() => window.supermaxDemo.prepare("coast:photo:c"));
 	await page.evaluate((selector) => document.querySelector(selector).click(), `${cells[0]} .thumb[data-destination="coast:photo:c"]`);
-	const opening = await pose([50, 100, 150]);
+	const opening = await pose([50, 100, 150].map((time) => time + SETTLE));
 	await finish();
 	await settle();
 	await closeNewest("a");
-	const closing = await pose([150, 100, 50]);
+	const closing = await pose([150, 100, 50].map((time) => time + SETTLE));
 	const near = (a, b) => a.every((cell, index) => cell.every((value, axis) => Math.abs(value - b[index][axis]) <= 2));
 	assert.ok(opening.every((moment, index) => near(moment, closing[index])), `each moment of the close mirrors the opening: ${JSON.stringify({ opening, closing })}`);
 	await finish();
@@ -846,14 +848,14 @@ test("closing without a replacement plays the opening backwards, and clicking ba
 		window.pingPong ??= animation;
 		return { same: animation === window.pingPong, rate: animation.playbackRate, time: Math.round(animation.currentTime) };
 	});
-	await page.evaluate(() => document.getAnimations().forEach((animation) => { animation.pause(); animation.currentTime = 100; }));
-	assert.deepEqual(await motion(), { same: true, rate: 1, time: 100 }, "halfway through opening");
+	await page.evaluate((time) => document.getAnimations().forEach((animation) => { animation.pause(); animation.currentTime = time; }), 100 + SETTLE);
+	assert.deepEqual(await motion(), { same: true, rate: 1, time: 100 + SETTLE }, "halfway through opening");
 	await closeNewest("a");
 	const back = await motion();
-	assert.ok(back.same && back.rate === -1 && Math.abs(back.time - 100) <= 50, `Back halfway reverses the opening from where it is: ${JSON.stringify(back)}`);
+	assert.ok(back.same && back.rate === -1 && Math.abs(back.time - 100 - SETTLE) <= 50, `Back halfway reverses the opening from where it is: ${JSON.stringify(back)}`);
 	await page.evaluate((selector) => document.querySelector(selector).click(), `${cells[0]} .thumb[data-destination="coast:photo:c"]`);
 	const again = await motion();
-	assert.ok(again.same && again.rate === 1 && Math.abs(again.time - 100) <= 80, `and opening again reverses it once more: ${JSON.stringify(again)}`);
+	assert.ok(again.same && again.rate === 1 && Math.abs(again.time - 100 - SETTLE) <= 80, `and opening again reverses it once more: ${JSON.stringify(again)}`);
 	await finish();
 	await settle();
 });
@@ -1015,6 +1017,50 @@ test("zooming a cell hides the cells before it, keeps what follows, and Show zoo
 	assert.deepEqual(await shown(), before, "bringing everything back, with nothing closed");
 });
 
+test("a replaced cell folds away towards where its own navigation came from, compared with where the new one came from", { skip: PRESENTATION !== "origami" }, async () => {
+	await openDemo([open("album:coast", "albums")]);
+	const folds = await page.evaluate(async () => {
+		const workspace = window.supermaxDemo.frames[0].workspace;
+		const place = (top) => {
+			const source = document.createElement("button");
+			source.style.cssText = `position:absolute;left:0;top:${top}px;width:10px;height:10px`;
+			workspace.element.append(source);
+			return source;
+		};
+		const high = place(20);
+		const low = place(400);
+		const from = "albums/album:coast/coast:thumbnails";
+		const photo = (id) => `${from}/coast:photo:${id}`;
+		const finish = async () => {
+			document.getAnimations().forEach((animation) => { if (Number.isFinite(animation.effect?.getComputedTiming().endTime)) animation.finish(); });
+			await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+		};
+		const leaving = (id) => {
+			const cell = document.querySelector(`.frame[data-frame="a"] [data-occurrence="${photo(id)}"]`);
+			const fold = cell.getAnimations().find((animation) => !animation.effect.pseudoElement && animation.effect.getKeyframes().some((frame) => String(frame.transform ?? "").includes("rotate")));
+			return [cell.style.transformOrigin, fold.effect.getKeyframes().at(-1).transform];
+		};
+		await Promise.all(["b", "c", "d"].map((id) => window.supermaxDemo.prepare(`coast:photo:${id}`)));
+		workspace.apply({ type: "open", destination: "coast:photo:b", from, origin: high });
+		await finish();
+		workspace.apply({ type: "open", destination: "coast:photo:c", from, origin: low });
+		const downward = leaving("b");
+		await finish();
+		workspace.apply({ type: "open", destination: "coast:photo:b", from, origin: high });
+		const upward = leaving("c");
+		await finish();
+		workspace.apply({ type: "open", destination: "coast:photo:d", from });
+		const unknown = leaving("b");
+		await finish();
+		high.remove();
+		low.remove();
+		return { downward, upward, unknown };
+	});
+	assert.deepEqual(folds.downward, ["center top", "rotateX(-90deg)"], "a click lower down folds the old cell away over its top edge");
+	assert.deepEqual(folds.upward, ["center bottom", "rotateX(90deg)"], "a click higher up folds it away over its bottom edge");
+	assert.deepEqual(folds.unknown, ["right center", "rotateY(-90deg)"], "without a source it folds away on its far edge as before");
+});
+
 test("clicks faster than a stroke tear the earlier cells off from where they are, and nothing jumps", { skip: PRESENTATION !== "origami" }, async () => {
 	await openDemo([open("album:coast", "albums")]);
 	await page.evaluate(() => Promise.all(["b", "c", "d"].map((id) => window.supermaxDemo.prepare(`coast:photo:${id}`))));
@@ -1050,6 +1096,104 @@ test("clicks faster than a stroke tear the earlier cells off from where they are
 	await settle();
 	assert.equal(await page.locator(inFrame("a", "[data-supermax-exiting]")).count(), 0, "and leaves when its own motion ends");
 	assert.equal((await groups("a")).at(-1), "Photo D");
+});
+
+const shapes = (frameKey) => page.evaluate((key) => document.getAnimations()
+	.filter((animation) => animation.effect?.target?.closest?.(`.frame[data-frame="${key}"]`))
+	.map((animation) => {
+		const frames = animation.effect.getKeyframes();
+		const target = animation.effect.target;
+		return { target: target.dataset?.occurrence?.split("/").pop() ?? target.className, changes: Object.keys(frames[0]).filter((property) => !["offset", "easing", "composite", "computedOffset"].includes(property) && frames[0][property] !== frames.at(-1)[property]) };
+	})
+	.filter((shape) => shape.changes.length > 0), frameKey);
+
+test("renders that follow within the settle window move each room once, by the net change", { skip: PRESENTATION !== "origami" }, async () => {
+	await openDemo([open("album:coast", "albums")]);
+	await resize([[1400, 640], [420, 640]]);
+	await page.evaluate(() => Promise.all(["coast:photo:b", "coast:photo:c"].map((id) => window.supermaxDemo.prepare(id))));
+	const thumb = (id) => inFrame("a", `[data-occurrence="${coast.row("thumbnails")}"] .thumb[data-destination="coast:photo:${id}"]`);
+	await page.click(thumb("c"));
+	await settle();
+	await page.evaluate((selector) => {
+		window.supermaxDemo.dispatch({ type: "close" }, window.supermaxDemo.frames[0].workspace);
+		document.querySelector(selector).click();
+	}, thumb("c"));
+	assert.deepEqual(await shapes("a"), [], "a close that the next render takes back moves nothing");
+	await settle();
+	await page.evaluate((selector) => {
+		window.supermaxDemo.dispatch({ type: "close" }, window.supermaxDemo.frames[0].workspace);
+		document.querySelector(selector).click();
+	}, thumb("b"));
+	const strokes = await folds("a");
+	const away = strokes.filter((fold) => fold.leaving).map((fold) => fold.cell).sort();
+	assert.deepEqual(away, ["coast:history:c", "coast:metadata:c", "coast:photo:c"], "a close followed by another opening at the same place is one replacement");
+	assert.ok(strokes.filter((fold) => fold.leaving).every((fold) => fold.delay === 0), "whose old cells fold away at once");
+	assert.ok(strokes.filter((fold) => !fold.leaving).every((fold) => fold.delay === STRIP_TIMING.duration), `and whose new cells open in their rooms once the old ones are gone: ${JSON.stringify(strokes)}`);
+	await settle();
+	assert.equal((await groups("a")).at(-1), "Photo B");
+});
+
+const departureOf = (selector) => page.locator(selector).evaluate((cell) => {
+	const animation = cell.getAnimations().find((candidate) => candidate.effect.getKeyframes().some((frame) => String(frame.transform ?? "").includes("rotate")));
+	return animation ? { delay: animation.effect.getTiming().delay, rate: animation.playbackRate, state: animation.playState, to: animation.effect.getKeyframes().at(-1).transform } : null;
+});
+
+test("while a layout is on its way the cells it replaces fold away in rooms that stay, and the new cell opens there in one stroke", { skip: PRESENTATION !== "origami" }, async () => {
+	await openDemo([open("album:coast", "albums")]);
+	const photoA = inFrame("a", `[data-occurrence="${coast.photo("thumbnails", "a")}"]`);
+	const room = () => page.locator(photoA).evaluate((cell) => Math.round(cell.parentElement.getBoundingClientRect().width));
+	const before = await room();
+	await page.evaluate(() => window.supermaxDemo.setNetwork({ delay: "1500" }));
+	await page.click(inFrame("a", `[data-occurrence="${coast.row("thumbnails")}"] .thumb[data-destination="coast:photo:b"]`));
+	const departure = await departureOf(photoA);
+	assert.equal(departure?.delay, TIMING.depart, "the old photo keeps its content for a moment, then folds away");
+	assert.deepEqual((await shapes("a")).filter((shape) => !shape.changes.includes("transform") && !shape.changes.includes("opacity")), [], "and no room moves");
+	await page.waitForTimeout(TIMING.depart + STRIP_TIMING.duration + 100);
+	assert.equal((await departureOf(photoA)).state, "finished", "it is gone before the layout arrives");
+	assert.equal(await room(), before, "its room stays, showing the canvas");
+	assert.equal(await page.locator(photoA).evaluate((cell) => cell.inert), true, "and what folded away takes no clicks");
+	await page.waitForSelector(inFrame("a", `[data-occurrence="${coast.photo("thumbnails", "b")}"]`), { timeout: 3000 });
+	const opening = (await folds("a")).filter((fold) => !fold.leaving);
+	assert.deepEqual(opening.map((fold) => fold.cell).sort(), ["coast:metadata:b", "coast:photo:b"]);
+	assert.ok(opening.every((fold) => fold.delay === STRIP_TIMING.settle), `the new cells open once the rooms settle, without folding the old ones again: ${JSON.stringify(opening)}`);
+	await settle();
+	assert.equal((await groups("a")).at(-1), "Photo B");
+	assert.equal(await page.locator(inFrame("a", "[data-supermax-exiting]")).count(), 0);
+});
+
+test("a layout that arrives before the cells left replaces them as a known layout does", { skip: PRESENTATION !== "origami" }, async () => {
+	await openDemo([open("album:coast", "albums")]);
+	await page.evaluate(() => window.supermaxDemo.setNetwork({ delay: "0" }));
+	await page.click(inFrame("a", `[data-occurrence="${coast.row("thumbnails")}"] .thumb[data-destination="coast:photo:b"]`));
+	await opened();
+	const strokes = await folds("a");
+	assert.deepEqual(strokes.filter((fold) => fold.leaving).map((fold) => [fold.cell, fold.delay]).sort(), [["coast:metadata:a", 0], ["coast:photo:a", 0]], "the old cells fold away once, from where they are");
+	assert.ok(strokes.filter((fold) => !fold.leaving).every((fold) => fold.delay === STRIP_TIMING.duration), "and the new ones open after them");
+	await settle();
+});
+
+test("a layout that fails folds the departed cells back, and a slow click folds the way a fast one does", { skip: PRESENTATION !== "origami" }, async () => {
+	const photoA = inFrame("a", `[data-occurrence="${coast.photo("thumbnails", "a")}"]`);
+	const pin = inFrame("a", `[data-occurrence="${coast.row("map")}"] .pin[data-destination="coast:photo:c"]`);
+	await openDemo([open("album:coast", "albums"), open("coast:photo:a", coast.row("thumbnails")), open("coast:photo:b", coast.row("map"))]);
+	const photoB = inFrame("a", `[data-occurrence="${coast.photo("map", "b")}"]`);
+	await page.evaluate(() => window.supermaxDemo.prepare("coast:photo:c"));
+	await page.click(pin);
+	const fast = (await folds("a")).find((fold) => fold.cell === "coast:photo:b" && fold.leaving);
+	const fastPose = await page.locator(photoB).evaluate((cell) => cell.getAnimations().find((animation) => animation.effect.getKeyframes().some((frame) => String(frame.transform ?? "").includes("rotate"))).effect.getKeyframes().at(-1).transform);
+	assert.ok(fast, "the fast click replaces Photo B");
+	await settle();
+	await openDemo([open("album:coast", "albums"), open("coast:photo:a", coast.row("thumbnails")), open("coast:photo:b", coast.row("map"))]);
+	await page.evaluate(() => window.supermaxDemo.setNetwork({ delay: "400", fail: "manifest" }));
+	await page.click(pin);
+	assert.equal((await departureOf(photoB)).to, fastPose, "the slow click folds Photo B away on the same edge");
+	await page.waitForFunction((selector) => window.supermaxDemo.pending === 0 && document.querySelector(selector).getAnimations().some((animation) => animation.playbackRate === -1), photoB, { timeout: 3000 });
+	const back = await departureOf(photoB);
+	assert.ok(back.rate === -1 && back.state === "running", `when the layout fails, Photo B folds back from where it is: ${JSON.stringify(back)}`);
+	await settle();
+	assert.equal(await page.locator(photoB).evaluate((cell) => !cell.inert && getComputedStyle(cell).transform === "none"), true, "and is usable again");
+	assert.equal(await page.locator(photoA).evaluate((cell) => getComputedStyle(cell).transform === "none"), true, "while another row never moved");
+	await page.evaluate(() => window.supermaxDemo.setNetwork({ delay: "0", fail: "" }));
 });
 
 test("going back to a cell that is still folding away brings the same cell back from its pose", { skip: PRESENTATION !== "origami" }, async () => {
@@ -1657,18 +1801,57 @@ test("a layout that fails leaves the workspace as it was, with Retry at its sour
 	await settle();
 });
 
-test("the demo's Speed control plays every animation ten times slower and keeps that in the URL", async () => {
-	await openDemo([open("album:coast", "albums")]);
-	await page.selectOption("[data-speed]", "10");
+test("the demo's Speed control slows every time Supermax and the demo keep, and keeps that in the URL", async () => {
+	const SLOW = 10;
+	const near = (actual, expected) => actual >= expected * 0.9 && actual <= expected * 1.4;
+	const until = (check) => page.evaluate((source) => new Promise((resolve) => {
+		const test = new Function(`return (${source})()`);
+		const started = performance.now();
+		const poll = () => (test() ? resolve(performance.now() - started) : requestAnimationFrame(poll));
+		poll();
+	}), check.toString());
+	await openDemo(LONG_CHAIN);
+	await page.selectOption("[data-speed]", String(SLOW));
 	assert.match(page.url(), /[?&]speed=10/, "the choice is in the URL");
+	await page.evaluate(() => document.querySelector('.frame[data-frame="b"] [data-occurrence="albums"] .supermax-rail').dispatchEvent(new PointerEvent("pointerenter", { pointerType: "mouse" })));
+	const opening = await until(() => !!document.querySelector('.frame[data-frame="b"] .supermax-peek'));
+	assert.ok(near(opening, 150 * SLOW), `a peek opens after ${SLOW} times its 150ms: ${Math.round(opening)}ms`);
+	await page.evaluate(() => document.querySelector('.frame[data-frame="b"] .supermax-peek').dispatchEvent(new PointerEvent("pointerleave", { pointerType: "mouse" })));
+	const closing = await until(() => !document.querySelector('.frame[data-frame="b"] .supermax-peek'));
+	assert.ok(near(closing, 200 * SLOW), `and closes after ${SLOW} times its 200ms: ${Math.round(closing)}ms`);
+	await page.evaluate(() => { window.slowNotice = window.supermaxDemo.frames[0].workspace.notify({ scope: "workspace", kind: "success", message: "Saved", duration: 100 }); });
+	const expiry = await until(() => !window.supermaxDemo.frames[0].workspace.notices.notices.has(window.slowNotice));
+	assert.ok(near(expiry, 100 * SLOW), `a notice expires after ${SLOW} times its duration: ${Math.round(expiry)}ms`);
+
+	await openDemo([open("album:coast", "albums")]);
+	await page.selectOption("[data-speed]", String(SLOW));
 	await page.evaluate(() => window.supermaxDemo.prepare("coast:photo:b"));
 	await page.click(inFrame("a", `[data-occurrence="${coast.row("thumbnails")}"] .thumb[data-destination="coast:photo:b"]`));
-	await page.waitForFunction(() => document.getAnimations().some((animation) => animation.effect?.target?.classList?.contains("supermax-cell") && animation.playbackRate === 0.1));
+	const replacing = await folds("a");
+	assert.ok(replacing.length > 0 && replacing.every((fold) => fold.duration === STRIP_TIMING.duration * SLOW), `every fold lasts ${SLOW} times longer: ${JSON.stringify(replacing)}`);
+	assert.ok(replacing.filter((fold) => !fold.leaving).every((fold) => fold.delay === STRIP_TIMING.duration * SLOW), "and a replacement waits that much longer for the old cells");
+	await settle();
+	await page.evaluate(() => window.supermaxDemo.setNetwork({ delay: "400" }));
+	await page.click(inFrame("a", `[data-occurrence="${coast.row("thumbnails")}"] .thumb[data-destination="coast:photo:c"]`));
+	assert.equal((await departureOf(inFrame("a", `[data-occurrence="${coast.photo("thumbnails", "b")}"]`)))?.delay, TIMING.depart * SLOW, "the wait before a departure grows with it");
+	await page.waitForTimeout(400 * 3);
+	assert.equal((await state("a")).occurrences.includes(coast.photo("thumbnails", "c")), false, "the demo's network delay is slowed too");
+	await page.waitForFunction((id) => window.supermaxDemo.frames[0].workspace.navigator.get(id), coast.photo("thumbnails", "c"), { timeout: 400 * SLOW * 2 });
+	await settle();
+	await closeNewest("a");
+	const closingFolds = (await folds("a")).filter((fold) => fold.leaving);
+	assert.ok(closingFolds.length > 0 && closingFolds.every((fold) => fold.delay === STRIP_TIMING.settle * SLOW), `and so does the settle window: ${JSON.stringify(closingFolds)}`);
+	await settle();
+	const requests = await page.evaluate(() => window.supermaxDemo.requests.length);
+	await page.hover(inFrame("a", `[data-occurrence="${coast.row("thumbnails")}"] .thumb[data-destination="coast:photo:d"]`));
+	await page.waitForTimeout(100 * 4);
+	assert.equal(await page.evaluate(() => window.supermaxDemo.requests.length), requests, "and so is the pause before a hover asks for a layout");
 	await page.reload();
 	await page.waitForFunction(() => window.supermaxDemo?.frames.length === 2);
-	assert.equal(await page.inputValue("[data-speed]"), "10", "and survives a reload");
+	assert.equal(await page.inputValue("[data-speed]"), "10", "the choice survives a reload");
 	await page.selectOption("[data-speed]", "1");
 	assert.doesNotMatch(page.url(), /speed=/);
+	await page.evaluate(() => window.supermaxDemo.setNetwork({ delay: "0" }));
 	await settle();
 });
 

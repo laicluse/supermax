@@ -1,4 +1,4 @@
-import { APPEAR, DISAPPEAR } from "./motion.js";
+import { EASING, TIMING } from "./motion.js";
 
 export class NoticeBoard {
 	constructor(workspace) {
@@ -29,7 +29,7 @@ export class NoticeBoard {
 			if (this.ids.has(id)) return null;
 			this.ids.add(id);
 		}
-		const notice = { id: id ?? `notice-${(this.serial += 1)}`, scope, source, sourceTitle, kind, message, action, element: null, host: null, timer: null, remaining: duration ?? (kind === "success" ? 4000 : null), startedAt: null, hovered: false };
+		const notice = { id: id ?? `notice-${(this.serial += 1)}`, scope, source, sourceTitle, kind, message, action, element: null, host: null, timer: null, remaining: duration ?? (kind === "success" ? TIMING.noticeLife : null), startedAt: null, hovered: false };
 		this.notices.set(notice.id, notice);
 		this.place(notice);
 		this.resume(notice);
@@ -87,7 +87,7 @@ export class NoticeBoard {
 			return;
 		}
 		const height = element.offsetHeight;
-		element.animate([{ opacity: 1, transform: "none", marginBottom: "0px" }, { opacity: 0, transform: "translateY(-24px)", marginBottom: `${-height}px` }], { duration: 180, easing: DISAPPEAR.easing, fill: "forwards" }).finished.then(gone, gone);
+		element.animate([{ opacity: 1, transform: "none", marginBottom: "0px" }, { opacity: 0, transform: "translateY(-24px)", marginBottom: `${-height}px` }], { ...this.workspace.time.timing({ duration: TIMING.noticeOut }), easing: EASING.disappear, fill: "forwards" }).finished.then(gone, gone);
 	}
 
 	hostFor(notice, sourceCell) {
@@ -190,7 +190,7 @@ export class NoticeBoard {
 		notice.entering = true;
 		const done = () => { notice.entering = false; this.workspace.scheduleOrigins(); };
 		const from = notice.host === this.region ? "translateY(calc(-100% - var(--supermax-overlay-inset, 16px)))" : "translateY(-6px) scale(0.98)";
-		notice.element.animate([{ opacity: 0, transform: from }, { opacity: 1, transform: "none" }], { duration: 220, easing: APPEAR.easing }).finished.then(done, done);
+		notice.element.animate([{ opacity: 0, transform: from }, { opacity: 1, transform: "none" }], { ...this.workspace.time.timing({ duration: TIMING.noticeIn }), easing: EASING.appear }).finished.then(done, done);
 	}
 
 	hold(notice, key, held) {
@@ -202,14 +202,17 @@ export class NoticeBoard {
 
 	pause(notice) {
 		if (notice.timer === null) return;
-		clearTimeout(notice.timer);
+		const view = this.workspace.document.defaultView;
+		view.clearTimeout(notice.timer);
 		notice.timer = null;
-		notice.remaining = Math.max(0, notice.remaining - (Date.now() - notice.startedAt));
+		notice.remaining = Math.max(0, notice.remaining - (view.performance.now() - notice.startedAt) / notice.scale);
 	}
 
 	resume(notice) {
 		if (notice.remaining === null || notice.timer !== null || !this.notices.has(notice.id)) return;
-		notice.startedAt = Date.now();
-		notice.timer = setTimeout(() => { notice.timer = null; this.dismiss(notice.id, "expired"); }, notice.remaining);
+		const view = this.workspace.document.defaultView;
+		notice.startedAt = view.performance.now();
+		notice.scale = this.workspace.time.value;
+		notice.timer = view.setTimeout(() => { notice.timer = null; this.dismiss(notice.id, "expired"); }, this.workspace.time.ms(notice.remaining));
 	}
 }

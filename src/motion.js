@@ -1,2 +1,49 @@
-export const APPEAR = Object.freeze({ duration: 200, easing: "ease-out" });
-export const DISAPPEAR = Object.freeze({ duration: 200, easing: "ease-in" });
+// allow-comment: every duration Supermax keeps, in milliseconds at time scale 1; code and stylesheet both read them from here.
+export const TIMING = Object.freeze({
+	stroke: 200,
+	settle: 20,
+	depart: 50,
+	noticeIn: 220,
+	noticeOut: 180,
+	noticeLife: 4000,
+	peekOpen: 150,
+	peekClose: 200,
+	frustum: 260,
+	spin: 900,
+	handle: 120,
+});
+
+export const EASING = Object.freeze({ appear: "ease-out", disappear: "ease-in", room: "cubic-bezier(0.25, 0.1, 0.25, 1)" });
+
+export const APPEAR = Object.freeze({ duration: TIMING.stroke, easing: EASING.appear });
+export const DISAPPEAR = Object.freeze({ duration: TIMING.stroke, easing: EASING.disappear });
+
+// allow-comment: one scale for every millisecond Supermax waits or moves; workspaces that share it, and the host's own waits, slow down together.
+export class TimeScale extends EventTarget {
+	constructor(value = 1) {
+		super();
+		this.value = 1;
+		this.set(value);
+	}
+
+	set(value) {
+		if (!Number.isFinite(value) || value <= 0) throw new TypeError("a time scale must be a positive number");
+		if (value === this.value) return;
+		this.value = value;
+		this.dispatchEvent(new Event("change"));
+	}
+
+	ms(milliseconds) {
+		return milliseconds * this.value;
+	}
+
+	timing({ duration = 0, delay = 0, ...rest }) {
+		return { ...rest, duration: this.ms(duration), delay: this.ms(delay) };
+	}
+
+	paint(element, { times = TIMING, easings = EASING, prefix = "supermax" } = {}) {
+		const property = (kind, name) => `--${prefix}-${kind}-${name.replace(/[A-Z]/g, (letter) => `-${letter.toLowerCase()}`)}`;
+		for (const [name, value] of Object.entries(times)) element.style.setProperty(property("time", name), `${this.ms(value)}ms`);
+		for (const [name, value] of Object.entries(easings)) element.style.setProperty(property("ease", name), value);
+	}
+}

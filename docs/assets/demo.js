@@ -1,10 +1,13 @@
-import { Navigator, ORIGAMI_PRESENTATION, Workspace, layoutHashOf, readLayout } from "./supermax/index.js";
+import { Navigator, ORIGAMI_PRESENTATION, TimeScale, Workspace, layoutHashOf, readLayout } from "./supermax/index.js";
 import { albums, depthCount, depthId, destinations, edits, embeddedDestinations, ids, minViewportHeight, paths, remoteContent } from "./album.js";
 import { appendAction, decodeLog, encodeLog } from "./deeplink.js";
 import { foldPresentation } from "./presentation-fold.js";
 import { serve } from "./api.js";
 
 const presentations = { origami: ORIGAMI_PRESENTATION, fold: foldPresentation };
+
+// The demo's own waits, in milliseconds at time scale 1.
+const DEMO_TIMING = Object.freeze({ hover: 100, waiting: 700, network: { least: 100, spread: 600, quick: 400, slow: 1500 } });
 
 const coast = paths(albums[0]);
 const open = (destination, from) => ({ type: "open", destination, from });
@@ -46,7 +49,7 @@ const scenarios = [
 	},
 	{
 		label: "Slow layout metadata, failing content",
-		network: { delay: "1500", fail: "content" },
+		network: { delay: String(DEMO_TIMING.network.slow), fail: "content" },
 		actions: [open("album:coast", "albums"), open("coast:photo:c", coast.row("people"))],
 	},
 	{
@@ -255,7 +258,7 @@ function renderSelector(occurrence, data, workspace) {
 		button.style.setProperty("--hue", String(photo.hue));
 		button.setAttribute("aria-label", spec.label);
 		button.dataset.destination = key.photo(photo);
-		button.addEventListener("click", () => workspace.navigate(key.photo(photo), { from: occurrence.id }));
+		button.addEventListener("click", () => workspace.navigate(key.photo(photo), { from: occurrence.id, origin: button }));
 		Object.assign(button.style, spec.style ?? {});
 		container.append(button);
 		return button;
@@ -436,13 +439,18 @@ class Session {
 		this.controls.spare.addEventListener("change", () => reloadWith("spare", this.controls.spare.value));
 		this.controls.presentation.addEventListener("change", () => this.setPresentation(this.controls.presentation.value));
 		if ([...this.controls.speed.options].some((option) => option.value === query.get("speed"))) this.controls.speed.value = query.get("speed");
+		this.time = new TimeScale(Number(this.controls.speed.value));
+		this.time.addEventListener("change", () => this.paintTime());
+		this.paintTime();
 		this.controls.speed.addEventListener("change", () => {
 			const next = new URL(location.href);
 			if (this.controls.speed.value === "1") next.searchParams.delete("speed");
 			else next.searchParams.set("speed", this.controls.speed.value);
 			history.replaceState(history.state, "", next);
-			for (const animation of document.getAnimations()) animation.updatePlaybackRate(this.playbackRate);
+			this.time.set(Number(this.controls.speed.value));
 		});
+		const { least, spread, quick, slow } = DEMO_TIMING.network;
+		this.controls.delay.append(...[["random", `${least} to ${least + spread} ms`], ["0", "none"], [String(quick), `${quick} ms`], [String(slow), `${slow} ms`]].map(([value, label]) => new Option(label, value)));
 		if (query.has("delay")) this.controls.delay.value = query.get("delay");
 		this.context = this.controls.context.value;
 		this.embedded = embeddedDestinations(this.context);
@@ -458,8 +466,8 @@ class Session {
 		this.arrive(history.state);
 	}
 
-	get playbackRate() {
-		return 1 / Number(this.controls.speed.value);
+	paintTime() {
+		this.time.paint(document.documentElement, { times: { waiting: DEMO_TIMING.waiting }, easings: {}, prefix: "demo" });
 	}
 
 	get pending() {
@@ -468,8 +476,9 @@ class Session {
 
 	network() {
 		const chosen = this.controls.delay.value;
-		const delay = chosen === "random" ? Math.round(100 + Math.random() * 600) : Number(chosen) || 0;
-		return { context: this.context, delay, fail: this.controls.fail.value };
+		const { least, spread } = DEMO_TIMING.network;
+		const delay = chosen === "random" ? Math.round(least + Math.random() * spread) : Number(chosen) || 0;
+		return { context: this.context, delay: this.time.ms(delay), fail: this.controls.fail.value };
 	}
 
 	request(kind, method, url) {
@@ -575,10 +584,10 @@ class Session {
 		root.addEventListener("pointerover", (event) => {
 			const id = event.target.closest?.("[data-destination]")?.dataset.destination;
 			clearTimeout(hover);
-			if (wanted(id)) hover = setTimeout(() => { if (wanted(id)) this.prepare(id).catch(() => null); }, 100);
+			if (wanted(id)) hover = setTimeout(() => { if (wanted(id)) this.prepare(id).catch(() => null); }, this.time.ms(DEMO_TIMING.hover));
 		});
 		root.addEventListener("pointerdown", () => clearTimeout(hover));
-		const workspace = new Workspace(root, { navigator: model, content: renderContent, overlayRoot: box, onIntent: (action, origin) => this.dispatch(action, origin) });
+		const workspace = new Workspace(root, { navigator: model, content: renderContent, overlayRoot: box, time: this.time, onIntent: (action, origin) => this.dispatch(action, origin) });
 		workspace.addEventListener("up", () => this.record("push"));
 		workspace.addEventListener("rejected", (event) => {
 			rejection.hidden = false;
@@ -603,7 +612,8 @@ class Session {
 		const originResult = origin.apply(action);
 		const results = [originResult, ...this.frames.filter((frame) => frame.workspace !== origin).map((frame) => this.follow(frame.workspace, action, origin, originResult))];
 		if (results.some((result) => result.ok && !result.noop)) {
-			this.log = results.every((result) => result.ok) ? appendAction(this.log, action) : [...this.log, action];
+			const { origin: source, ...logged } = action;
+			this.log = results.every((result) => result.ok) ? appendAction(this.log, logged) : [...this.log, logged];
 			this.record("push");
 		}
 		return originResult;
@@ -614,10 +624,15 @@ class Session {
 		const control = source?.querySelector(`[data-destination="${CSS.escape(action.destination)}"]`) ?? null;
 		control?.classList.add("is-pending");
 		control?.setAttribute("aria-busy", "true");
+		const departures = this.frames.map(({ workspace }) => {
+			const replaced = workspace.navigator.child(workspace.navigator.get(action.from));
+			return replaced ? workspace.depart(replaced.id, { origin: action.origin }) : null;
+		});
 		this.prepare(action.destination).then(() => {
 			if (this.intents === intent && origin.navigator.get(action.from)) this.dispatch(action, origin);
 		}, (error) => {
 			if (this.intents !== intent) return;
+			departures.forEach((departure) => departure?.cancel());
 			const name = control?.getAttribute("aria-label") || control?.textContent.trim() || action.destination;
 			const from = origin.navigator.get(action.from)?.title;
 			origin.notify({ id: `prepare:${action.from}:${action.destination}`, scope: "workspace", kind: "error", message: `Could not open ${name}${from ? ` from ${from}` : ""}. ${error.message}`, action: { label: "Retry", run: () => this.dispatch(action, origin) } });
@@ -718,14 +733,6 @@ function describeRejection({ action, result }, model) {
 		default: return `Rejected: ${result.reason}`;
 	}
 }
-
-const animate = Element.prototype.animate;
-Element.prototype.animate = function slowable(...args) {
-	const animation = animate.apply(this, args);
-	const rate = window.supermaxDemo?.playbackRate ?? 1;
-	if (rate !== 1) animation.updatePlaybackRate(rate);
-	return animation;
-};
 
 const session = new Session();
 window.supermaxDemo = session;

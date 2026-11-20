@@ -73,7 +73,7 @@ export class ModalHost {
 		const { dialog } = modal;
 		dialog.style.animation = "none";
 		dialog.style.transformOrigin = "0 0";
-		modal.entrance = dialog.animate([{ transform: this.planeOver(from, to), opacity: 0 }, { transform: "none", opacity: 1 }], APPEAR);
+		modal.entrance = dialog.animate([{ transform: this.planeOver(from, to), opacity: 0 }, { transform: "none", opacity: 1 }], workspace.time.timing(APPEAR));
 		const follow = () => {
 			if (this.current !== modal) return;
 			workspace.drawOrigins();
@@ -108,8 +108,8 @@ export class ModalHost {
 		dialog.style.animation = "none";
 		dialog.style.transformOrigin = "0 0";
 		const gone = cell && to.width > 0 && to.height > 0 ? this.planeOver(cell.getBoundingClientRect(), to) : "scale(0.97)";
-		const exit = dialog.animate([{ transform: "none", opacity: 1 }, { transform: gone, opacity: 0 }], { ...DISAPPEAR, fill: "forwards" });
-		element.animate([{ backgroundColor: "transparent" }], { ...DISAPPEAR, fill: "forwards" });
+		const exit = dialog.animate([{ transform: "none", opacity: 1 }, { transform: gone, opacity: 0 }], { ...workspace.time.timing(DISAPPEAR), fill: "forwards" });
+		element.animate([{ backgroundColor: "transparent" }], { ...workspace.time.timing(DISAPPEAR), fill: "forwards" });
 		const follow = () => {
 			if (!element.isConnected) return;
 			workspace.drawModalOrigin(modal, 1 - (exit.effect.getComputedTiming().progress ?? 1));

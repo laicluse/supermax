@@ -148,7 +148,7 @@
 	border: 2px solid var(--supermax-muted-surface);
 	border-top-color: var(--supermax-accent);
 	border-radius: 50%;
-	animation: supermax-spin 900ms linear infinite;
+	animation: supermax-spin var(--supermax-time-spin) linear infinite;
 }
 @media (prefers-reduced-motion: reduce) { .supermax-loading-mark { animation: none; } }
 @keyframes supermax-spin { to { transform: rotate(360deg); } }
@@ -234,7 +234,7 @@
 	touch-action: none;
 }
 .supermax-divider-handle::before { content: ""; position: absolute; background: transparent; }
-@media (prefers-reduced-motion: no-preference) { .supermax-divider-handle::before { transition: background 120ms; } }
+@media (prefers-reduced-motion: no-preference) { .supermax-divider-handle::before { transition: background var(--supermax-time-handle); } }
 .supermax-divider.is-vertical .supermax-divider-handle::before { left: 3px; top: 0; bottom: 0; width: 2px; }
 .supermax-divider.is-horizontal .supermax-divider-handle::before { top: 3px; left: 0; right: 0; height: 2px; }
 .supermax-divider:hover .supermax-divider-handle::before, .supermax-divider.is-sized .supermax-divider-handle::before { background: var(--supermax-accent); }
@@ -279,9 +279,9 @@
 	background: var(--supermax-notice-veil);
 	opacity: 0;
 	pointer-events: none;
-	transition: opacity 180ms ease-in, height 180ms ease-in;
+	transition: opacity var(--supermax-time-notice-out) var(--supermax-ease-disappear), height var(--supermax-time-notice-out) var(--supermax-ease-disappear);
 }
-.supermax-notice-veil.is-shown { opacity: 1; transition-timing-function: ease-out; }
+.supermax-notice-veil.is-shown { opacity: 1; transition-duration: var(--supermax-time-notice-in); transition-timing-function: var(--supermax-ease-appear); }
 .supermax-cell-notices {
 	position: absolute;
 	top: calc(var(--supermax-cell-title, 28px) + 10px);
@@ -413,9 +413,9 @@
 .supermax-modal-body { flex: 1 1 auto; min-height: 0; overflow: auto; padding: 12px 16px 16px; }
 .supermax-modal-body .supermax-loading, .supermax-modal-body .supermax-error { padding: 0; }
 @media (prefers-reduced-motion: no-preference) {
-	.supermax-modal { animation: supermax-modal-in 200ms ease-out; }
+	.supermax-modal { animation: supermax-modal-in var(--supermax-time-stroke) var(--supermax-ease-appear); }
 	@keyframes supermax-modal-in { from { opacity: 0; transform: scale(0.97); } }
-	.supermax-modal-layer { animation: supermax-backdrop-in 200ms ease-out; }
+	.supermax-modal-layer { animation: supermax-backdrop-in var(--supermax-time-stroke) var(--supermax-ease-appear); }
 	@keyframes supermax-backdrop-in { from { background-color: transparent; } }
 }
 

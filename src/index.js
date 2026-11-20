@@ -1,5 +1,6 @@
 export { CellCollection, CellProxy } from "./cell-collection.js";
 export { CellStrip } from "./cell-strip.js";
+export { TIMING, TimeScale } from "./motion.js";
 export { Navigator, SupermaxConfigurationError, validateDestinations } from "./navigation.js";
 export { Workspace } from "./workspace.js";
 export { ORIGAMI_PRESENTATION, HORIZON } from "./origami.js";

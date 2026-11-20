@@ -1,4 +1,4 @@
-import { CellStrip, STRIP_TIMING } from "./cell-strip.js";
+import { CellStrip, STILL, STRIP_TIMING } from "./cell-strip.js";
 import { ContentSlot } from "./content-slot.js";
 import { DividerLayer } from "./dividers.js";
 import { follow, projectionAlong, unfollow } from "./follow.js";
@@ -10,13 +10,14 @@ import { resolveStrings } from "./strings.js";
 import { frustumOrigin } from "./origin.js";
 import { defaultNoticeIcon } from "./icons.js";
 import { HORIZON, ORIGAMI_PRESENTATION } from "./origami.js";
+import { TIMING, TimeScale } from "./motion.js";
 
 function normalizePresentation(presentation) {
 	if (!presentation || typeof presentation.name !== "string" || presentation.name.length === 0) throw new TypeError("presentation needs a name");
 	if (!/^[a-z][a-z0-9-]*$/.test(presentation.name)) throw new TypeError("presentation name must be a lowercase identifier");
 	const motion = presentation.motion ?? null;
 	const source = presentation.createStrip ?? null;
-	const createStrip = source ?? ((viewport, workspace) => new CellStrip(viewport, { motion, horizon: () => workspace.horizon() }));
+	const createStrip = source ?? ((viewport, workspace) => new CellStrip(viewport, { motion, time: workspace.time, horizon: () => workspace.horizon(), toward: (leaving, arriving) => workspace.towardOf(leaving, arriving) }));
 	return Object.freeze({ name: presentation.name, motion, source, createStrip });
 }
 
@@ -25,8 +26,10 @@ const ALIGN = Object.freeze({ start: 0, center: 0.5, end: 1 });
 const JUSTIFY = Object.freeze({ start: "flex-start", center: "center", end: "flex-end" });
 
 export class Workspace extends EventTarget {
-	constructor(element, { navigator, content, onIntent = null, presentation = ORIGAMI_PRESENTATION, strings = {}, origin = frustumOrigin, overlayRoot = element.ownerDocument.body, noticePlacement = "source", noticeIcon = defaultNoticeIcon }) {
+	constructor(element, { navigator, content, onIntent = null, presentation = ORIGAMI_PRESENTATION, strings = {}, origin = frustumOrigin, overlayRoot = element.ownerDocument.body, noticePlacement = "source", noticeIcon = defaultNoticeIcon, time = new TimeScale() }) {
 		super();
+		this.time = time;
+		this.onTimeScale = () => this.paintTime();
 		if (noticeIcon !== null && typeof noticeIcon !== "function") throw new TypeError("noticeIcon must be a function that returns an element, or null for no icon");
 		this.noticeIcon = noticeIcon;
 		if (noticePlacement !== "source" && noticePlacement !== "top") throw new TypeError('noticePlacement must be "source" or "top"');
@@ -43,6 +46,7 @@ export class Workspace extends EventTarget {
 		this.document = element.ownerDocument;
 		this.cells = new Map();
 		this.leavingCells = new Map();
+		this.origins = new Map();
 		this.closingRows = [];
 		this.chains = new Map();
 		this.rows = new Map();
@@ -52,6 +56,8 @@ export class Workspace extends EventTarget {
 		this.dividers = new DividerLayer(this);
 		this.reducedMotion = this.document.defaultView.matchMedia("(prefers-reduced-motion: reduce)");
 		this.buildChrome();
+		this.paintTime();
+		this.time.addEventListener("change", this.onTimeScale);
 		this.element.classList.add(`supermax-presentation-${this.presentation.name}`);
 		this.observer = new this.document.defaultView.ResizeObserver(() => this.measure());
 		this.observer.observe(element);
@@ -106,8 +112,42 @@ export class Workspace extends EventTarget {
 		this.render({ animate: false });
 	}
 
-	navigate(destination, { from } = {}) {
-		return this.intent({ type: "open", destination, from });
+	get timeScale() {
+		return this.time.value;
+	}
+
+	setTimeScale(value) {
+		this.time.set(value);
+	}
+
+	paintTime() {
+		for (const element of [this.element, this.notices.region, this.notices.region?.supermaxVeil]) if (element) this.time.paint(element);
+	}
+
+	navigate(destination, { from, origin } = {}) {
+		return this.intent({ type: "open", destination, from, origin });
+	}
+
+	remember(occurrenceId, origin) {
+		if (!origin?.getBoundingClientRect || !this.element.contains(origin)) return;
+		this.origins.set(occurrenceId, { element: origin, top: origin.getBoundingClientRect().top });
+	}
+
+	originTop(occurrenceId) {
+		for (let current = occurrenceId; current; current = current.slice(0, Math.max(0, current.lastIndexOf("/")))) {
+			const origin = this.origins.get(current);
+			if (origin) return origin.element.isConnected ? origin.element.getBoundingClientRect().top : origin.top;
+		}
+		return null;
+	}
+
+	towardOf(leavingId, arrivingId) {
+		return this.directionBetween(this.originTop(leavingId), this.originTop(arrivingId));
+	}
+
+	directionBetween(before, after) {
+		if (before === null || after === null || Math.abs(after - before) < 1) return null;
+		return after > before ? "up" : "down";
 	}
 
 	zoom(occurrenceId, { animate = true } = {}) {
@@ -252,6 +292,7 @@ export class Workspace extends EventTarget {
 
 	apply(action, { animate = true } = {}) {
 		const result = this.run(action);
+		if (result.ok && result.occurrence) this.remember(result.occurrence.id, action.origin);
 		if (result.ok && result.occurrence) this.navigator.bringIntoView(result.occurrence.id);
 		this.render({ animate });
 		if (!result.ok) this.dispatchEvent(new CustomEvent("rejected", { detail: { action, result } }));
@@ -276,9 +317,44 @@ export class Workspace extends EventTarget {
 		return true;
 	}
 
-	sync(destinationIds, { animate = true } = {}) {
+	depart(occurrenceId, { after = TIMING.depart, origin = null } = {}) {
+		const ids = new Set();
+		const visit = (occurrence) => {
+			if (!occurrence) return;
+			ids.add(occurrence.id);
+			for (const childId of occurrence.children) visit(this.navigator.get(childId));
+		};
+		visit(this.navigator.get(occurrenceId));
+		const previous = this.departure;
+		if (previous) this.stay(new Set([...previous.ids].filter((id) => !ids.has(id))));
+		const departure = {
+			ids,
+			cancel: () => {
+				if (this.departure !== departure) return;
+				this.departure = null;
+				this.stay(ids);
+			},
+		};
+		this.departure = departure;
+		const clicked = origin?.getBoundingClientRect && this.element.contains(origin) ? origin.getBoundingClientRect().top : null;
+		const toward = this.directionBetween(this.originTop(occurrenceId), clicked);
+		for (const { strip } of this.chains.values()) strip.depart?.(ids, { after, toward });
+		return departure;
+	}
+
+	stay(ids) {
+		for (const { strip } of this.chains.values()) strip.stay?.(ids);
+	}
+
+	sync(destinationIds, { animate = true, origin = null } = {}) {
 		const action = { type: "sync", destinations: [...destinationIds] };
+		const before = new Set(this.navigator.occurrences.keys());
 		const result = this.navigator.sync(destinationIds);
+		if (result.ok && origin) {
+			let opened = this.navigator.root;
+			while (opened && before.has(opened.id)) opened = this.navigator.child(opened);
+			if (opened) this.remember(opened.id, origin);
+		}
 		if (!result.ok) {
 			this.dispatchEvent(new CustomEvent("rejected", { detail: { action, result } }));
 			return result;
@@ -326,6 +402,7 @@ export class Workspace extends EventTarget {
 	}
 
 	render({ animate = true } = {}) {
+		this.departure = null;
 		this.wasRendered = this.rendered;
 		this.rendered = true;
 		const layout = this.navigator.layout();
@@ -397,7 +474,7 @@ export class Workspace extends EventTarget {
 
 	drawModalOrigin(modal, entering) {
 		if (!this.origin || !modal.originLayer) return;
-		this.origin({ kind: "modal", layer: modal.originLayer, links: this.localLinks(modal.originLayer, [this.originLink("modal", modal.dialog, modal.source)].filter(Boolean)), entering });
+		this.origin({ kind: "modal", time: this.time, layer: modal.originLayer, links: this.localLinks(modal.originLayer, [this.originLink("modal", modal.dialog, modal.source)].filter(Boolean)), entering });
 	}
 
 	drawOrigins() {
@@ -410,7 +487,7 @@ export class Workspace extends EventTarget {
 			const link = this.originLink(notice.source, notice.host, notice.source);
 			if (link) bubbles.set(notice.source, link);
 		}
-		this.origin({ kind: "notice", layer: this.noticeOrigin, links: this.localLinks(this.noticeOrigin, [...bubbles.values()]) });
+		this.origin({ kind: "notice", time: this.time, layer: this.noticeOrigin, links: this.localLinks(this.noticeOrigin, [...bubbles.values()]) });
 		this.notices.veil();
 	}
 
@@ -455,7 +532,7 @@ export class Workspace extends EventTarget {
 		entry.strip.update(entries, { animate: animating, arrive: created && this.wasRendered && animating });
 		entry.strip.strip.style.marginLeft = `${chain.spare * ALIGN[this.navigator.spareSpace]}px`;
 		for (const cell of chain.cells) {
-			if (cell.rows) this.renderRows(cell, animating);
+			if (cell.rows) this.renderRows(cell, animating, entry.strip);
 		}
 		const visible = chain.cells.filter((cell) => cell.visible);
 		for (const cell of chain.cells) this.cells.get(cell.occurrence)?.element.classList.toggle("is-leading", cell === visible[0]);
@@ -523,7 +600,7 @@ export class Workspace extends EventTarget {
 		return element;
 	}
 
-	renderRows(cell, animating) {
+	renderRows(cell, animating, strip) {
 		const host = this.cells.get(cell.occurrence).body.firstElementChild;
 		host.style.justifyContent = JUSTIFY[this.navigator.spareSpace];
 		for (const row of cell.rows.rows) {
@@ -539,7 +616,7 @@ export class Workspace extends EventTarget {
 			}
 			const leading = row === cell.rows.rows.find((candidate) => candidate.visible);
 			entry.leading = leading;
-			this.setRowHeight(entry, row.height, animating);
+			this.setRowHeight(entry, row.height, animating, strip);
 			entry.element.classList.toggle("is-hidden", !row.visible);
 			entry.element.classList.toggle("is-leading", leading);
 			entry.chain.inert = !row.visible;
@@ -592,7 +669,7 @@ export class Workspace extends EventTarget {
 		return Math.max(0, ...strips.map(footprint));
 	}
 
-	setRowHeight(entry, height, animating) {
+	setRowHeight(entry, height, animating, strip = null) {
 		unfollow(entry.element);
 		entry.followed?.style.removeProperty("margin-top");
 		entry.followed = null;
@@ -604,11 +681,12 @@ export class Workspace extends EventTarget {
 		entry.slide = null;
 		entry.paper = height;
 		entry.element.style.height = `${height}px`;
-		if (!animating || previous === null || Math.abs(previous - height) < 0.5) return;
+		if (!animating || previous === null || Math.abs(previous - height) < STILL) return;
 		const paper = Math.max(previous, height);
 		entry.paper = paper;
-		entry.animation = entry.element.animate([{ height: `${previous}px` }, { height: `${height}px` }], STRIP_TIMING);
-		entry.slide = entry.chain.animate([{ marginTop: `${previous - paper}px` }, { marginTop: `${height - paper}px` }], { ...STRIP_TIMING, fill: "both" });
+		const timing = strip?.roomTiming?.() ?? this.time.timing({ duration: STRIP_TIMING.duration, easing: STRIP_TIMING.easing });
+		entry.animation = entry.element.animate([{ height: `${previous}px` }, { height: `${height}px` }], { ...timing, fill: "backwards" });
+		entry.slide = entry.chain.animate([{ marginTop: `${previous - paper}px` }, { marginTop: `${height - paper}px` }], { ...timing, fill: "both" });
 		const slide = entry.slide;
 		slide.finished.then(() => {
 			if (entry.slide !== slide) return;
@@ -634,6 +712,7 @@ export class Workspace extends EventTarget {
 			this.afterExit(entry.element, () => {
 				if (this.leavingCells.get(occurrenceId) !== entry) return;
 				this.leavingCells.delete(occurrenceId);
+				this.origins.delete(occurrenceId);
 				entry.slot.dispose();
 			});
 		}
@@ -687,6 +766,7 @@ export class Workspace extends EventTarget {
 		this.layout = null;
 		this.element.classList.remove("has-modal", "is-below-minimum");
 		this.observer.disconnect();
+		this.time.removeEventListener("change", this.onTimeScale);
 		this.document.defaultView.removeEventListener("resize", this.onViewportChange);
 		this.document.removeEventListener("scroll", this.onViewportChange, true);
 		if (this.originFrame) this.document.defaultView.cancelAnimationFrame(this.originFrame);
