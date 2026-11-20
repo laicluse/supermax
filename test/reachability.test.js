@@ -69,12 +69,15 @@ function conversation() {
 	model.resize({ width: 100, height: 100 });
 	model.open("parent", { from: "root" });
 	model.open("detail", { from: "root/parent" });
+	const open = model.snapshot();
 	model.zoom("root/parent/detail");
-	model.focusFold("root", "horizontal");
-	assert.equal(model.zoomed, null, "fold focus leaves zoom before selecting its own active cell");
+	model.unfold("root", "horizontal");
+	assert.equal(model.zoomed, null, "opening a fold leaves zoom before it takes its room");
 	assert.equal(model.layout().cells.get("root").full, true);
+	model.restore(open);
+	model.unfolded = [{ occurrence: "root/parent", scope: "root" }];
 	model.zoom("root/parent/detail");
-	assert.deepEqual(model.foldFocuses, [], "zoom owns the active cell without an opposing fold focus");
+	assert.deepEqual(model.unfolded, [], "zoom owns the active cell without an unfolded cell beside it");
 	assert.equal(model.layout().cells.get("root/parent/detail").full, true);
 	model.zoom(null);
 	model.startWindow("root", "root/parent");
@@ -119,8 +122,8 @@ function verifyRoutes(model, context) {
 			} else {
 				const placement = (route.axis === "horizontal" ? layout.cells : layout.rows).get(route.occurrence);
 				assert.equal(placement.inView, true, "the route's page handle is in the visible scope");
-				assert.equal(placement.foldPage, route.occurrence, "the route uses the nearest page handle actually rendered");
-				model.focusFold(route.occurrence, route.axis);
+				assert.equal(placement.folded, true, "the route names a fold whose handle is rendered");
+				model.unfold(route.occurrence, route.axis);
 			}
 		}
 	}
@@ -134,11 +137,11 @@ function verifyRoutes(model, context) {
 	} });
 	model.resize({ width: 1, height: 100 });
 	model.open("child", { from: "root" });
-	model.focusFold("root/child", "horizontal");
+	model.unfold("root/child", "horizontal");
 	model.startWindow("root", "root/child");
 	model.closeNewestGroup();
 	assert.equal(model.layout().cells.get("root").full, true, "closing a focused child cannot leave a stale anchor that folds the sole surviving cell");
-	assert.deepEqual(model.foldFocuses, []);
+	assert.deepEqual(model.unfolded, []);
 }
 
 {
@@ -157,12 +160,12 @@ function verifyRoutes(model, context) {
 	snapshot.zoomed = "missing";
 	snapshot.windowStarts = [["inbox", "missing"], ["inbox/conversation/messages", "inbox"]];
 	snapshot.rowStarts = [["inbox/conversation", "inbox"]];
-	snapshot.foldFocuses = [{ scope: "inbox", occurrence: "inbox/conversation/messages", axis: "horizontal" }];
+	snapshot.unfolded = [{ scope: "inbox", occurrence: "inbox/conversation/messages" }];
 	assert.equal(model.restore(snapshot), true);
 	assert.equal(model.zoomed, null, "a stale zoom cannot replace the actual Back route");
 	assert.equal(model.windowStarts.size, 0, "window selections must belong to their chain");
 	assert.equal(model.rowStarts.size, 0, "row selections must belong to their split");
-	assert.deepEqual(model.foldFocuses, [], "fold selections must belong to their scope");
+	assert.deepEqual(model.unfolded, [], "unfolded cells must belong to their chain");
 	verifyRoutes(model, "restored stale selections");
 }
 
@@ -179,9 +182,10 @@ for (const count of [2, 3, 6, 20]) for (const overflow of [undefined, { mode: "h
 		model.zoom(null);
 		const folded = model.layout().chain.cells.find((cell) => cell.folded);
 		if (folded) {
-			model.focusFold(folded.occurrence, "horizontal");
-			verifyRoutes(model, `focus chain ${count}, width ${width}`);
-			model.foldFocuses = [];
+			const held = model.snapshot();
+			model.unfold(folded.occurrence, "horizontal");
+			verifyRoutes(model, `unfolded chain ${count}, width ${width}`);
+			model.restore(held);
 		}
 	}
 }
@@ -202,9 +206,10 @@ for (let mask = 0; mask < 8; mask += 1) for (const rowCount of [2, 3, 4]) {
 		model.resize({ width, height });
 		verifyRoutes(model, `split mask ${mask}, rows ${rowCount}, ${width}x${height}`);
 		for (const row of model.layout().rows.values()) if (row.folded && row.inView) {
-			model.focusFold(row.occurrence, "vertical");
-			verifyRoutes(model, `row focus mask ${mask}, ${width}x${height}`);
-			model.foldFocuses = [];
+			const held = model.snapshot();
+			model.unfold(row.occurrence, "vertical");
+			verifyRoutes(model, `unfolded row mask ${mask}, ${width}x${height}`);
+			model.restore(held);
 		}
 	}
 }
@@ -224,8 +229,8 @@ for (let seed = 1; seed <= 24; seed += 1) {
 		switch (random(8)) {
 			case 0: model.resize({ width: [1, 44, 100, 295.5, 296, 500, 1000][random(7)], height: [1, 28, 100, 334.5, 335, 360, 700][random(7)] }); break;
 			case 1: {
-				const pages = [...layout.cells.values()].map((placement) => ({ placement, axis: "horizontal" })).concat([...layout.rows.values()].map((placement) => ({ placement, axis: "vertical" }))).filter(({ placement }) => placement.inView && placement.foldPage === placement.occurrence);
-				if (pages.length) { const { placement, axis } = pages[random(pages.length)]; model.focusFold(placement.occurrence, axis); }
+				const pages = [...layout.cells.values()].map((placement) => ({ placement, axis: "horizontal" })).concat([...layout.rows.values()].map((placement) => ({ placement, axis: "vertical" }))).filter(({ placement }) => placement.inView && placement.folded);
+				if (pages.length) { const { placement, axis } = pages[random(pages.length)]; model.unfold(placement.occurrence, axis); }
 				break;
 			}
 			case 2: { const target = model.upTarget(layout); if (target) model.showByClosing(target.id); break; }

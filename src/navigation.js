@@ -1,7 +1,7 @@
 import { overflowProblems } from "./overflow.js";
 import { DEFAULT_CURVE } from "./cell-collection.js";
 import { variantProblems } from "./variants.js";
-import { ELASTIC, breakoutOf, chainCells, chainFits, chainRootOf, chainWidth, isBesideSplit, isSplit, layoutWorkspace, retainFoldAllocation, rowSplitOf, validateSplit } from "./layout.js";
+import { ELASTIC, breakoutOf, chainCells, chainFits, chainRootOf, chainWidth, isBesideSplit, isSplit, layoutWorkspace, rowSplitOf, validateSplit } from "./layout.js";
 import { sameLayout, validateDeclarationSet } from "./layout-declaration.js";
 
 const DEFAULT_CHROME = { header: 28, maxRows: 4 };
@@ -74,7 +74,8 @@ export class Navigator {
 		this.groups = [];
 		this.groupSequence = 0;
 		this.zoomed = null;
-		this.foldFocuses = [];
+		this.unfolded = [];
+		this.withheld = null;
 		this.windowStarts = new Map();
 		this.rowStarts = new Map();
 		this.sizes = { width: new Map(), height: new Map() };
@@ -82,14 +83,33 @@ export class Navigator {
 		this.focused = this.root.id;
 	}
 
-	focusFold(occurrenceId, axis) {
+	// allow-comment: opening a fold is Show for that one surface. A folded row becomes the row its split keeps, so the rows after it give way. A folded cell is remembered as unfolded, so it folds after every other cell, and the trailing end of its chain closes until it shows in full beside the cells that showed before. Returns the cells it closed.
+	unfold(occurrenceId, axis) {
 		const occurrence = this.get(occurrenceId);
-		const scope = axis === "horizontal" ? chainRootOf(this, occurrence).id : occurrence.parent;
-		const before = scope !== this.root.id && !this.zoomed ? this.layout().chain : null;
+		if (!occurrence) return [];
 		this.zoomed = null;
-		const focus = { occurrence: occurrenceId, axis, scope };
-		this.foldFocuses = [...this.foldFocuses.filter((focus) => focus.axis !== axis || focus.scope !== scope), focus];
-		if (before) retainFoldAllocation(this, focus, before);
+		if (axis === "vertical") {
+			this.startRows(occurrence.parent, occurrenceId);
+			return [];
+		}
+		const layout = this.layout();
+		this.unfolded = [...this.unfolded.filter((entry) => entry.occurrence !== occurrenceId), { occurrence: occurrenceId, scope: chainRootOf(this, occurrence).id }];
+		return this.showByClosing(occurrenceId, { before: layout, keepShown: true });
+	}
+
+	forgetUnfolds() {
+		this.unfolded = [];
+	}
+
+	// allow-comment: draws the layout a rehearsed action would leave while every cell it would close stays open, withheld from its chain, so a drag that is let go early has closed nothing.
+	preview({ after, closed }, draw) {
+		const held = { unfolded: this.unfolded, windowStarts: this.windowStarts, rowStarts: this.rowStarts, zoomed: this.zoomed };
+		Object.assign(this, { unfolded: after.unfolded, windowStarts: new Map(after.windowStarts), rowStarts: new Map(after.rowStarts), zoomed: after.zoomed, withheld: new Set(closed.map((cell) => cell.id)) });
+		try {
+			return draw();
+		} finally {
+			Object.assign(this, held, { withheld: null });
+		}
 	}
 
 	// allow-comment: the curve gives out the room between the minima and the maxima by position along a chain or down a split; a host that changes it renders the workspace again.
@@ -306,7 +326,7 @@ export class Navigator {
 		this.windowStarts.delete(occurrence.id);
 		this.rowStarts.delete(occurrence.id);
 		for (const starts of [this.windowStarts, this.rowStarts]) for (const [scope, start] of starts) if (start === occurrence.id) starts.delete(scope);
-		this.foldFocuses = this.foldFocuses.filter((focus) => focus.occurrence !== occurrence.id && focus.scope !== occurrence.id);
+		this.unfolded = this.unfolded.filter((entry) => entry.occurrence !== occurrence.id && entry.scope !== occurrence.id);
 		this.sizes.width.delete(occurrence.id);
 		this.sizes.height.delete(occurrence.id);
 		closed.unshift({ id: occurrence.id, destination: occurrence.destination, title: occurrence.title });
@@ -330,7 +350,7 @@ export class Navigator {
 		}
 		const occurrence = this.get(occurrenceId);
 		if (!occurrence || !this.definitionOf(occurrence.destination).zoomable) return false;
-		this.foldFocuses = [];
+		this.forgetUnfolds();
 		this.zoomed = occurrence.id;
 		return true;
 	}
@@ -545,16 +565,11 @@ export class Navigator {
 	}
 
 	// allow-comment: Show frees the outermost chain first, so a split that a breakout pushed out of view comes back before the cell inside its row does.
-	showByClosing(occurrenceId) {
+	showByClosing(occurrenceId, { before = this.layout(), keepShown = false } = {}) {
 		const target = this.get(occurrenceId);
 		if (!target) return [];
-		const before = this.layout();
 		const hidden = new Set([...this.occurrences.keys()].filter((id) => !before.cells.get(id)?.full));
-		for (const focus of this.foldFocuses) {
-			if (focus.axis === "horizontal") this.startWindow(focus.scope, focus.occurrence);
-			else this.startRows(focus.scope, focus.occurrence);
-		}
-		this.foldFocuses = [];
+		const shown = keepShown ? chainCells(this, chainRootOf(this, target)).filter((cell) => before.cells.get(cell.id)?.full).map((cell) => cell.id) : [];
 		this.bringIntoView(occurrenceId, { chains: false });
 		const levels = [];
 		for (let member = target; member; ) {
@@ -568,7 +583,7 @@ export class Navigator {
 			while (this.get(member.id)) {
 				const layout = this.layout();
 				const placement = layout.cells.get(member.id);
-				if (placement?.visible && !placement.folded) break;
+				if (placement?.visible && !placement.folded && (member !== target || shown.every((id) => !this.get(id) || layout.cells.get(id)?.full))) break;
 				const cells = chainCells(this, root);
 				const last = cells[cells.length - 1];
 				if (last.id === member.id) break;
@@ -592,6 +607,7 @@ export class Navigator {
 	}
 
 	placeOf(occurrence, layout = this.layout()) {
+		if (this.withheld?.has(occurrence.id)) return "after";
 		const root = chainRootOf(this, occurrence);
 		const split = root.parent ? this.get(root.parent) : null;
 		if (split) {
@@ -606,7 +622,7 @@ export class Navigator {
 		const index = cells.findIndex((cell) => cell.occurrence === occurrence.id);
 		if (cells[index]?.visible && !cells[index]?.folded) return "in";
 		if (cells[index]?.folded) return cells[index].foldDirection === "right" ? "above" : "after";
-		return index < cells.findIndex((cell) => cell.visible && !cell.folded && !cell.kept) ? "above" : "after";
+		return index < cells.findLastIndex((cell) => cell.visible && !cell.folded) ? "above" : "after";
 	}
 
 	upTarget(layout = this.layout()) {
@@ -683,7 +699,7 @@ export class Navigator {
 			groupSequence: this.groupSequence,
 			zoomed: this.zoomed,
 			focused: this.focused,
-			foldFocuses: this.foldFocuses,
+			unfolded: this.unfolded.map((entry) => ({ ...entry })),
 			windowStarts: [...this.windowStarts],
 			rowStarts: [...this.rowStarts],
 			sizes: { width: [...this.sizes.width], height: [...this.sizes.height] },
@@ -698,7 +714,7 @@ export class Navigator {
 		this.zoomed = this.get(snapshot.zoomed) && this.definitionOf(this.get(snapshot.zoomed).destination).zoomable ? snapshot.zoomed : null;
 		const inChain = (scope, id) => !!this.get(scope) && !!this.get(id) && chainRootOf(this, this.get(id)).id === scope;
 		const inRows = (scope, id) => !!this.get(id) && !!this.get(scope) && isSplit(this.definitionOf(this.get(scope).destination)) && this.get(scope).children.includes(id);
-		this.foldFocuses = (snapshot.foldFocuses ?? []).filter((focus) => focus.axis === "horizontal" ? inChain(focus.scope, focus.occurrence) : focus.axis === "vertical" && inRows(focus.scope, focus.occurrence));
+		this.unfolded = (snapshot.unfolded ?? []).filter((entry) => inChain(entry.scope, entry.occurrence)).map((entry) => ({ ...entry }));
 		this.windowStarts = new Map((snapshot.windowStarts ?? []).filter(([scope, id]) => inChain(scope, id)));
 		this.rowStarts = new Map((snapshot.rowStarts ?? []).filter(([scope, id]) => inRows(scope, id)));
 		this.sizes = { width: new Map(snapshot.sizes?.width ?? []), height: new Map(snapshot.sizes?.height ?? []) };

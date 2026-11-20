@@ -71,7 +71,7 @@ try {
 		await page.evaluate(() => {
 			window.clickSamples = []; window.clickEvents = []; window.clickSampling = true;
 			const workspace = window.supermaxDemo.frames[1].workspace;
-			const listeners = ["change", "foldfocus"].map((type) => {
+			const listeners = ["change", "unfold"].map((type) => {
 				const handler = (event) => window.clickEvents.push({ type, time: performance.now(), detail: event.detail });
 				workspace.addEventListener(type, handler); return [type, handler];
 			});

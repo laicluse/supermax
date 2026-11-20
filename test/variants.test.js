@@ -86,7 +86,7 @@ for (const [key, expected] of [...grid].reverse()) {
 }
 rows.resize({ width: 200, height: 120 });
 assert.equal(rows.layout().rows.get("home/split/one").variant, "compact");
-rows.focusFold("home/split/one", "vertical");
+rows.unfold("home/split/one", "vertical");
 const focused = signature(rows.layout());
 rows.resize({ width: 700, height: 400 }); rows.layout();
 rows.resize({ width: 200, height: 120 });

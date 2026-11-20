@@ -53,17 +53,11 @@ export class FoldDrag {
 		const { workspace, record } = this;
 		for (const animation of this.motionAnimations()) animation.finish();
 		const before = record.entry.element.getBoundingClientRect()[this.horizontal ? "width" : "height"];
-		const previousFocus = workspace.navigator.foldFocuses;
-		const previousZoom = workspace.navigator.zoomed;
-		workspace.navigator.focusFold(record.occurrence, record.axis);
-		this.focus = workspace.navigator.foldFocuses;
-		this.zoomed = workspace.navigator.zoomed;
+		this.trial = workspace.rehearse(() => workspace.navigator.unfold(record.occurrence, record.axis));
 		workspace.element.classList.add("is-fold-dragging");
 		this.rendering = true;
-		workspace.render({ animate: true });
+		workspace.navigator.preview(this.trial, () => workspace.render({ animate: true }));
 		this.rendering = false;
-		workspace.navigator.foldFocuses = previousFocus;
-		workspace.navigator.zoomed = previousZoom;
 		const state = this.horizontal ? workspace.findCell(record.occurrence) : workspace.findRow(record.occurrence);
 		this.distance = Math.max(1, state[this.horizontal ? "width" : "height"] - before);
 		this.animations = this.motionAnimations();
@@ -95,7 +89,7 @@ export class FoldDrag {
 		if (!this.active) {
 			this.detach();
 			this.controller.drag = null;
-			this.controller.focus(this.record.occurrence, this.record.axis);
+			this.controller.open(this.record.occurrence, this.record.axis);
 			return;
 		}
 		this.update(event);
@@ -106,11 +100,12 @@ export class FoldDrag {
 		if (this.settling) return;
 		this.detach();
 		if (!this.active) { this.controller.drag = null; return; }
+		if (open && !this.workspace.askToShow(this.record.occurrence, this.trial.closed)) open = false;
 		this.settling = true;
 		if (open) {
 			this.visible = new Set([...this.controller.entries].filter(([, { occurrence, axis }]) => {
 				const state = axis === "horizontal" ? this.workspace.findCell(occurrence) : this.workspace.findRow(occurrence);
-				return state?.foldPage === occurrence && state.inView;
+				return state?.folded && state.inView;
 			}).map(([cue]) => cue));
 			this.controller.place();
 		}
@@ -124,13 +119,10 @@ export class FoldDrag {
 			this.seek(from + (target - from) * elapsed * elapsed * (3 - 2 * elapsed));
 			if (elapsed < 1) this.frame = view.requestAnimationFrame(tick);
 			else {
-				if (open) {
-					this.workspace.navigator.foldFocuses = this.focus;
-					this.workspace.navigator.zoomed = this.zoomed;
-				}
+				const closed = open ? this.workspace.navigator.unfold(this.record.occurrence, this.record.axis) : [];
 				this.cancel();
 				this.workspace.render({ animate: false });
-				if (open) this.controller.announce(this.record.occurrence, this.record.axis);
+				if (open) this.controller.announce(this.record.occurrence, this.record.axis, closed);
 			}
 		};
 		this.frame = view.requestAnimationFrame(tick);

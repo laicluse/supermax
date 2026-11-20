@@ -7,6 +7,8 @@ import { FoldDrag } from "./fold-drag.js";
 import { EASING, TIMING } from "./motion.js";
 
 
+const STACK_GAP = 4;
+const TOUCH_TARGET = 44;
 const CORNERS = ["borderTopLeftRadius", "borderTopRightRadius", "borderBottomRightRadius", "borderBottomLeftRadius"];
 
 function handleShape(cue) {
@@ -29,7 +31,7 @@ export class FoldController {
 		cue.setAttribute("aria-label", workspace.strings.unfold(occurrence.title));
 		cue.title = workspace.strings.unfold(occurrence.title);
 		entry.foldPart = mountPart(workspace, "fold", cue, { title: occurrence.title, occurrence: occurrence.id, axis }, { refresh: () => { entry.foldState = null; this.positionMarks(); }, axis });
-		cue.addEventListener("click", (event) => { if (event.detail === 0 && !this.drag) this.focus(occurrence.id, axis); });
+		cue.addEventListener("click", (event) => { if (event.detail === 0 && !this.drag) this.open(occurrence.id, axis); });
 		cue.addEventListener("pointerdown", (event) => {
 			if (event.button !== 0 || !event.isPrimary || this.drag || workspace.body.inert) return;
 			event.preventDefault();
@@ -79,6 +81,7 @@ export class FoldController {
 		const gutter = parseFloat(workspace.document.defaultView.getComputedStyle(workspace.element).getPropertyValue("--supermax-gutter")) || 0;
 		const previous = this.visibleCues ?? new Map();
 		const visible = new Map();
+		const seams = new Map();
 		for (const [cue, { entry, occurrence, axis }] of this.entries) {
 			if (!workspace.navigator.get(occurrence)) {
 				cue.hidden = true;
@@ -89,7 +92,7 @@ export class FoldController {
 				continue;
 			}
 			const state = axis === "horizontal" ? workspace.findCell(occurrence) : workspace.findRow(occurrence);
-			const shown = (this.drag?.active ? this.drag.visible.has(cue) : state?.foldPage === occurrence && state.inView) && entry.element.isConnected;
+			const shown = !!state && (this.drag?.active ? this.drag.visible.has(cue) : state.folded && state.inView) && entry.element.isConnected;
 			cue.hidden = !shown;
 			cue.inert = !shown || !!this.drag?.active && this.drag.cue !== cue;
 			if (!shown) continue;
@@ -104,11 +107,6 @@ export class FoldController {
 			}
 			const direction = cue.dataset.direction;
 			const horizontal = axis === "horizontal";
-			const currentTitle = workspace.navigator.get(occurrence).title;
-			const available = Math.max(0, (horizontal ? state.height : state.width) - 2 * gutter);
-			const key = `${currentTitle}|${available}`;
-			if (entry.foldState !== key) { entry.foldPart.update({ title: currentTitle, occurrence, axis, available }); entry.foldState = key; }
-			cue.title = workspace.strings.unfold(currentTitle); cue.setAttribute("aria-label", cue.title);
 			const gutterBox = horizontal && entry.element.parentElement.matches(".supermax-room") ? entry.element.parentElement.getBoundingClientRect() : box;
 			const rowsTop = horizontal ? 0 : entry.element.parentElement.getBoundingClientRect().top;
 			const title = horizontal ? null : entry.element.closest(".supermax-cell")?.querySelector(":scope > .supermax-cell-title");
@@ -118,20 +116,49 @@ export class FoldController {
 			const edge = boundary >= (horizontal ? bounds.right : bounds.bottom) - .5 ? horizontal ? "right" : "bottom" : "";
 			cue.dataset.edge = edge;
 			if (edge) seam = (horizontal ? bounds.right : bounds.bottom) - gutter;
-			const width = cue.offsetWidth;
-			const height = cue.offsetHeight;
-			const x = horizontal ? seam + (direction === "left" ? gutter - width : 0) : box.left + (box.width - width) / 2;
-			const y = horizontal ? box.top + (box.height - height) / 2 : seam + (direction === "up" ? gutter - height : 0);
-			Object.assign(cue.style, { left: `${x - origin.left}px`, top: `${y - origin.top}px` });
-			visible.set(cue, {
-				group: horizontal ? entry.element.closest(".supermax-strip") : entry.element.parentElement,
-				axis,
-				direction,
-				rect: cue.getBoundingClientRect(),
-				shape: handleShape(cue),
-			});
+			const group = horizontal ? entry.element.closest(".supermax-strip") : entry.element.parentElement;
+			let bySeam = seams.get(group);
+			if (!bySeam) seams.set(group, bySeam = new Map());
+			const key = `${axis}:${direction}:${Math.round(seam)}`;
+			if (!bySeam.has(key)) bySeam.set(key, []);
+			bySeam.get(key).push({ cue, entry, occurrence, axis, state, box, direction, horizontal, seam, group });
 		}
-		if (!this.drag?.active || this.drag.settling) this.showNearestPages(visible);
+		// allow-comment: folds that lie on one seam each keep a handle of their own, in reading order along that seam, each in a slot as long as its touch target. A seam too short for all of them keeps the handles nearest the open surface; the others follow as those open.
+		const reach = workspace.document.defaultView.matchMedia("(any-pointer: coarse)").matches ? TOUCH_TARGET : 0;
+		for (const bySeam of seams.values()) for (let stack of bySeam.values()) {
+			const { box, horizontal, direction: opening } = stack[0];
+			const length = horizontal ? box.height : box.width;
+			let sizes, slots, along;
+			for (;;) {
+				const available = Math.max(0, (length - 2 * gutter - STACK_GAP * (stack.length - 1)) / stack.length);
+				for (const { cue, entry, occurrence, axis } of stack) {
+					const currentTitle = workspace.navigator.get(occurrence).title;
+					const key = `${currentTitle}|${available}`;
+					if (entry.foldState !== key) { entry.foldPart.update({ title: currentTitle, occurrence, axis, available }); entry.foldState = key; }
+					cue.title = workspace.strings.unfold(currentTitle); cue.setAttribute("aria-label", cue.title);
+				}
+				sizes = stack.map(({ cue }) => ({ width: cue.offsetWidth, height: cue.offsetHeight }));
+				slots = sizes.map((size) => Math.max(horizontal ? size.height : size.width, reach));
+				along = slots.reduce((sum, slot) => sum + slot, 0) + STACK_GAP * (stack.length - 1);
+				if (along <= length || stack.length === 1) break;
+				const nearestLast = opening === "right" || opening === "down";
+				const farthest = nearestLast ? stack[0] : stack.at(-1);
+				farthest.cue.hidden = true;
+				farthest.cue.inert = true;
+				stack = nearestLast ? stack.slice(1) : stack.slice(0, -1);
+			}
+			let offset = (horizontal ? box.top : box.left) + (length - along) / 2;
+			for (const [index, { cue, axis, direction, seam, group }] of stack.entries()) {
+				const { width, height } = sizes[index];
+				const centred = offset + (slots[index] - (horizontal ? height : width)) / 2;
+				const x = horizontal ? seam + (direction === "left" ? gutter - width : 0) : centred;
+				const y = horizontal ? centred : seam + (direction === "up" ? gutter - height : 0);
+				offset += slots[index] + STACK_GAP;
+				Object.assign(cue.style, { left: `${x - origin.left}px`, top: `${y - origin.top}px` });
+				visible.set(cue, { group, axis, direction, rect: cue.getBoundingClientRect(), shape: handleShape(cue) });
+			}
+		}
+		if (!this.drag?.active || this.drag.settling) this.separateOpposing(visible);
 		this.visibleCues = visible;
 		if (this.drag && !this.drag.settling || workspace.reducedMotion.matches) return;
 		const leaving = [...previous].filter(([cue]) => !visible.has(cue));
@@ -151,7 +178,7 @@ export class FoldController {
 		}
 	}
 
-	showNearestPages(visible) {
+	separateOpposing(visible) {
 		const groups = new Map();
 		for (const [cue, position] of visible) {
 			let byDirection = groups.get(position.group);
@@ -183,16 +210,20 @@ export class FoldController {
 		this.visibleCues = null;
 	}
 
-	announce(occurrence, axis) {
-		this.workspace.dispatchEvent(new CustomEvent("foldfocus", { detail: { occurrence, axis } }));
+	announce(occurrence, axis, closed) {
+		if (closed.length) this.workspace.dispatchEvent(new CustomEvent("up", { detail: { shown: occurrence, closed } }));
+		this.workspace.dispatchEvent(new CustomEvent("unfold", { detail: { occurrence, axis, closed } }));
 	}
 
-	focus(occurrenceId, axis) {
+	// allow-comment: a handle opens its fold the way Show brings a surface back, so a host hears the same cancelable question before any cell closes.
+	open(occurrenceId, axis) {
 		const { workspace } = this;
 		if (!workspace.navigator.get(occurrenceId)) return false;
-		workspace.navigator.focusFold(occurrenceId, axis);
+		const { after, closed } = workspace.rehearse(() => workspace.navigator.unfold(occurrenceId, axis));
+		if (!workspace.askToShow(occurrenceId, closed)) return false;
+		workspace.navigator.restore(after);
 		workspace.render({ animate: true });
-		this.announce(occurrenceId, axis);
+		this.announce(occurrenceId, axis, closed);
 		return true;
 	}
 }

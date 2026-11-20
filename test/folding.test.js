@@ -14,7 +14,7 @@ test("opposing fold handles do not compete for a small touch target", () => {
 			[earlier, { group, axis, direction: back, order: 0, rect: rect(0) }],
 			[later, { group, axis, direction: next, order: 2, rect: rect(20) }],
 		]);
-		FoldController.prototype.showNearestPages.call({ drag: null }, visible);
+		FoldController.prototype.separateOpposing.call({ drag: null }, visible);
 		assert.equal(earlier.hidden, true, `${axis}: the preceding page remains available through Back`);
 		assert.equal(later.hidden, false, `${axis}: the following page keeps its fold handle`);
 		assert.equal(visible.size, 1);
@@ -23,7 +23,7 @@ test("opposing fold handles do not compete for a small touch target", () => {
 			[earlier, { group, axis, direction: back, order: 0, rect: rect(0) }],
 			[later, { group, axis, direction: next, order: 2, rect: rect(20) }],
 		]);
-		FoldController.prototype.showNearestPages.call({ drag: { cue: earlier } }, active);
+		FoldController.prototype.separateOpposing.call({ drag: { cue: earlier } }, active);
 		assert.equal(active.has(earlier), true, `${axis}: an active drag keeps its page handle`);
 		assert.equal(active.has(later), false);
 	}
@@ -108,7 +108,7 @@ test("zoom retains an exit when its ancestors were already hidden", async () => 
 	}
 });
 
-test("adjacent folded cells can be dragged open one page at a time", async () => {
+test("adjacent folded cells each keep a handle and open by closing the trailing cell", async () => {
 	const server = await serveDocs();
 	const browser = await chromium.launch({ channel: "chrome", headless: true });
 	try {
@@ -117,6 +117,7 @@ test("adjacent folded cells can be dragged open one page at a time", async () =>
 		await page.addStyleTag({ url: `${server.url}/src/workspace.css` });
 		await page.evaluate(async () => {
 			const { Navigator, Workspace } = await import("/src/index.js");
+			document.body.style.margin = "0";
 			const host = document.createElement("div");
 			host.style.cssText = "position:relative;width:300px;height:300px";
 			document.body.append(host);
@@ -130,25 +131,82 @@ test("adjacent folded cells can be dragged open one page at a time", async () =>
 			navigator.open("a", { from: "mode" });
 			navigator.open("b", { from: "mode/a" });
 			navigator.open("c", { from: "mode/a/b" });
+			window.closedByUp = [];
 			window.pages = new Workspace(host, { navigator, content: (occurrence) => {
 				const element = document.createElement("button");
 				element.textContent = occurrence.title;
 				return { element };
 			} });
+			window.pages.addEventListener("up", (event) => window.closedByUp.push(...event.detail.closed.map((cell) => cell.id)));
 		});
-		const visible = () => page.locator(".supermax-fold-cue.is-horizontal:visible").evaluateAll((cues) => cues.map((cue) => cue.dataset.foldOccurrence));
-		assert.deepEqual(await visible(), ["mode/a/b"], "the closest folded cell presents the only handle at the shared seam");
-		for (const id of ["mode/a/b", "mode/a"]) {
-			const handle = page.locator(`.supermax-fold-cue[data-fold-occurrence="${id}"]`);
-			const box = await handle.boundingBox();
+		const cues = () => page.locator(".supermax-fold-cue.is-horizontal:visible").evaluateAll((handles) => handles.map((cue) => ({ id: cue.dataset.foldOccurrence, direction: cue.dataset.direction, x: Math.round(cue.getBoundingClientRect().left), y: Math.round(cue.getBoundingClientRect().top), bottom: Math.round(cue.getBoundingClientRect().bottom) })));
+		const stacked = await cues();
+		assert.deepEqual(stacked.map((cue) => [cue.id, cue.direction]), [["mode/a", "right"], ["mode/a/b", "right"]], "every folded cell on the seam has a handle of its own");
+		assert.equal(stacked[0].x, stacked[1].x, "the handles share their seam");
+		assert.ok(stacked[0].bottom <= stacked[1].y, `the handles follow each other along the seam in reading order: ${JSON.stringify(stacked)}`);
+		const drag = async (id, distance) => {
+			const box = await page.locator(`.supermax-fold-cue[data-fold-occurrence="${id}"]`).boundingBox();
 			await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
 			await page.mouse.down();
-			await page.mouse.move(box.x + box.width / 2 + 220, box.y + box.height / 2, { steps: 8 });
-			await page.mouse.up();
-			await page.waitForFunction((occurrence) => window.pages.findCell(occurrence)?.full && !window.pages.folds.drag, id);
-			if (id === "mode/a/b") assert.ok((await visible()).includes("mode/a"), "the next page gets a handle after the drag completes");
-		}
-		assert.equal(await page.evaluate(() => window.pages.navigator.groups.length), 3, "turning pages preserves navigation groups");
+			await page.mouse.move(box.x + box.width / 2 + distance, box.y + box.height / 2, { steps: 8 });
+		};
+		await drag("mode/a", 60);
+		assert.equal(await page.evaluate(() => !!window.pages.navigator.get("mode/a/b/c")), true, "a drag closes nothing before it is released");
+		await page.keyboard.press("Escape");
+		await page.waitForFunction(() => !window.pages.folds.drag);
+		assert.deepEqual((await cues()).map((cue) => cue.id), ["mode/a", "mode/a/b"], "a cancelled drag returns to the folds it started from");
+		assert.equal(await page.evaluate(() => window.pages.findCell("mode/a/b/c").full), true);
+		await drag("mode/a", 220);
+		await page.mouse.up();
+		await page.waitForFunction(() => window.pages.findCell("mode/a")?.full && !window.pages.folds.drag);
+		assert.deepEqual(await page.evaluate(() => window.closedByUp), ["mode/a/b/c"], "the trailing cell closes, as it does for Show");
+		assert.deepEqual((await cues()).map((cue) => [cue.id, cue.direction]), [["mode/a/b", "left"]], "the fold that lay under it moves aside and keeps its handle");
+		const edge = await page.evaluate(() => document.querySelector('.supermax-fold-cue[data-fold-occurrence="mode/a/b"]').getBoundingClientRect().right);
+		assert.ok(Math.abs(edge - 241) < 1.5, `a fold after the last cell lies on that cell's trailing gutter: ${edge}`);
+		await drag("mode/a/b", -220);
+		await page.mouse.up();
+		await page.waitForFunction(() => window.pages.findCell("mode/a/b")?.full && !window.pages.folds.drag);
+		assert.equal(await page.evaluate(() => window.pages.findCell("mode/a").folded), true, "with nothing after it to close, the cell before it folds");
+		assert.equal(await page.evaluate(() => window.pages.navigator.groups.length), 2);
+	} finally {
+		await browser.close();
+		await server.close();
+	}
+});
+
+test("a seam too short for its handles keeps the ones nearest the open cell, and a drag keeps what changed meanwhile", async () => {
+	const server = await serveDocs();
+	const browser = await chromium.launch({ channel: "chrome", headless: true });
+	try {
+		const page = await browser.newPage();
+		await page.goto(`${server.url}/blank`);
+		await page.addStyleTag({ url: `${server.url}/src/workspace.css` });
+		await page.evaluate(async () => {
+			const { Navigator, Workspace } = await import("/src/index.js");
+			document.body.style.margin = "0";
+			const host = document.createElement("div");
+			host.style.cssText = "position:relative;width:300px;height:40px";
+			document.body.append(host);
+			const destinations = { mode: { title: "Mode", min: 40, max: 40, overflow: { mode: "keep" } }, last: { title: "Last", min: 200, max: "*", preferred: 260 } };
+			for (const id of ["a", "b", "c", "d"]) destinations[id] = { title: id.toUpperCase(), min: 200, max: 200 };
+			const navigator = new Navigator({ root: "mode", minViewportHeight: 40, destinations });
+			window.short = new Workspace(host, { navigator, content: () => ({ element: document.createElement("div") }) });
+			window.short.sync(["mode", "a", "b", "c", "d", "last"], { origin: null, animate: false });
+		});
+		const cues = await page.locator(".supermax-fold-cue").evaluateAll((handles) => handles.filter((cue) => !cue.hidden).map((cue) => ({ id: cue.dataset.foldOccurrence, top: cue.getBoundingClientRect().top, bottom: cue.getBoundingClientRect().bottom })));
+		const folded = ["mode/a", "mode/a/b", "mode/a/b/c", "mode/a/b/c/d"];
+		assert.ok(cues.length >= 1 && cues.length < folded.length, `not every handle fits a 40px seam: ${JSON.stringify(cues)}`);
+		assert.deepEqual(cues.map((cue) => cue.id), folded.slice(-cues.length), "the handles nearest the open cell stay");
+		assert.ok(cues.every((cue) => cue.top >= -.5 && cue.bottom <= 40.5), `every handle that shows lies on the seam: ${JSON.stringify(cues)}`);
+		const nearest = cues.at(-1).id;
+		const box = await page.locator(`.supermax-fold-cue[data-fold-occurrence="${nearest}"]`).boundingBox();
+		await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+		await page.mouse.down();
+		await page.mouse.move(box.x + box.width / 2 + 190, box.y + box.height / 2, { steps: 8 });
+		await page.evaluate((id) => window.short.setTitle(id, "Renamed during the drag"), nearest);
+		await page.mouse.up();
+		await page.waitForFunction((id) => window.short.findCell(id)?.full && !window.short.folds.drag, nearest);
+		assert.equal(await page.evaluate((id) => window.short.navigator.get(id).title, nearest), "Renamed during the drag", "a completed drag opens the fold in the workspace as it is at release");
 	} finally {
 		await browser.close();
 		await server.close();
@@ -296,7 +354,7 @@ test("allocated rows and cells remain physically reachable with overflow on both
 	}
 });
 
-test("folded cells and rows trade space when their cues are clicked", async () => {
+test("a clicked cue opens its fold, a cell by closing the trailing cell and a row by folding the rows after it", async () => {
 	const server = await serveDocs();
 	const browser = await chromium.launch({ channel: "chrome", headless: true });
 	try {
@@ -343,29 +401,31 @@ test("folded cells and rows trade space when their cues are clicked", async () =
 		assert.equal(await page.evaluate(() => window.horizontal.findCell("mode/mail").full), false, "clicking beside the handle does not unfold");
 		await page.locator('.supermax-fold-cue[data-fold-occurrence="mode/mail"] > span').click();
 		assert.equal(await page.evaluate(() => window.horizontal.findCell("mode/mail").full), true);
-		assert.equal(await page.locator('.supermax-fold-cue[data-fold-occurrence="mode/mail/work"]').isVisible(), true);
-		assert.equal(await page.locator('.supermax-fold-cue[data-fold-occurrence="mode/mail/work"]').getAttribute("data-direction"), "left");
-		await page.locator('.supermax-fold-cue[data-fold-occurrence="mode/mail/work"]').click();
-		assert.equal(await page.evaluate(() => window.horizontal.findCell("mode/mail/work").full), true);
-		assert.equal(await page.locator('.supermax-fold-cue[data-fold-occurrence="mode/mail"]').isVisible(), true);
+		assert.equal(await page.evaluate(() => window.horizontal.navigator.get("mode/mail/work")), null, "the trailing cell closes to give the fold its room");
+		assert.equal(await page.locator(".supermax-fold-cue:visible").count(), 0);
 		assert.equal(await page.locator('[data-occurrence="mode/mail"] input').inputValue(), "unsent draft");
-		assert.equal(await page.evaluate(() => window.horizontal.navigator.groups.length), groups, "trading space does not add navigation history");
+		assert.equal(await page.evaluate(() => window.horizontal.navigator.groups.length), groups - 1, "the closed cell leaves navigation history, as it does for Show");
 		assert.equal(await page.locator(".supermax-peek, .is-fold-displaced").count(), 0, "no detached or dimmed veil is created");
 		assert.equal(await page.evaluate(() => window.horizontal.sync(["mode", "missing"], { origin: null }).ok), false);
-		assert.equal(await page.evaluate(() => window.horizontal.findCell("mode/mail/work").full), true, "a rejected navigation leaves fold focus intact");
-		await page.evaluate(() => {
-			window.horizontal.apply({ type: "close" });
-			window.horizontal.apply({ type: "open", destination: "work", from: "mode/mail", origin: null });
-			window.horizontal.folds.focus("mode/mail", "horizontal");
-		});
+		assert.equal(await page.evaluate(() => window.horizontal.findCell("mode/mail").full), true, "a rejected navigation leaves the opened fold intact");
+		await page.evaluate(() => window.horizontal.apply({ type: "open", destination: "work", from: "mode/mail", origin: null }));
 		await page.waitForTimeout(400);
-		await page.locator('.supermax-fold-cue[data-fold-occurrence="mode/mail/work"]').click();
-		assert.equal(await page.evaluate(() => window.horizontal.findCell("mode/mail/work").full), true, "a cell reopened during its exit still has a working fold handle");
+		assert.equal(await page.evaluate(() => window.horizontal.findCell("mode/mail").folded), true, "navigating on gives the new cell its room again");
+		const refused = await page.evaluate(() => {
+			const refuse = (event) => event.preventDefault();
+			window.horizontal.addEventListener("show", refuse);
+			const opened = window.horizontal.folds.open("mode/mail", "horizontal");
+			window.horizontal.removeEventListener("show", refuse);
+			return { opened, work: !!window.horizontal.navigator.get("mode/mail/work"), folded: window.horizontal.findCell("mode/mail").folded };
+		});
+		assert.deepEqual(refused, { opened: false, work: true, folded: true }, "a host can refuse the question a fold asks before it closes a cell");
+		await page.locator('.supermax-fold-cue[data-fold-occurrence="mode/mail"]').click();
+		assert.equal(await page.evaluate(() => window.horizontal.findCell("mode/mail").full), true, "the handle works again after the trailing cell reopened");
 		const narrow = await page.evaluate(() => {
 			window.horizontal.navigator.resize({ width: 100, height: 420 });
 			return window.horizontal.navigator.layout();
 		});
-		assert.equal(narrow.overflowX, true, "the focused cell and fold cues remain reachable by scrolling below their combined minimum");
+		assert.equal(narrow.overflowX, true, "the last cell and what precedes it remain reachable by scrolling below their combined minimum");
 		assert.equal(narrow.chain.cells.every((cell) => cell.visible), true);
 		await page.evaluate(async () => {
 			window.horizontal.destroy();
@@ -449,50 +509,24 @@ test("the main demo exposes both fold axes and follows its Motion choice", async
 		assert.equal(seam.stroke, seam.gutter, "the crease uses the canvas gutter hairline");
 		assert.equal(await narrow.locator('.supermax-cell.is-folded').first().evaluate((cell) => cell.getBoundingClientRect().width), 0);
 		assert.equal(await narrow.locator('.supermax-row.is-folded').first().evaluate((row) => row.getBoundingClientRect().height), 0);
-		const trade = async () => narrow.evaluate(async (frame) => {
+		const opened = await narrow.evaluate(async (frame) => {
 			frame.querySelector('.supermax-fold-cue.is-horizontal:not([inert])').click();
 			await new Promise((resolve) => {
 				let frames = 0;
 				const tick = () => { if (++frames === 6) resolve(); else requestAnimationFrame(tick); };
 				requestAnimationFrame(tick);
 			});
-			return ["albums/album:folding/folding:thumbnails", "albums/album:folding/folding:thumbnails/folding:photo:x"].map((id) => {
-				const cell = frame.querySelector(`[data-occurrence="${id}"]`);
-				return { offset: Math.abs(cell.getBoundingClientRect().left - cell.parentElement.getBoundingClientRect().left), paper: cell.querySelector(":scope > .supermax-cell-body").getBoundingClientRect().width };
-			});
+			const cell = frame.querySelector('[data-occurrence="albums/album:folding/folding:thumbnails"]');
+			return { offset: Math.abs(cell.getBoundingClientRect().left - cell.parentElement.getBoundingClientRect().left), paper: cell.querySelector(":scope > .supermax-cell-body").getBoundingClientRect().width };
 		});
-		assert.ok((await trade()).every(({ offset, paper }) => offset < 2 && paper >= 320), "opening left keeps content at full width inside moving rooms");
+		assert.ok(opened.offset < 2 && opened.paper >= 320, `an opening cell keeps its content at full width inside its moving room: ${JSON.stringify(opened)}`);
 		await page.waitForTimeout(350);
-		assert.ok((await trade()).every(({ offset, paper }) => offset < 2 && paper >= 320), "opening right keeps content at full width inside moving rooms");
-		await page.waitForTimeout(350);
-		const interrupted = await narrow.evaluate(async (frame) => {
-			frame.querySelector('.supermax-fold-cue.is-horizontal:not([inert])').click();
-			await new Promise((resolve, reject) => {
-				const started = performance.now();
-				const tick = () => {
-					const width = frame.querySelector('[data-occurrence="albums/album:folding/folding:thumbnails"]').getBoundingClientRect().width;
-					if (width > 20 && width < 350) resolve();
-					else if (performance.now() - started > 500) reject(new Error("the first fold never reached an intermediate width"));
-					else requestAnimationFrame(tick);
-				};
-				requestAnimationFrame(tick);
-			});
-			frame.querySelector('.supermax-fold-cue.is-horizontal:not([inert])').click();
-			await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
-			return ["albums/album:folding/folding:thumbnails", "albums/album:folding/folding:thumbnails/folding:photo:x"].map((id) => {
-				const cell = frame.querySelector(`[data-occurrence="${id}"]`);
-				return { offset: Math.abs(cell.getBoundingClientRect().left - cell.parentElement.getBoundingClientRect().left), paper: cell.querySelector(":scope > .supermax-cell-body").getBoundingClientRect().width };
-			});
-		});
-		assert.ok(interrupted.every(({ offset, paper }) => offset < 2 && paper >= 320), "reversing mid-fold keeps fixed-size content in its room");
-		await page.waitForTimeout(350);
+		assert.equal(await horizontal.count(), 0, "the opened cell took the room of the cell after it, which closed");
 		await page.locator('[data-presentation]').selectOption("origami");
 		await page.waitForTimeout(250);
 		assert.notEqual(await narrow.locator('.supermax-row.is-folded > .supermax-row-chain').evaluate((chain) => getComputedStyle(chain).transform), "none");
-		await horizontal.locator(".supermax-fold-mark").click();
-		assert.equal(await narrow.locator('.supermax-fold-cue.is-horizontal:visible').count(), 1, "a neighbour replaces the clicked horizontal cue");
 		await vertical.locator(".supermax-fold-mark").click();
-		assert.equal(await narrow.locator('.supermax-fold-cue.is-vertical:visible').count(), 1, "a neighbour replaces the clicked vertical cue");
+		assert.equal(await narrow.locator('.supermax-fold-cue.is-vertical:visible').count(), 1, "the row after it folds in turn and gets the handle");
 		await page.locator('[data-presentation]').selectOption("veil");
 		await page.waitForTimeout(250);
 		assert.equal(await narrow.locator('.supermax-row.is-folded > .supermax-row-chain').evaluate((chain) => getComputedStyle(chain).transform), "none");
@@ -542,7 +576,7 @@ test("Show navigates backward through folds instead of toggling them", async () 
 	}
 });
 
-test("fold handles attach in all four directions outside content clipping", async () => {
+test("fold handles attach on either side of their seam outside content clipping", async () => {
 	const server = await serveDocs();
 	const browser = await chromium.launch({ channel: "chrome", headless: true });
 	try {
@@ -572,7 +606,7 @@ test("fold handles attach in all four directions outside content clipping", asyn
 		await check();
 		await page.locator('[data-frame="b"] .supermax-fold-cue.is-vertical:visible').click();
 		await check();
-		assert.deepEqual(directions, new Set(['right', 'left', 'down', 'up']));
+		assert.deepEqual(directions, new Set(['right', 'down', 'up']));
 	} finally { await browser.close(); await server.close(); }
 });
 
@@ -716,15 +750,16 @@ test("dragging folds follows the pointer and settles beyond the directional gold
 				else navigator.open("first", { from: "mode" });
 				window.workspace = new Workspace(host, { navigator, content: () => {
 					const element = document.createElement("textarea");
-					element.value = "a draft that survives the trade";
+					element.value = "a draft that survives the fold";
 					return { element };
 				} });
 				if (presentation === "origami") window.workspace.setPresentation((await import("/src/index.js")).ORIGAMI_PRESENTATION);
 				if (presentation === "fold") window.workspace.setPresentation((await import("/assets/presentation-fold.js")).foldPresentation);
 				window.committedFolds = 0;
-				window.workspace.addEventListener("foldfocus", () => window.committedFolds++);
+				window.workspace.addEventListener("unfold", () => window.committedFolds++);
 			}, { axis, presentation });
-			for (const direction of axis === "horizontal" ? ["right", "left"] : ["down", "up"]) {
+			const directions = axis === "horizontal" ? ["right"] : ["down", "up"];
+			for (const direction of directions) {
 				const cue = page.locator(`.supermax-fold-cue.is-${axis}[data-direction="${direction}"]:visible`);
 				for (const fraction of [0.61, 0.63]) {
 					const box = await cue.boundingBox();
@@ -732,10 +767,10 @@ test("dragging folds follows the pointer and settles beyond the directional gold
 					const start = { x: box.x + box.width / 2, y: box.y + box.height / 2 };
 					const target = await page.evaluate(({ occurrence, axis }) => {
 						const workspace = window.workspace;
-						const previous = workspace.navigator.foldFocuses;
-						workspace.navigator.focusFold(occurrence, axis);
+						const previous = workspace.navigator.snapshot();
+						workspace.navigator.unfold(occurrence, axis);
 						const layout = workspace.navigator.layout();
-						workspace.navigator.foldFocuses = previous;
+						workspace.navigator.restore(previous);
 						return axis === "horizontal" ? layout.chain.cells.find((cell) => cell.occurrence === occurrence).width : layout.chain.cells.find((cell) => cell.rows).rows.rows.find((row) => row.occurrence === occurrence).height;
 					}, { occurrence, axis });
 					const sign = ["left", "up"].includes(direction) ? -1 : 1;
@@ -761,7 +796,11 @@ test("dragging folds follows the pointer and settles beyond the directional gold
 					assert.equal(await cue.isVisible(), fraction < 0.618, `${direction}: release at ${fraction}`);
 				}
 			}
-			assert.equal(await page.evaluate(() => window.committedFolds), 2, "only completed trades announce focus");
+			assert.equal(await page.evaluate(() => window.committedFolds), directions.length, "only completed drags announce an opened fold");
+			if (axis === "horizontal") {
+				await page.evaluate(() => window.workspace.apply({ type: "open", destination: "second", from: "first", origin: null }, { animate: false }));
+				await page.waitForTimeout(100);
+			}
 			const touch = await page.context().newCDPSession(page);
 			const touchId = await page.locator(`.supermax-fold-cue.is-${axis}:visible`).first().getAttribute("data-fold-occurrence");
 			const touchCue = page.locator(`.supermax-fold-cue.is-${axis}[data-fold-occurrence="${touchId}"]`);
@@ -798,9 +837,9 @@ test("dragging folds follows the pointer and settles beyond the directional gold
 				assert.equal(await touchCue.isVisible(), ending !== "open", `${axis}: touch ${ending} from the extended hit area`);
 			}
 			await touch.detach();
-			assert.equal(await page.evaluate(() => window.committedFolds), 3, "cancelled and returned touches never commit");
+			assert.equal(await page.evaluate(() => window.committedFolds), directions.length + 1, "cancelled and returned touches never commit");
 
-			assert.equal(await page.locator("textarea").first().inputValue(), "a draft that survives the trade");
+			assert.equal(await page.locator("textarea").first().inputValue(), "a draft that survives the fold");
 		}
 	} finally {
 		await browser.close();
@@ -881,10 +920,10 @@ test("a released fold finishes visibly and keeps its handle on the moving gutter
 		const occurrence = await cue.getAttribute("data-fold-occurrence");
 		const distance = await page.evaluate((id) => {
 			const workspace = window.supermaxDemo.frames[1].workspace;
-			const previous = workspace.navigator.foldFocuses;
-			workspace.navigator.focusFold(id, "vertical");
+			const previous = workspace.navigator.snapshot();
+			workspace.navigator.unfold(id, "vertical");
 			const height = workspace.navigator.layout().rows.get(id).height;
-			workspace.navigator.foldFocuses = previous;
+			workspace.navigator.restore(previous);
 			return height;
 		}, occurrence);
 		for (const [fraction, open] of [[0.4, false], [0.75, true]]) {
@@ -925,7 +964,7 @@ test("a released fold finishes visibly and keeps its handle on the moving gutter
 	}
 });
 
-test("folds opening left or up keep their handles on the interior gutter", async () => {
+test("a fold opening up keeps its handle on the interior gutter", async () => {
 	const server = await serveDocs();
 	const browser = await chromium.launch({ channel: "chrome", headless: true });
 	try {
@@ -935,26 +974,6 @@ test("folds opening left or up keep their handles on the interior gutter", async
 		await page.evaluate(() => window.supermaxDemo.resize([[960, 640], [414, 334]]));
 		await page.waitForTimeout(400);
 		const frame = page.locator('[data-frame="b"]');
-		await frame.locator('.supermax-fold-cue.is-horizontal:visible').click();
-		await page.waitForTimeout(400);
-		const cue = frame.locator('.supermax-fold-cue.is-horizontal[data-direction="left"]:visible');
-		const id = await cue.getAttribute("data-fold-occurrence");
-		const box = await cue.boundingBox();
-		await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
-		await page.mouse.down();
-		await page.mouse.move(box.x + box.width / 2 - 100, box.y + box.height / 2, { steps: 10 });
-		const geometry = await page.evaluate((occurrence) => {
-			const frame = document.querySelector('[data-frame="b"]');
-			const cue = frame.querySelector(`.supermax-fold-cue.is-horizontal[data-fold-occurrence="${occurrence}"]`);
-			const cell = frame.querySelector(`[data-occurrence="${occurrence}"]`);
-			const viewport = frame.querySelector('.supermax-workspace').getBoundingClientRect();
-			const gutter = parseFloat(getComputedStyle(frame.querySelector('.supermax-workspace')).getPropertyValue('--supermax-gutter'));
-			return { handleRight: cue.getBoundingClientRect().right, cellLeft: cell.getBoundingClientRect().left, cellRight: cell.getBoundingClientRect().right, viewportRight: viewport.right, gutter };
-		}, id);
-		assert.ok(Math.abs(geometry.cellRight - geometry.viewportRight) < 2, "the dragged cell still meets the viewport edge");
-		assert.ok(Math.abs(geometry.handleRight - geometry.cellLeft - geometry.gutter) < 0.1, `the handle follows the interior gutter: ${JSON.stringify(geometry)}`);
-		await page.mouse.up();
-		await page.waitForTimeout(250);
 		await frame.locator('.supermax-fold-cue.is-vertical[data-direction="down"]:visible').click();
 		await page.waitForTimeout(400);
 		const upward = frame.locator('.supermax-fold-cue.is-vertical[data-direction="up"]:visible');
@@ -980,7 +999,7 @@ test("folds opening left or up keep their handles on the interior gutter", async
 	}
 });
 
-test("a fold between two full cells opens toward the neighbour that yields, with its handle on that moving gutter", async () => {
+test("a fold between two full cells opens toward its trailing side, with its handle on that moving gutter", async () => {
 	const server = await serveDocs();
 	const browser = await chromium.launch({ channel: "chrome", headless: true });
 	try {
@@ -1001,11 +1020,11 @@ test("a fold between two full cells opens toward the neighbour that yields, with
 			} });
 			window.middle = new Workspace(host, { navigator, content: () => ({ element: document.createElement("textarea") }) });
 			window.middle.sync(["mode", "nav", "parent", "child"], { origin: null, animate: false });
-			navigator.focusFold("mode/nav", "horizontal");
+			navigator.unfold("mode/nav", "horizontal");
 			window.middle.render({ animate: false });
 		});
 		const cue = page.locator('.supermax-fold-cue[data-fold-occurrence="mode/nav/parent"]');
-		assert.equal(await cue.getAttribute("data-direction"), "right", "the handle faces Child, the neighbour that folds when Parent opens");
+		assert.equal(await cue.getAttribute("data-direction"), "right", "the handle faces Child, the trailing cell that gives way when Parent opens");
 		const box = await cue.boundingBox();
 		await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
 		await page.mouse.down();
@@ -1018,7 +1037,7 @@ test("a fold between two full cells opens toward the neighbour that yields, with
 		assert.ok(Math.abs(geometry.cellLeft - 260) < 1, `Parent keeps its left edge beside Nav: ${JSON.stringify(geometry)}`);
 		assert.ok(geometry.cellRight > 340, `Parent grows to the right with the pointer: ${JSON.stringify(geometry)}`);
 		assert.ok(Math.abs(geometry.handleLeft - geometry.cellRight) < 1.5, `the handle stays on the moving gutter: ${JSON.stringify(geometry)}`);
-		assert.ok(geometry.progress > 0.25, `dragging toward the yielding neighbour opens the fold: ${JSON.stringify(geometry)}`);
+		assert.ok(geometry.progress > 0.25, `dragging toward the trailing side opens the fold: ${JSON.stringify(geometry)}`);
 		await page.mouse.up();
 	} finally {
 		await browser.close();
@@ -1049,20 +1068,21 @@ test("a cell that folds keeps the responsive form it was last shown in", async (
 			} });
 			window.forms = new Workspace(host, { navigator, content: () => ({ element: document.createElement("div") }) });
 			window.forms.sync(["modes", "mailboxes", "nav", "list", "detail", "messages"], { origin: null, animate: false });
-			navigator.focusFold("modes/mailboxes/nav", "horizontal");
-			window.forms.render({ animate: false });
+			window.forms.folds.open("modes/mailboxes/nav", "horizontal");
+			window.resizeForms = (width) => { host.style.width = `${width}px`; };
 		});
 		const nav = page.locator('[data-occurrence="modes/mailboxes/nav"]');
+		const narrow = async (width) => {
+			await page.evaluate((next) => window.resizeForms(next), width);
+			await page.waitForFunction((next) => window.forms.layout.width === next, width);
+		};
+		await narrow(780);
 		assert.equal(await nav.getAttribute("data-variant"), "icons");
-		const box = await page.locator('.supermax-fold-cue[data-fold-occurrence="modes/mailboxes/nav/list"]').boundingBox();
-		await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
-		await page.mouse.down();
-		await page.mouse.move(box.x + box.width / 2 - 120, box.y + box.height / 2, { steps: 8 });
-		assert.ok(await nav.evaluate((element) => element.classList.contains("is-folded")), "Nav folds while List opens");
+		await narrow(760);
+		assert.ok(await nav.evaluate((element) => element.classList.contains("is-folded")), "Nav folds when the cells after it need its room");
+		assert.equal(await page.evaluate(() => window.forms.layout.cells.get("modes/mailboxes/nav").variant), "labels", "the allocator names the preferred form for a cell it does not show");
 		assert.equal(await nav.getAttribute("data-variant"), "icons", "Nav folds in the form it was shown in");
-		await page.mouse.up();
-		await page.evaluate(() => { window.forms.navigator.focusFold("modes/mailboxes/nav/list", "horizontal"); window.forms.render({ animate: false }); });
-		assert.ok(await nav.evaluate((element) => element.classList.contains("is-folded")));
+		await page.evaluate(() => window.forms.render({ animate: false }));
 		assert.equal(await nav.getAttribute("data-variant"), "icons", "a settled fold keeps that form too");
 	} finally {
 		await browser.close();
@@ -1096,7 +1116,7 @@ test("a fold drag leaves the styles of the content inside its cells alone", asyn
 				return { element };
 			} });
 			window.quiet.sync(["mode", "nav", "parent", "child"], { origin: null, animate: false });
-			navigator.focusFold("mode/nav", "horizontal");
+			navigator.unfold("mode/nav", "horizontal");
 			window.quiet.render({ animate: false });
 		});
 		const box = await page.locator('.supermax-fold-cue[data-fold-occurrence="mode/nav/parent"]').boundingBox();
@@ -1124,12 +1144,14 @@ test("a fold drag leaves the styles of the content inside its cells alone", asyn
 		await page.mouse.move(box.x + box.width / 2 + 300, box.y + box.height / 2, { steps: 5 });
 		await page.mouse.up();
 		await page.waitForFunction(() => window.quiet.findCell("mode/nav/parent")?.full && !window.quiet.folds.drag);
-		const settled = await page.evaluate(() => {
-			const parent = document.querySelector('[data-occurrence="mode/nav/parent"] .supermax-cell-body');
-			const child = document.querySelector('[data-occurrence="mode/nav/parent/child"]');
-			return { parentInert: parent.inert, childInert: child.querySelector(".supermax-cell-body").inert, childBodyPointer: getComputedStyle(child.querySelector(".supermax-cell-body")).pointerEvents };
+		const settled = await page.evaluate(() => ({ parentInert: document.querySelector('[data-occurrence="mode/nav/parent"] .supermax-cell-body').inert, childOpen: !!window.quiet.navigator.get("mode/nav/parent/child") }));
+		assert.deepEqual(settled, { parentInert: false, childOpen: false }, "the settled render opens the body and has closed the trailing cell");
+		const folded = await page.evaluate(() => {
+			window.quiet.apply({ type: "open", destination: "child", from: "mode/nav/parent", origin: null }, { animate: false });
+			const body = [...document.querySelectorAll(".supermax-cell.is-folded > .supermax-cell-body")][0];
+			return { inert: body.inert, pointer: getComputedStyle(body).pointerEvents };
 		});
-		assert.deepEqual(settled, { parentInert: false, childInert: true, childBodyPointer: "auto" }, "the settled render makes the folded body inert, which keeps pointers out without restyling its content");
+		assert.deepEqual(folded, { inert: true, pointer: "auto" }, "a folded body is inert, which keeps pointers out without restyling its content");
 	} finally {
 		await browser.close();
 		await server.close();
@@ -1146,25 +1168,23 @@ test("a completed fold drag carries its handle into the next fold", async () => 
 		await page.evaluate(() => window.supermaxDemo.resize([[960, 640], [414, 334]]));
 		await page.waitForTimeout(400);
 		const frame = page.locator('[data-frame="b"]');
-		await frame.locator('.supermax-fold-cue.is-horizontal:visible').click();
-		await page.waitForTimeout(350);
-		const cue = frame.locator('.supermax-fold-cue.is-horizontal[data-direction="left"]:visible');
+		const cue = frame.locator('.supermax-fold-cue.is-vertical[data-direction="down"]:visible');
 		const box = await cue.boundingBox();
 		const x = box.x + box.width / 2;
 		const y = box.y + box.height / 2;
 		await page.mouse.move(x, y);
 		await page.mouse.down();
-		await page.mouse.move(x - 300, y, { steps: 12 });
+		await page.mouse.move(x, y + 300, { steps: 12 });
 		await page.evaluate(() => {
 			const frame = document.querySelector('[data-frame="b"]');
-			const oldCue = frame.querySelector('.supermax-fold-cue.is-horizontal[data-direction="left"]:not([hidden])');
-			const nextCue = [...frame.querySelectorAll('.supermax-fold-cue.is-horizontal')].find((candidate) => candidate !== oldCue && candidate.dataset.foldOccurrence.endsWith("folding:thumbnails"));
+			const oldCue = frame.querySelector('.supermax-fold-cue.is-vertical[data-direction="down"]:not([hidden])');
+			const nextCue = [...frame.querySelectorAll('.supermax-fold-cue.is-vertical')].find((candidate) => candidate !== oldCue);
 			window.foldHandleFrames = [];
 			const sample = (elapsed) => {
 				const measure = (cue) => {
 					const mark = cue.querySelector(".supermax-fold-mark");
 					const style = getComputedStyle(mark);
-					return { visible: !cue.hidden, x: cue.getBoundingClientRect().left, leftRadius: parseFloat(style.borderTopLeftRadius), rightRadius: parseFloat(style.borderTopRightRadius) };
+					return { visible: !cue.hidden, x: cue.getBoundingClientRect().top, leftRadius: parseFloat(style.borderTopLeftRadius), rightRadius: parseFloat(style.borderBottomLeftRadius) };
 				};
 				window.foldHandleFrames.push({ elapsed, old: measure(oldCue), next: measure(nextCue) });
 			};
@@ -1195,7 +1215,7 @@ test("a completed fold drag carries its handle into the next fold", async () => 
 	}
 });
 
-test("clicking either fold axis animates the same handle handoff", async () => {
+test("clicking a row's fold handle animates the handle handoff", async () => {
 	const server = await serveDocs();
 	const browser = await chromium.launch({ channel: "chrome", headless: true });
 	try {
@@ -1204,7 +1224,7 @@ test("clicking either fold axis animates the same handle handoff", async () => {
 		await page.getByRole("button", { name: "Folding: cells and rows", exact: true }).click();
 		await page.evaluate(() => window.supermaxDemo.resize([[960, 640], [414, 334]]));
 		await page.waitForTimeout(400);
-		for (const axis of ["horizontal", "vertical"]) {
+		for (const axis of ["vertical"]) {
 			const motion = await page.evaluate(async (axis) => {
 				const frame = document.querySelector('[data-frame="b"]');
 				const oldCue = frame.querySelector(`.supermax-fold-cue.is-${axis}:not([hidden])`);

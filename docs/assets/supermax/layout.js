@@ -6,35 +6,6 @@ import { definitionFor, resizeBounds, rowDefinitions, selectVariants } from "./v
 import { CellCollection, DEFAULT_CURVE } from "./cell-collection.js";
 
 export const ELASTIC = "*";
-const foldAllocations = new WeakMap();
-
-export function retainFoldAllocation(model, focus, chain) {
-	foldAllocations.set(focus, {
-		size: { ...model.size },
-		occurrences: [...model.occurrences.values()],
-		sizes: new Map(model.sizes.width),
-		cells: chain.cells.map(({ occurrence, width, visible, folded }) => ({ occurrence, width, visible, folded })),
-	});
-}
-
-function preserveFoldAllocation(model, cells, bounds, sharing, fold) {
-	if (model.canonicalVariants || cells[0].parent || model.zoomed) return;
-	const saved = foldAllocations.get(model.foldFocuses.at(-1));
-	if (!saved || saved.size.width !== model.size.width || saved.size.height !== model.size.height) return;
-	if (saved.cells.reduce((sum, cell) => sum + (cell.visible ? cell.width : 0), 0) > model.size.width) return;
-	if (saved.occurrences.length !== model.occurrences.size || saved.occurrences.some((occurrence) => model.get(occurrence.id) !== occurrence)) return;
-	if (saved.sizes.size !== model.sizes.width.size || [...saved.sizes].some(([id, size]) => model.sizeOf(id) !== size)) return;
-	if (saved.cells.length !== cells.length || saved.cells.some((cell, index) => cell.occurrence !== cells[index].id || cell.folded !== fold.has(cell.occurrence))) return;
-	const previous = new Map(saved.cells.map((cell) => [cell.occurrence, cell]));
-	if (sharing.cells.some((cell, index) => {
-		const before = previous.get(cell.config.id);
-		const maximum = bounds[index].session === null ? bounds[index].reach ?? bounds[index].max : Math.max(cell.config.max, cell.actual);
-		return before.visible !== (cell.visible || fold.has(cell.config.id)) || before.visible && (before.width + .5 < cell.config.min || before.width - .5 > maximum);
-	})) return;
-	if (saved.cells.some((cell) => cell.visible && !sharing.cells.some((member) => member.config.id === cell.occurrence))) return;
-	for (const cell of sharing.cells) cell.actual = previous.get(cell.config.id).visible ? previous.get(cell.config.id).width : 0;
-}
-
 export function isSplit(definition) {
 	return Array.isArray(definition?.rows);
 }
@@ -203,7 +174,7 @@ export function chainCells(model, chainRoot) {
 			const child = model.get(current.children[0]);
 			next = child && !isBeside(model, child) ? child : null;
 		}
-		if (!next) return cells;
+		if (!next || model.withheld?.has(next.id)) return cells;
 		cells.push(next);
 		current = next;
 	}
@@ -212,24 +183,28 @@ export function chainCells(model, chainRoot) {
 const minDemand = (model, occurrence) => boundsOf(model, occurrence).steps[0];
 const askDemand = (model, occurrence) => boundsOf(model, occurrence).ask;
 
-function foldPass(model, cells, width, focused, demandOf = minDemand) {
+function unfoldedIn(model, cells) {
 	const root = chainRootOf(model, cells[0]);
-	const focus = focused ?? model.foldFocuses.find((focus) => focus.axis === "horizontal" && focus.scope === root.id)?.occurrence ?? null;
-	const active = focused ?? activeCell(model, root, cells);
+	return new Set((model.unfolded ?? []).filter((entry) => entry.scope === root.id).map((entry) => entry.occurrence));
+}
+
+function foldPass(model, cells, width, demandOf, held) {
+	const root = chainRootOf(model, cells[0]);
+	const active = activeCell(model, root, cells);
+	const unfolded = unfoldedIn(model, cells);
 	const required = cells.reduce((sum, occurrence) => sum + demandOf(model, occurrence), 0);
-	const chosen = chooseFolds(cells.length, cells.findIndex((cell) => cell.id === active), !!focus, required, width, (index) => {
+	const chosen = chooseFolds(cells.length, cells.findIndex((cell) => cell.id === active), (index) => unfolded.has(cells[index].id), required, width, (index) => {
 		const definition = definitionFor(model, cells[index]);
+		if (held.has(cells[index].id)) return null;
 		return isSplit(definition) || overflowMode(definition) !== "fold" ? null : demandOf(model, cells[index]) - foldSize(definition);
 	});
 	return new Map(chosen.map((index) => [cells[index].id, foldSize(definitionFor(model, cells[index]))]));
 }
 
-// allow-comment: folds go nearest the active member first, the later neighbour before the earlier on a tie; without a fold focus, farthest first.
-function chooseFolds(count, activeIndex, focused, required, budget, saving) {
+// allow-comment: folds go farthest from the active member first, the earlier before the later on a tie; a member the user unfolded goes after every other.
+function chooseFolds(count, activeIndex, unfolded, required, budget, saving) {
 	const chosen = [];
-	const candidates = [...Array(count).keys()].filter((index) => index !== activeIndex).sort((a, b) => focused
-		? Math.abs(a - activeIndex) - Math.abs(b - activeIndex) || b - a
-		: Math.abs(b - activeIndex) - Math.abs(a - activeIndex) || a - b);
+	const candidates = [...Array(count).keys()].filter((index) => index !== activeIndex).sort((a, b) => unfolded(a) - unfolded(b) || Math.abs(b - activeIndex) - Math.abs(a - activeIndex) || a - b);
 	for (const index of candidates) {
 		if (required <= budget) break;
 		const saved = saving(index);
@@ -288,7 +263,6 @@ function zoomAnchors(model) {
 function activeCell(model, root, cells) {
 	const anchors = zoomAnchors(model);
 	return cells.find((cell) => anchors.has(cell.id))?.id
-		?? model.foldFocuses.find((focus) => focus.axis === "horizontal" && focus.scope === root.id)?.occurrence
 		?? model.windowStarts.get(root.id)
 		?? cells.at(-1)?.id;
 }
@@ -297,19 +271,18 @@ function activeRow(model, split, roots) {
 	const zoomed = model.zoomed && model.get(model.zoomed);
 	const root = zoomed && chainRootOf(model, zoomed);
 	return (root?.parent === split.id ? root.id : null)
-		?? model.foldFocuses.find((focus) => focus.axis === "vertical" && focus.scope === split.id)?.occurrence
 		?? model.rowStarts.get(split.id)
 		?? roots.at(-1)?.id;
 }
 
 // allow-comment: room gives way in reading order, in one walk from the left: a cell before a split hides first, then the split gives its widest row up one cell at a time from the row's left, then the split itself hides; the newest cell always stays. The walk first makes room for what every cell asks (its preference, or its minimum without one), folding and hiding by each cell's overflow mode; only when the cells that cannot give way ask more than there is does it settle for the minima instead. What is left shares the width with the demand that walk settled on.
-function settleChain(model, cells, width, protectedIndex, demandOf, laddered) {
-	const fold = foldPass(model, cells, width, undefined, demandOf);
+function settleChain(model, cells, width, protectedIndex, demandOf, laddered, held = new Set()) {
+	const fold = foldPass(model, cells, width, demandOf, held);
 	const units = cells.map((occurrence, index) => {
 		const definition = definitionFor(model, occurrence);
 		const own = boundsOf(model, occurrence);
 		const steps = fold.has(occurrence.id) ? [fold.get(occurrence.id)] : laddered ? own.steps : [demandOf(model, occurrence)];
-		return { occurrence, definition, own, steps, level: 0, hidden: false, keep: overflowMode(definition) === "keep" || fold.has(occurrence.id) || index >= protectedIndex };
+		return { occurrence, definition, own, steps, level: 0, hidden: false, keep: overflowMode(definition) === "keep" || fold.has(occurrence.id) || held.has(occurrence.id) || index >= protectedIndex };
 	});
 	const demand = (unit) => unit.steps[unit.level];
 	let total = units.reduce((sum, unit) => sum + demand(unit), 0);
@@ -343,7 +316,10 @@ function allocateChain(model, cells, width) {
 	const anchor = cells.find((occurrence) => anchors.has(occurrence.id))?.id ?? null;
 	const active = activeCell(model, chainRootOf(model, cells[0]), cells);
 	const protectedIndex = Math.max(0, cells.findIndex((occurrence) => occurrence.id === active));
-	let settled = settleChain(model, cells, width, protectedIndex, askDemand, false);
+	// allow-comment: a cell the user unfolded stands while every other cell gives way by its overflow mode; only when that is not enough does it fold like the others.
+	const unfolded = unfoldedIn(model, cells);
+	let settled = unfolded.size ? settleChain(model, cells, width, protectedIndex, askDemand, false, unfolded) : null;
+	if (!settled || settled.total > width) settled = settleChain(model, cells, width, protectedIndex, askDemand, false);
 	if (settled.total > width) settled = settleChain(model, cells, width, protectedIndex, minDemand, true);
 	const { fold, units, floorOf } = settled;
 	const members = units.filter((unit) => !unit.hidden);
@@ -356,7 +332,6 @@ function allocateChain(model, cells, width) {
 		return unit.occurrence.id === anchor ? { ...config, zoomable: true, elastic: true } : config;
 	});
 	const sharing = distributeSessions(configs, bounds, width, anchor, model.curve ?? DEFAULT_CURVE);
-	preserveFoldAllocation(model, cells, bounds, sharing, fold);
 	const byId = new Map(sharing.cells.map((cell) => [cell.config.id, cell]));
 	const allocation = { ...sharing, cells: cells.map((occurrence) => byId.get(occurrence.id) ?? { config: { id: occurrence.id, title: occurrence.title }, actual: 0, visible: false }) };
 	return { allocation, fold };
@@ -398,19 +373,14 @@ function layoutWorkspaceFor(model) {
 	return layout;
 }
 
-// allow-comment: foldDirection says on which side of the active member a fold lies, for routes; foldOpening says which way its room grows when it takes the focus, which is where its handle and hinge belong.
-function planFoldPages(members, focus, axis, foldsWhenFocused) {
+// allow-comment: a fold lies collapsed on its leading edge. Before the active member it opens toward the trailing side, where the members after it give way; after the active member nothing follows it to yield, so it opens toward the leading side.
+function planFolds(members, focus, axis) {
 	const focused = members.findIndex((member) => member.occurrence === focus && member.visible && !member.folded);
 	const active = focused >= 0 ? focused : members.findLastIndex((member) => member.visible && !member.folded);
-	const before = members.findLast((member, index) => member.folded && index < active);
-	const after = members.find((member, index) => member.folded && index > active);
 	const [backward, forward] = axis === "horizontal" ? ["left", "right"] : ["up", "down"];
 	for (const [index, member] of members.entries()) if (member.folded) {
-		member.foldPage = (index < active ? before : after)?.occurrence;
 		member.foldDirection = index < active ? forward : backward;
-		const yielding = foldsWhenFocused(index).filter((other) => members[other].visible && !members[other].folded);
-		const later = yielding.some((other) => other > index);
-		member.foldOpening = later !== yielding.some((other) => other < index) ? later ? forward : backward : member.foldDirection;
+		member.foldOpening = member.foldDirection;
 	}
 }
 
@@ -418,17 +388,18 @@ function accessRoutes(model, layout) {
 	const back = layout.back;
 	const routes = new Map();
 	for (const occurrence of model.occurrences.values()) {
+		if (model.withheld?.has(occurrence.id)) continue;
 		let route = layout.cells.get(occurrence.id)?.full ? { kind: "visible", occurrence: occurrence.id } : model.zoomed ? { kind: "zoom-out" } : null;
 		for (let member = occurrence; !route && member; member = model.get(member.parent)) {
 			for (const [axis, placement] of [["vertical", layout.rows.get(member.id)], ["horizontal", layout.cells.get(member.id)]]) {
 				if (!placement?.folded || !placement.inView) continue;
-				if (["left", "up"].includes(placement.foldDirection)) route = { kind: "fold", occurrence: placement.foldPage, axis };
+				if (["left", "up"].includes(placement.foldDirection)) route = { kind: "fold", occurrence: member.id, axis };
 				else if (back) route = { kind: "back", occurrence: back.id };
 				break;
 			}
 		}
 		if (!route && back && model.placeOf(occurrence, layout) === "above") route = { kind: "back", occurrence: back.id };
-		if (!route || (route.kind === "fold" && !route.occurrence)) throw new Error(`No navigation route to open cell ${occurrence.id}`);
+		if (!route) throw new Error(`No navigation route to open cell ${occurrence.id}`);
 		routes.set(occurrence.id, route);
 	}
 	return routes;
@@ -470,7 +441,7 @@ function layoutChain(model, chainRoot, width, height, containerInView) {
 		}
 		return cell;
 	});
-	planFoldPages(layoutCells, activeCell(model, chainRoot, cells), "horizontal", (index) => [...foldPass(model, cells, width, cells[index].id).keys()].map((id) => cells.findIndex((cell) => cell.id === id)));
+	planFolds(layoutCells, activeCell(model, chainRoot, cells), "horizontal");
 	const contentWidth = layoutCells.reduce((sum, cell) => sum + (cell.visible ? cell.width : 0), 0);
 	return {
 		root: chainRoot.id,
@@ -491,13 +462,12 @@ function layoutRows(model, split, width, height, containerInView) {
 	const roots = definition.map((row, index) => model.get(split.children[index]));
 	const budget = Math.max(0, height);
 	const required = definition.reduce((sum, row) => sum + row.minHeight, 0);
-	const rowFolds = (activeIndex, focused) => chooseFolds(roots.length, activeIndex, focused, required, budget, (index) => overflowMode(definition[index]) !== "fold" ? null : definition[index].minHeight - foldSize(definition[index]));
+	const rowFolds = (activeIndex) => chooseFolds(roots.length, activeIndex, () => false, required, budget, (index) => overflowMode(definition[index]) !== "fold" ? null : definition[index].minHeight - foldSize(definition[index]));
 	const allocate = () => {
 		const shown = roots.map((root, index) => index);
-		const focus = model.foldFocuses.find((focus) => focus.axis === "vertical" && focus.scope === split.id)?.occurrence ?? null;
 		const active = activeRow(model, split, roots);
 		const activeIndex = roots.findIndex((root) => root.id === active);
-		const folded = new Set(rowFolds(activeIndex, !!focus));
+		const folded = new Set(rowFolds(activeIndex));
 		const bounds = shown.map((index) => folded.has(index) ? { min: foldSize(definition[index]), max: foldSize(definition[index]), preferred: null, session: null } : { ...heightBounds(definition[index]), session: model.sizeOf(roots[index].id, "height") });
 		const configs = shown.map((index, position) => ({ id: roots[index].id, title: roots[index].title, keep: overflowMode(definition[index]) === "keep" || folded.has(index) || index >= Math.max(0, activeIndex), ...sessionBounds(bounds[position], null, false) }));
 		const allocation = distributeSessions(configs, bounds, budget, null, model.curve ?? DEFAULT_CURVE);
@@ -531,7 +501,7 @@ function layoutRows(model, split, width, height, containerInView) {
 			chain: visible ? layoutChain(model, root, width, folded ? definition[index].minHeight : rowHeight, containerInView && !folded) : null,
 		};
 	});
-	planFoldPages(rows, activeRow(model, split, roots), "vertical", (index) => rowFolds(index, true));
+	planFolds(rows, activeRow(model, split, roots), "vertical");
 	const contentHeight = rows.reduce((sum, row) => sum + row.height, 0);
 	return { rows, overflow: overflow || contentHeight > budget, contentHeight, spare: Math.max(0, budget - contentHeight) };
 }

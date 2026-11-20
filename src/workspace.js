@@ -182,7 +182,7 @@ export class Workspace extends EventTarget {
 		const previous = this.navigator.zoomed;
 		if (!this.navigator.zoom(occurrenceId)) return false;
 		if (previous === this.navigator.zoomed) return true;
-		this.navigator.foldFocuses = [];
+		this.navigator.forgetUnfolds();
 		this.render({ animate });
 		return true;
 	}
@@ -203,21 +203,28 @@ export class Workspace extends EventTarget {
 		}
 		const target = this.navigator.upTarget(this.layout ?? undefined);
 		if (!target) return { ok: false, reason: "nothing-hidden" };
-		const before = this.navigator.snapshot();
-		const closed = this.navigator.showByClosing(target.id);
-		const after = this.navigator.snapshot();
-		this.navigator.restore(before);
-		const shown = this.navigator.get(target.id);
-		const closing = closed.map(({ id, destination, title }) => ({ occurrence: id, destination, title }));
-		const question = new CustomEvent("show", { cancelable: true, detail: { shown: { occurrence: shown.id, destination: shown.destination, title: shown.title }, closing } });
-		if (!this.dispatchEvent(question)) {
-			return { ok: false, reason: "cancelled" };
-		}
+		const { after, closed } = this.rehearse(() => this.navigator.showByClosing(target.id));
+		if (!this.askToShow(target.id, closed)) return { ok: false, reason: "cancelled" };
 		this.navigator.restore(after);
 		if (this.modal) this.closeModal("navigation");
 		this.render({ animate: true });
 		this.dispatchEvent(new CustomEvent("up", { detail: { shown: target.id, closed } }));
 		return { ok: true, destination: target.id, closed };
+	}
+
+	// allow-comment: runs an action that may close cells on the navigator and puts the navigator back, so a host can still refuse it and a drag can preview it.
+	rehearse(action) {
+		const before = this.navigator.snapshot();
+		const closed = action();
+		const after = this.navigator.snapshot();
+		this.navigator.restore(before);
+		return { before, after, closed };
+	}
+
+	askToShow(occurrenceId, closed) {
+		const shown = this.navigator.get(occurrenceId);
+		const closing = closed.map(({ id, destination, title }) => ({ occurrence: id, destination, title }));
+		return this.dispatchEvent(new CustomEvent("show", { cancelable: true, detail: { shown: { occurrence: shown.id, destination: shown.destination, title: shown.title }, closing } }));
 	}
 
 	intent(action) {
@@ -288,11 +295,7 @@ export class Workspace extends EventTarget {
 	goTo(occurrenceId) {
 		const occurrence = this.navigator.get(occurrenceId);
 		if (!occurrence) return false;
-		const folded = this.findCell(occurrenceId)?.folded || this.findRow(occurrenceId)?.folded;
-		if (folded) {
-			return this.folds.focus(occurrenceId, this.findRow(occurrenceId)?.folded ? "vertical" : "horizontal");
-		}
-		this.navigator.foldFocuses = [];
+		this.navigator.forgetUnfolds();
 		this.navigator.bringIntoView(occurrenceId);
 		this.render({ animate: true });
 		return this.findCell(occurrenceId)?.full ?? false;
@@ -326,11 +329,11 @@ export class Workspace extends EventTarget {
 	}
 
 	apply(action, { animate = true } = {}) {
-		const previousFocus = this.navigator.foldFocuses;
-		this.navigator.foldFocuses = [];
+		const unfolded = this.navigator.unfolded;
+		this.navigator.forgetUnfolds();
 		const before = new Set(this.navigator.occurrences.keys());
 		const result = this.run(action);
-		if (!result.ok || result.noop) this.navigator.foldFocuses = previousFocus;
+		if (!result.ok || result.noop) this.navigator.unfolded = unfolded;
 		if (action.type === "open" && result.ok && animate && action.origin === undefined && [...before].some((id) => !this.navigator.get(id))) this.warn("navigate()", "replaced cells without an origin, so they fold away on their far edge. Pass the element the user clicked as { origin } to navigate() or apply(), or origin: null when no element started it.");
 		if (result.ok && result.occurrence) this.remember(result.occurrence.id, action.origin);
 		if (result.ok && result.occurrence) this.navigator.bringIntoView(result.occurrence.id);
@@ -394,12 +397,12 @@ export class Workspace extends EventTarget {
 	}
 
 	sync(destinationIds, { animate = true, origin, ifRoom = [], zoom } = {}) {
-		const previousFocus = this.navigator.foldFocuses;
-		this.navigator.foldFocuses = [];
+		const unfolded = this.navigator.unfolded;
+		this.navigator.forgetUnfolds();
 		const action = { type: "sync", destinations: [...destinationIds], ifRoom: [...ifRoom], ...(zoom === undefined ? {} : { zoom }) };
 		const before = new Set(this.navigator.occurrences.keys());
 		const result = this.navigator.sync(destinationIds, { ifRoom, zoom });
-		if (!result.ok || result.noop) this.navigator.foldFocuses = previousFocus;
+		if (!result.ok || result.noop) this.navigator.unfolded = unfolded;
 		if (result.ok && !result.noop && animate && origin === undefined && [...before].some((id) => !this.navigator.get(id))) this.warn("sync()", "replaced cells without an origin, so they fold away on their far edge. Pass the element the user clicked as { origin }, or origin: null when no element started it.");
 		if (result.ok && origin && result.opened?.[0]) this.remember(result.opened[0], origin);
 		if (!result.ok) {
@@ -452,7 +455,7 @@ export class Workspace extends EventTarget {
 
 	render({ animate = true, animateVariants = false } = {}) {
 		if (this.folds.drag && !this.folds.drag.rendering) this.folds.drag.cancel();
-		this.navigator.foldFocuses = this.navigator.foldFocuses.filter((focus) => this.navigator.get(focus.occurrence) && this.navigator.get(focus.scope));
+		this.navigator.unfolded = this.navigator.unfolded.filter((entry) => this.navigator.get(entry.occurrence) && this.navigator.get(entry.scope));
 		if (this.announcing) this.warn("render()", "ran from inside a render or zoom handler, which turns one click into two renders. Act on the event without rendering again, or render from the action that started it.");
 		this.departure = null;
 		this.wasRendered = this.rendered;

@@ -23,84 +23,34 @@ function gallery(width = 420) {
 
 const widths = (model) => model.layout().chain.cells.map((cell) => cell.width);
 
-test("a local fold preserves feasible outer widths without creating session sizes", () => {
+test("opening a folded row keeps the outer widths without creating session sizes", () => {
 	const model = gallery();
+	model.resize({ width: 420, height: 150 });
 	const before = widths(model);
 	const open = model.state();
-	for (const target of ["menu/split/list", "menu/split/list/photo", "menu/split/list"]) {
-		model.focusFold(target, "horizontal");
+	for (const target of ["menu/split/list", "menu/split/support", "menu/split/list"]) {
+		assert.deepEqual(model.unfold(target, "vertical"), []);
 		assert.deepEqual(widths(model), before);
-		assert.equal(model.layout().cells.get(target).full, true);
+		assert.equal(model.layout().rows.get(target).folded, false);
 		assert.equal(model.sizeOf("menu"), null);
 		assert.deepEqual(model.state(), open);
 		const snapshot = model.snapshot();
 		model.layout(); model.layout();
 		assert.deepEqual(model.snapshot(), snapshot, "layout remains a query");
 	}
-	model.focusFold("menu/split/support", "vertical");
-	assert.deepEqual(widths(model), before);
 });
 
-test("new minimums and actual resizes may redistribute the outer chain", () => {
-	const model = gallery(340);
-	const before = widths(model);
-	assert.ok(before[1] < 300);
-	model.focusFold("menu/split/list", "horizontal");
-	const required = widths(model);
-	assert.ok(required[1] >= 300);
-	assert.ok(required[0] >= 48 && required[0] < before[0]);
-	assert.equal(model.layout().cells.get("menu/split/list").full, true);
-	model.resize({ width: 960, height: 300 });
-	assert.ok(widths(model)[0] > required[0]);
-	assert.equal(widths(model).reduce((sum, width) => sum + width), 960);
-	model.resize({ width: 420, height: 300 });
-	model.focusFold("menu/split/list/photo", "horizontal");
-	model.setSize("menu", 90);
-	assert.equal(widths(model)[0], 90, "an explicit divider adjustment is authoritative");
-});
-
-test("navigation and restored snapshots do not inherit stale fold allocations", () => {
+test("a restored snapshot opens the same folds as the model it came from", () => {
 	const model = gallery();
-	model.focusFold("menu/split/list", "horizontal");
-	const retained = widths(model);
-	const snapshot = JSON.parse(JSON.stringify(model.snapshot()));
-	assert.equal(model.restore(snapshot), true);
+	model.resize({ width: 420, height: 150 });
+	model.unfold("menu/split/list", "vertical");
 	const independent = gallery();
-	independent.restore(snapshot);
+	independent.resize({ width: 420, height: 150 });
+	independent.restore(JSON.parse(JSON.stringify(model.snapshot())));
 	assert.deepEqual(widths(model), widths(independent));
-	assert.notDeepEqual(widths(model), retained, "a JSON snapshot restores allocation policy, not a transient fold measurement");
-	assert.equal(model.layout().cells.get("menu/split/list").full, true);
-	model.closeNewestGroup();
-	independent.closeNewestGroup();
-	assert.deepEqual(widths(model), widths(independent), "a changed open structure invalidates the old allocation");
+	assert.equal(independent.layout().rows.get("menu/split/list").folded, false);
 	model.reset();
 	assert.equal(model.layout().chain.cells.length, 1);
-});
-
-test("a pre-existing session width resumes after a local minimum temporarily exceeds it", () => {
-	const model = gallery(400);
-	model.setSize("menu/split", 280);
-	model.focusFold("menu/split/list", "horizontal");
-	assert.equal(widths(model)[1], 300, "the active list minimum overrides the smaller session width");
-	model.focusFold("menu/split/list/photo", "horizontal");
-	assert.equal(widths(model)[1], 280, "the previous minimum must not override the restored session width");
-});
-
-test("speculative fold-drag focus and internal filtering preserve allocation ownership", () => {
-	const model = gallery();
-	const before = widths(model), originalFocus = model.foldFocuses;
-	model.focusFold("menu/split/list", "horizontal");
-	const speculative = model.foldFocuses;
-	model.foldFocuses = model.foldFocuses.filter((focus) => model.get(focus.occurrence));
-	assert.deepEqual(widths(model), before, "filtering preserves the focus object that owns the measurement");
-	model.foldFocuses = originalFocus;
-	assert.deepEqual(widths(model), before, "cancelling returns to the pre-drag allocation");
-	model.foldFocuses = speculative;
-	assert.deepEqual(widths(model), before, "committing uses the same speculative focus");
-	model.focusFold("menu/split", "horizontal");
-	const ordinary = gallery();
-	ordinary.restore(model.snapshot());
-	assert.deepEqual(widths(model), widths(ordinary), "a root-chain focus ends local allocation retention");
 });
 
 test("surviving leading edges stay still during shrinking, growing and interrupted room changes", async () => {
@@ -142,7 +92,7 @@ test("surviving leading edges stay still during shrinking, growing and interrupt
 	} finally { await browser.close(); await server.close(); }
 });
 
-test("native folds on both axes keep the menu and its centered content stable in every presentation", async () => {
+test("opening folded rows keeps the menu and its centered content stable in every presentation", async () => {
 	const server = await serveDocs();
 	const browser = await chromium.launch({ channel: "chrome", headless: true });
 	try {
@@ -177,8 +127,8 @@ test("native folds on both axes keep the menu and its centered content stable in
 				const button = menu.querySelector(".supermax-cell-body button");
 				const measure = () => ({ left: menu.getBoundingClientRect().left, width: menu.getBoundingClientRect().width, button: button.getBoundingClientRect().left, target: workspace.layout.cells.get("menu").width });
 				const before = measure(), samples = [];
-				for (const [target, axis] of [["menu/split/list", "horizontal"], ["menu/split/list/photo", "horizontal"], ["menu/split/list", "vertical"], ["menu/split/support", "vertical"]]) {
-					workspace.folds.focus(target, axis);
+				for (const [target, axis] of [["menu/split/list", "vertical"], ["menu/split/support", "vertical"], ["menu/split/list", "vertical"]]) {
+					workspace.folds.open(target, axis);
 					for (const fraction of [0, .1, .5, .9, 1]) {
 						for (const animation of host.getAnimations({ subtree: true })) {
 							animation.pause(); animation.currentTime = fraction * animation.effect.getComputedTiming().endTime;
