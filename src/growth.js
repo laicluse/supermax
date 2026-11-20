@@ -46,7 +46,7 @@ export class FocusGrowth {
 		if (!active || !workspace.element.contains(active)) return null;
 		const id = active.closest(".supermax-cell[data-occurrence]")?.dataset.occurrence;
 		const occurrence = id && workspace.cells.has(id) ? workspace.navigator.get(id) : null;
-		return occurrence && workspace.navigator.definitionOf(occurrence.destination).growOnFocus === true ? id : null;
+		return occurrence && workspace.navigator.definitionOf(occurrence.destination).growOnFocus ? id : null;
 	}
 
 	schedule() {

@@ -335,7 +335,8 @@ function grownOccurrence(model) {
 function growthIn(model, cells) {
 	const grown = grownOccurrence(model);
 	if (!grown || model.sizeOf(grown.id, "width") !== null) return null;
-	const preferred = widthBounds(definitionFor(model, grown)).preferred;
+	const definition = definitionFor(model, grown);
+	const preferred = typeof definition.growOnFocus === "number" ? definition.growOnFocus : widthBounds(definition).preferred;
 	if (preferred === null) return null;
 	const own = cells.findIndex((cell) => cell.id === grown.id);
 	if (own >= 0) return { occurrence: cells[own], preferred };

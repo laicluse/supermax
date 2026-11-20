@@ -43,11 +43,18 @@ export function layoutOf(definition) {
 		rows: null,
 		defaultChild: definition.defaultChild ?? null,
 		...(definition.zoomable ? { zoomable: true } : {}),
-		...(definition.growOnFocus ? { growOnFocus: true } : {}),
+		...(definition.growOnFocus ? { growOnFocus: definition.growOnFocus } : {}),
 		...(definition.placement === "beside-split" ? { placement: "beside-split" } : {}),
 		...(definition.header === "title" ? { header: "title" } : {}),
 		...(definition.menu != null ? { menu: definition.menu } : {}),
 	};
+}
+
+// allow-comment: growOnFocus is true to grow toward the preference, or a width in pixels for a host whose preference here is held low on purpose, such as a compact layout.
+export function growthProblems(declaration) {
+	const growth = declaration.growOnFocus;
+	if (growth == null || typeof growth === "boolean") return [];
+	return Number.isFinite(growth) && growth > 0 && !(Number.isFinite(declaration.min) && growth < declaration.min) ? [] : ["invalid-grow-on-focus"];
 }
 
 export function canonicalJSON(value) {
@@ -68,7 +75,7 @@ function problemsOf(id, declaration) {
 	if (declaration.header != null && declaration.header !== "title") problems.push("invalid-header");
 	if (declaration.menu != null && declaration.menu !== true && declaration.menu !== "exact") problems.push("invalid-menu");
 	if (typeof declaration.title !== "string" || declaration.title.trim().length === 0) problems.push("invalid-title");
-	if (declaration.growOnFocus != null && typeof declaration.growOnFocus !== "boolean") problems.push("invalid-grow-on-focus");
+	problems.push(...growthProblems(declaration));
 	if (declaration.rows != null) {
 		if (REQUIRED_SPLIT.some((key) => !Object.hasOwn(declaration, key))) problems.push("missing-field");
 		if (WIDTH.some((key) => declaration[key] != null) || declaration.defaultChild != null || declaration.overflow?.mode === "fold" || declaration.variants != null || declaration.aspectRatio != null || declaration.aspectInset != null || declaration.growOnFocus != null) problems.push("split-with-width");

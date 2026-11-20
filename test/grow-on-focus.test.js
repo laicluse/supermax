@@ -190,3 +190,16 @@ test("a kept neighbour with a wide form keeps that form and the cells before it 
 	assert.ok(grown.cells.get("list/menu").width >= 250, "the wide menu keeps the width its form needs");
 	assert.ok(grown.cells.get("list/menu/form").width >= plain.cells.get("list/menu/form").width);
 });
+
+test("a width in growOnFocus is the growth target for a cell whose preference is held low on purpose", () => {
+	const held = chain({ width: 1000, form: { preferred: 320, max: "*", growOnFocus: 560 } });
+	const [, plainForm] = widths(held.layout(), CHAIN);
+	const [, form, detail] = widths(layoutWorkspace(withGrowth(held, "list/form")), CHAIN);
+	assert.ok(form > plainForm && form >= 400, `the form grows past its preference toward 560 (${plainForm} → ${form})`);
+	assert.ok(detail >= 300);
+	assert.deepEqual(layoutOf({ title: "Form", min: 300, preferred: 320, max: "*", growOnFocus: 560 }).growOnFocus, 560);
+	const problems = (growOnFocus) => validateDeclarationSet({ schemaVersion: LAYOUT_SCHEMA, root: "form", destinations: { form: { title: "Form", min: 300, preferred: 320, max: "*", defaultChild: null, growOnFocus } } }).map((problem) => problem.reason);
+	assert.deepEqual(problems(560), []);
+	assert.ok(problems(200).includes("invalid-grow-on-focus"), "a target under the minimum is refused");
+	assert.ok(problems(-1).includes("invalid-grow-on-focus"));
+});
