@@ -56,14 +56,16 @@
 	flex: none;
 }
 
-.supermax-navbar-left { display: flex; align-items: center; gap: 6px; flex: none; }
+.supermax-navbar-left { display: flex; align-items: center; gap: 6px; flex: 0 1 auto; min-width: 0; max-width: 45%; }
 
 .supermax-up[hidden] { display: none; }
 .supermax-up {
 	display: inline-flex;
 	border-radius: var(--supermax-radius);
 	align-items: baseline;
-	flex: none;
+	flex: 0 1 auto;
+	min-width: 0;
+	max-width: 100%;
 	padding: 6px 10px;
 	border: 0;
 	background: var(--supermax-ink);
@@ -74,7 +76,7 @@
 	white-space: nowrap;
 }
 .supermax-up-label { margin-right: 0.35em; }
-.supermax-up-target { font-weight: 600; }
+.supermax-up-target { font-weight: 600; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 
 .supermax-title {
 	flex: 1 1 auto;

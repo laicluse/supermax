@@ -522,7 +522,7 @@ export class Workspace extends EventTarget {
 	}
 
 	renderNavbar() {
-		const next = this.upDestination;
+		const next = this.upDestination && this.navigator.get(this.upDestination.id);
 		this.upButton.hidden = !next;
 		this.upName.textContent = next ? next.title : "";
 		if (next) this.upButton.setAttribute("aria-label", this.strings.up(next.title));

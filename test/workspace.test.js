@@ -175,6 +175,28 @@ test("a deeplink opens three rows in both frames; a fresh navigation replays it 
 	assert.deepEqual(await state("a"), narrowLive, "a reload restores the stored snapshot although the frame is wide again");
 });
 
+test("a long name in the Show control gives way to the title on a phone", async () => {
+	await openDemo(TWENTY_DEEP);
+	await resize([[960, 640], [390, 640]]);
+	await page.evaluate(() => {
+		const { workspace } = window.supermaxDemo.frames[1];
+		for (const id of workspace.navigator.state().occurrences) workspace.setTitle(id, `A very long name for ${id.split("/").pop()} that does not fit on a phone at all`);
+	});
+	const measured = await page.locator(inFrame("b", ".supermax-navbar")).evaluate((navbar) => ({
+		navbar: navbar.getBoundingClientRect().width,
+		up: navbar.querySelector(".supermax-up").getBoundingClientRect().width,
+		title: navbar.querySelector(".supermax-title-text").getBoundingClientRect().width,
+		overflow: navbar.scrollWidth > navbar.clientWidth,
+		text: navbar.querySelector(".supermax-up").textContent,
+		hidden: navbar.querySelector(".supermax-up").hidden,
+	}));
+	assert.equal(measured.hidden, false, "the Show control is there");
+	assert.match(measured.text, /A very long name for depth:18/, "and names the hidden parent by its new title");
+	assert.equal(measured.overflow, false, "the navigation bar never overflows");
+	assert.ok(measured.up <= measured.navbar * 0.5, `the Show control takes at most half the bar: ${Math.round(measured.up)} of ${Math.round(measured.navbar)}px`);
+	assert.ok(measured.title >= measured.navbar * 0.3, `the title keeps room to be read: ${Math.round(measured.title)}px`);
+});
+
 test("the up control names the nearest hidden parent, closes what falls off the end to show it, and browser back undoes that", async () => {
 	await openDemo(TWENTY_DEEP);
 	await resize([[960, 640], [420, 640]]);
