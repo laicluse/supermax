@@ -111,6 +111,16 @@
 	background-clip: padding-box;
 	outline: none;
 }
+@property --supermax-shade { syntax: "<number>"; inherits: true; initial-value: 0; }
+.supermax-cell::after {
+	content: "";
+	position: absolute;
+	inset: 0;
+	z-index: 10;
+	background: var(--supermax-canvas);
+	opacity: var(--supermax-shade);
+	pointer-events: none;
+}
 .supermax-cell.is-leading, .supermax-cell.is-split { border-left-width: 0; }
 .supermax-cell.is-split:not(.is-leading) .supermax-row-chain .supermax-cell.is-leading { border-left-width: var(--supermax-gutter); }
 .supermax-cell.is-split { background: transparent; }

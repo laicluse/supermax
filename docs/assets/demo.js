@@ -1,10 +1,10 @@
-import { Navigator, ORIGAMI_PRESENTATION, SLIDE_PRESENTATION, Workspace, layoutHashOf, readLayout } from "./supermax/index.js";
+import { Navigator, ORIGAMI_PRESENTATION, Workspace, layoutHashOf, readLayout } from "./supermax/index.js";
 import { albums, depthCount, depthId, destinations, edits, embeddedDestinations, ids, minViewportHeight, paths, remoteContent } from "./album.js";
 import { appendAction, decodeLog, encodeLog } from "./deeplink.js";
 import { foldPresentation } from "./presentation-fold.js";
 import { serve } from "./api.js";
 
-const presentations = { origami: ORIGAMI_PRESENTATION, slide: SLIDE_PRESENTATION, fold: foldPresentation };
+const presentations = { origami: ORIGAMI_PRESENTATION, fold: foldPresentation };
 
 const coast = paths(albums[0]);
 const open = (destination, from) => ({ type: "open", destination, from });

@@ -490,39 +490,113 @@ test("a host that shows the canvas keeps cells at their maximum and centres them
 	assert.ok(row.left > 4 && Math.abs(row.left - row.right) < 1, "with the canvas showing equally on both sides");
 });
 
-test("a render during an entrance carries the fold on instead of dropping it", { skip: PRESENTATION !== "origami" }, async () => {
-	await openDemo(THREE_ROWS);
+const folds = (frameKey) => page.evaluate((key) => document.getAnimations()
+	.filter((animation) => animation.effect?.target?.matches?.(`.frame[data-frame="${key}"] .supermax-cell`) && animation.effect.getKeyframes().some((frame) => frame.transform !== undefined))
+	.map((animation) => ({
+		cell: animation.effect.target.dataset.occurrence.split("/").pop(),
+		leaving: animation.effect.target.hasAttribute("data-supermax-exiting"),
+		start: animation.startTime,
+		delay: animation.effect.getTiming().delay,
+		duration: animation.effect.getTiming().duration,
+		easing: animation.effect.getTiming().easing,
+		first: animation.effect.getKeyframes()[0].transform,
+	})), frameKey);
+
+test("a click opens its cell and every default under it in one stroke, folding together", { skip: PRESENTATION !== "origami" }, async () => {
+	await openDemo([open("album:coast", "albums")]);
+	await resize([[1400, 640], [420, 640]]);
 	await page.evaluate(() => window.supermaxDemo.prepare("coast:photo:d"));
-	const carried = await page.evaluate(({ row, photo }) => {
-		document.querySelector(`.frame[data-frame="a"] [data-occurrence="${row}"] [data-destination="coast:photo:d"]`).click();
-		window.supermaxDemo.frames[0].workspace.render();
-		return document.getAnimations()
-			.filter((animation) => animation.effect?.target?.matches?.('.frame[data-frame="a"] .supermax-cell') && animation.effect.getKeyframes().some((frame) => frame.transform?.includes("rotate")))
-			.map((animation) => animation.effect.target.dataset.occurrence.split("/").pop())
-			.sort();
-	}, { row: coast.row("map"), photo: coast.photo("map", "b") });
-	assert.deepEqual(carried, ["coast:metadata:b", "coast:photo:b", "coast:photo:d"], "the replaced photo folds away, its successor folds open, and the closed metadata folds back");
+	await page.click(inFrame("a", `[data-occurrence="${coast.row("thumbnails")}"] .thumb[data-destination="coast:photo:d"]`));
+	const opening = (await folds("a")).filter((fold) => !fold.leaving);
+	assert.deepEqual(opening.map((fold) => fold.cell).sort(), ["coast:history:d", "coast:metadata:d", "coast:photo:d"], "the photo and its whole default chain fold open");
+	assert.equal(new Set(opening.map((fold) => `${fold.start}+${fold.delay}`)).size, 1, "at the same moment");
+	assert.ok(opening.every((fold) => fold.duration === 200 && fold.easing === "ease-out"), "in one 200ms stroke that eases out");
+	const replaced = (await folds("a")).filter((fold) => fold.leaving).map((fold) => fold.cell).sort();
+	assert.deepEqual(replaced, ["coast:metadata:a", "coast:photo:a"], "and the cells it replaces fold away with it, defaults included");
+	assert.ok(opening.every((fold) => fold.delay === 200), "a replacement from rest first lets the old cells fold away");
+	await settle();
+	assert.equal(await page.locator(inFrame("a", "[data-supermax-exiting]")).count(), 0);
 });
 
-test("a cell that opens by itself is simply there, without a fold or a growing width", async () => {
+test("a cell that hides for lack of room, or comes back, only moves and never folds", { skip: PRESENTATION !== "origami" }, async () => {
 	await openDemo(THREE_ROWS);
 	await page.evaluate(() => {
-		window.__autoMotion = new Set();
-		new MutationObserver(() => {
+		window.__folds = 0;
+		const seen = new WeakSet();
+		const watch = () => {
 			for (const animation of document.getAnimations()) {
-				if (!animation.effect?.target?.matches?.('.frame[data-frame="a"] .supermax-cell[data-occurrence$="coast:metadata:d"]')) continue;
-				const frames = animation.effect.getKeyframes();
-				if (frames.some((frame) => frame.width !== undefined || frame.transform?.includes("rotate"))) window.__autoMotion.add(JSON.stringify(frames.map((frame) => frame.width ?? frame.transform)));
+				if (seen.has(animation)) continue;
+				seen.add(animation);
+				if (animation.effect?.target?.classList?.contains("supermax-cell") && animation.effect.getKeyframes().some((frame) => String(frame.transform ?? "").includes("rotate"))) window.__folds += 1;
 			}
-		}).observe(document.querySelector('.frame[data-frame="a"]'), { childList: true, subtree: true, attributes: true });
+			window.__watching = requestAnimationFrame(watch);
+		};
+		watch();
 	});
-	await page.click(inFrame("a", `[data-occurrence="${coast.row("map")}"] [data-destination="coast:photo:d"]`));
-	await page.waitForSelector(inFrame("a", `[data-occurrence="${coast.metadata("map", "d")}"]`));
+	const visible = async () => (await boxes(inFrame("b", ".supermax-cell"))).filter((cell) => cell.visible).map((cell) => cell.id).join();
+	const before = await visible();
+	await page.evaluate((row) => window.supermaxDemo.frames[1].workspace.goTo(row), coast.row("people"));
 	await settle();
-	assert.deepEqual(await page.evaluate(() => [...window.__autoMotion]), [], "the default Metadata D only moves along with its parent");
+	const shown = await visible();
+	await page.evaluate((photo) => window.supermaxDemo.frames[1].workspace.goTo(photo), coast.photo("people", "c"));
+	await settle();
+	assert.notEqual(shown, before, "going to a hidden parent shows it and hides others in the narrow frame");
+	assert.equal(await visible(), before, "and going back to the newest cell shows them again");
+	assert.equal(await page.evaluate(() => window.__folds), 0, "hiding and showing are geometry, not an exit or an entrance");
+	await page.evaluate(() => cancelAnimationFrame(window.__watching));
 });
 
-test("origami folds a cell open from its parent's edge and away on the far edge, the whole cell fading with the fold", { skip: PRESENTATION !== "origami" }, async () => {
+test("clicks faster than a stroke tear the earlier cells off from where they are, and nothing jumps", { skip: PRESENTATION !== "origami" }, async () => {
+	await openDemo([open("album:coast", "albums")]);
+	await page.evaluate(() => Promise.all(["b", "c", "d"].map((id) => window.supermaxDemo.prepare(`coast:photo:${id}`))));
+	const thumb = (id) => inFrame("a", `[data-occurrence="${coast.row("thumbnails")}"] .thumb[data-destination="coast:photo:${id}"]`);
+	const pose = (id) => page.evaluate((selector) => {
+		const element = document.querySelector(selector);
+		const style = getComputedStyle(element);
+		const [x, y] = style.transformOrigin.split(" ").map(parseFloat);
+		const matrix = new DOMMatrix().translate(x, y).multiply(new DOMMatrix(style.transform === "none" ? undefined : style.transform)).translate(-x, -y);
+		return { matrix: [...matrix.toFloat64Array()].map((value) => Math.round(value * 1000) / 1000), opacity: Math.round(Number(style.opacity) * 1000) / 1000 };
+	}, inFrame("a", `[data-occurrence="${coast.photo("thumbnails", id)}"]`));
+	await page.click(thumb("b"));
+	await page.evaluate(() => document.getAnimations().forEach((animation) => animation.pause()));
+	await page.evaluate(() => document.getAnimations().forEach((animation) => { animation.currentTime = 300; }));
+	const before = await pose("b");
+	await page.evaluate((selector) => {
+		document.querySelector(selector).click();
+		document.getAnimations().forEach((animation) => animation.pause());
+	}, thumb("c"));
+	const after = await pose("b");
+	assert.deepEqual(after, before, "the half-open cell starts its tear from its own pose");
+	const tearing = (await folds("a")).find((fold) => fold.cell === "coast:photo:b");
+	assert.equal(tearing?.leaving, true);
+	assert.equal(tearing.easing, "ease-in", "and tears off as an exit");
+	assert.equal((await folds("a")).find((fold) => fold.cell === "coast:photo:c" && !fold.leaving)?.delay, 0, "a place in motion does not wait: the next cell folds open at once");
+	await page.evaluate((selector) => document.querySelector(selector).click(), thumb("d"));
+	assert.ok(await page.locator(inFrame("a", `[data-supermax-exiting][data-occurrence$="coast:photo:b"], [data-supermax-exiting][data-occurrence$="coast:photo:c"]`)).count() >= 2, "every superseded layer stays on its own path");
+	await page.evaluate(() => document.getAnimations().forEach((animation) => animation.play()));
+	await settle();
+	assert.equal(await page.locator(inFrame("a", "[data-supermax-exiting]")).count(), 0, "and leaves when its own motion ends");
+	assert.equal((await groups("a")).at(-1), "Photo D");
+});
+
+test("going back to a cell that is still folding away brings the same cell back from its pose", { skip: PRESENTATION !== "origami" }, async () => {
+	await openDemo([open("album:coast", "albums")]);
+	await page.evaluate(() => window.supermaxDemo.prepare("coast:photo:b"));
+	const photoA = inFrame("a", `[data-occurrence="${coast.photo("thumbnails", "a")}"]`);
+	const element = await page.locator(photoA).elementHandle();
+	await page.click(inFrame("a", `[data-occurrence="${coast.row("thumbnails")}"] .thumb[data-destination="coast:photo:b"]`));
+	await page.evaluate(() => document.getAnimations().forEach((animation) => { animation.pause(); animation.currentTime = 120; }));
+	await page.evaluate((selector) => document.querySelector(selector).click(), inFrame("a", `[data-occurrence="${coast.row("thumbnails")}"] .thumb[data-destination="coast:photo:a"]`));
+	const back = (await folds("a")).find((fold) => fold.cell === "coast:photo:a" && !fold.leaving);
+	assert.ok(back, "Photo A folds back open");
+	assert.equal(back.easing, "ease-out");
+	assert.equal(await element.evaluate((node) => node.isConnected && !node.hasAttribute("data-supermax-exiting")), true, "it is the same cell, drafts and all");
+	await page.evaluate(() => document.getAnimations().forEach((animation) => animation.play()));
+	await settle();
+	assert.equal((await groups("a")).at(-1), "Photo A", "and the click on it is the newest group");
+});
+
+test("origami folds a cell open from its parent's edge and away on the far edge, the whole cell shading to the canvas with the fold", { skip: PRESENTATION !== "origami" }, async () => {
 	await openDemo(THREE_ROWS);
 	const motion = () => page.evaluate(() => {
 		const cells = [...document.querySelectorAll('.frame[data-frame="a"] .supermax-cell')];
@@ -530,7 +604,7 @@ test("origami folds a cell open from its parent's edge and away on the far edge,
 			const animations = document.getAnimations().filter((animation) => animation.effect?.target === cell);
 			const fold = animations.find((animation) => animation.effect.getKeyframes().some((frame) => frame.transform?.includes("rotate")));
 			if (!fold) return null;
-			const fade = animations.find((animation) => animation.effect.getKeyframes().some((frame) => frame.opacity !== undefined));
+			const fade = animations.find((animation) => animation.effect.getKeyframes().some((frame) => frame["--supermax-shade"] !== undefined));
 			const edge = (frames, folded) => frames.filter(folded).map((frame) => frame.computedOffset);
 			return {
 				cell: cell.dataset.occurrence.split("/").pop(),
@@ -541,7 +615,9 @@ test("origami folds a cell open from its parent's edge and away on the far edge,
 				end: fold.effect.getComputedTiming().endTime,
 				transforms: fold.effect.getKeyframes().map((frame) => frame.transform),
 				onEdge: edge(fold.effect.getKeyframes(), (frame) => frame.transform !== "none"),
-				transparent: fade ? edge(fade.effect.getKeyframes(), (frame) => Number(frame.opacity) === 0) : null,
+				transparent: fade ? edge(fade.effect.getKeyframes(), (frame) => Number(frame["--supermax-shade"]) === 1) : null,
+				opaque: getComputedStyle(cell).opacity,
+				overlay: [Number(getComputedStyle(cell, "::after").opacity).toFixed(3), Number(getComputedStyle(cell).getPropertyValue("--supermax-shade")).toFixed(3)],
 				fadeTiming: fade ? [fade.effect.getTiming().easing, fade.effect.getTiming().delay, fade.effect.getComputedTiming().endTime] : null,
 				innerFades: document.getAnimations().filter((animation) => cell.contains(animation.effect?.target) && animation.effect.target !== cell && animation.effect.getKeyframes().some((frame) => frame.opacity !== undefined)).length,
 			};
@@ -549,7 +625,9 @@ test("origami folds a cell open from its parent's edge and away on the far edge,
 	});
 	const wholeCell = (animation, label, easing) => {
 		assert.equal(animation.easing, easing, `${label} has ${easing}`);
-		assert.deepEqual(animation.transparent, animation.onEdge, `${label} is transparent exactly while it stands on edge`);
+		assert.deepEqual(animation.transparent, animation.onEdge, `${label} is fully shaded to the canvas exactly while it stands on edge`);
+		assert.equal(animation.opaque, "1", `${label} stays opaque, so overlapping cells never show through each other`);
+		assert.equal(animation.overlay[0], animation.overlay[1], `${label} shows its shade on the canvas-coloured overlay`);
 		assert.deepEqual(animation.fadeTiming, [animation.easing, animation.delay, animation.end], `${label} fades on the fold's timeline`);
 		assert.equal(animation.innerFades, 0, `${label} fades as one, not element by element`);
 	};
@@ -1043,8 +1121,8 @@ const TWENTY_DEEP = Array.from({ length: depthCount }, (_, index) => open(depthI
 test("a second presentation replaces motion and surface while behaviour, interruption and reduced motion stay the same", async () => {
 	await openDemo(THREE_ROWS);
 	const workspaceClass = () => page.locator(frame("a") + " .supermax-workspace").evaluate((element) => [...element.classList].filter((name) => name.startsWith("supermax-presentation-")));
-	assert.deepEqual(await workspaceClass(), [`supermax-presentation-${PRESENTATION}`], "the page starts in the requested presentation, slide by default");
-	await page.selectOption("[data-presentation]", "slide");
+	assert.deepEqual(await workspaceClass(), [`supermax-presentation-${PRESENTATION}`], "the page starts in the requested presentation, origami by default");
+	await page.selectOption("[data-presentation]", "origami");
 	await settle();
 	await page.focus(inFrame("a", `[data-occurrence="${coast.photo("map", "b")}"] .caption`));
 	const focusedBefore = await activeOccurrence();
@@ -1084,9 +1162,9 @@ test("a second presentation replaces motion and surface while behaviour, interru
 	assert.equal(await page.evaluate(() => document.getAnimations().length), 0, "reduced motion skips the fold entirely");
 	assert.deepEqual((await groups("a")).slice(-1), ["Photo A"], "and reaches the same destination");
 	await page.emulateMedia({ reducedMotion: "no-preference" });
-	await page.selectOption("[data-presentation]", "slide");
+	await page.selectOption("[data-presentation]", "origami");
 	await settle();
-	assert.deepEqual(await workspaceClass(), ["supermax-presentation-slide"]);
+	assert.deepEqual(await workspaceClass(), ["supermax-presentation-origami"]);
 	assert.equal(await page.locator(inFrame("a", ".supermax-cell")).first().evaluate((element) => getComputedStyle(element).boxShadow), "none", "switching back removes the override surface");
 	await page.selectOption("[data-presentation]", PRESENTATION);
 });

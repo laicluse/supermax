@@ -13,7 +13,6 @@ import { frustumOrigin } from "./origin.js";
 import { defaultNoticeIcon } from "./icons.js";
 import { HORIZON, ORIGAMI_PRESENTATION } from "./origami.js";
 
-export const SLIDE_PRESENTATION = Object.freeze({ name: "slide", motion: null, createStrip: null });
 
 function normalizePresentation(presentation) {
 	if (!presentation || typeof presentation.name !== "string" || presentation.name.length === 0) throw new TypeError("presentation needs a name");
@@ -47,6 +46,7 @@ export class Workspace extends EventTarget {
 		this.presentation = normalizePresentation(presentation);
 		this.document = element.ownerDocument;
 		this.cells = new Map();
+		this.leavingCells = new Map();
 		this.chains = new Map();
 		this.rows = new Map();
 		this.rendering = false;
@@ -269,9 +269,9 @@ export class Workspace extends EventTarget {
 		return results;
 	}
 
-	restore(snapshot) {
+	restore(snapshot, { animate = false } = {}) {
 		if (!this.navigator.restore(snapshot)) return false;
-		this.render({ animate: false });
+		this.render({ animate });
 		this.dispatchEvent(new CustomEvent("change", { detail: { action: { type: "restore" }, result: { ok: true } } }));
 		return true;
 	}
@@ -340,6 +340,7 @@ export class Workspace extends EventTarget {
 
 	render({ animate = true } = {}) {
 		this.rendering = true;
+		this.wasRendered = this.rendered;
 		this.rendered = true;
 		this.activeAtRender = this.document.activeElement;
 		let layout;
@@ -349,6 +350,7 @@ export class Workspace extends EventTarget {
 			this.warnPastMax(layout);
 			this.upDestination = this.navigator.upTarget(layout);
 			const animating = animate && !this.reducedMotion.matches;
+			this.animating = animating;
 			const rootViewport = this.renderChain(layout.chain, this.body, animating);
 			rootViewport.style.height = `${layout.overflow ? layout.contentHeight : layout.chain.height}px`;
 			rootViewport.style.width = layout.overflowX ? `${layout.chain.contentWidth}px` : "";
@@ -460,30 +462,27 @@ export class Workspace extends EventTarget {
 		this.titleContext.hidden = info.trail.length === 0;
 	}
 
-	renderChain(chain, host, animating) {
+	renderChain(chain, host, animating, { inRow = false } = {}) {
 		let entry = this.chains.get(chain.root);
-		if (!entry) {
+		const created = !entry;
+		if (created) {
 			const viewport = this.create("div", "supermax-chain");
 			host.append(viewport);
 			const strip = this.presentation.createStrip(viewport, this);
 			entry = { viewport, strip };
 			this.chains.set(chain.root, entry);
 		}
-		const known = new Set((entry.strip.entries ?? []).map((existing) => existing.id));
-		const appearsByItself = (cell) => !known.has(cell.occurrence) && this.navigator.isAuto(this.navigator.get(cell.occurrence));
-		const entries = chain.cells.map((cell) => ({
+		const entries = chain.cells.map((cell, index) => ({
 			id: cell.occurrence,
 			element: this.mountCell(cell.occurrence),
 			width: cell.width,
 			visible: cell.visible,
-			instant: appearsByItself(cell),
+			axis: inRow && index === 0 ? "row" : "chain",
+			still: !!cell.rows,
 		}));
-		const arrivals = chain.cells.filter((cell) => cell.visible && !known.has(cell.occurrence));
-		// A cell that opened by itself is simply there; when nothing else arrives, the chain settles at once.
-		if (arrivals.length > 0 && arrivals.every(appearsByItself)) animating = false;
 		for (const cell of chain.cells) this.peeks.apply(cell);
 		this.protectFocus(entries.filter((cell) => !cell.visible).map((cell) => cell.element));
-		entry.strip.update(entries, { animate: animating });
+		entry.strip.update(entries, { animate: animating, arrive: created && this.wasRendered && animating });
 		entry.strip.strip.style.marginLeft = `${chain.spare * ALIGN[this.navigator.spareSpace]}px`;
 		for (const cell of chain.cells) {
 			if (cell.rows) this.renderRows(cell, animating);
@@ -529,6 +528,12 @@ export class Workspace extends EventTarget {
 	mountCell(occurrenceId) {
 		let entry = this.cells.get(occurrenceId);
 		if (entry) return entry.element;
+		entry = this.leavingCells.get(occurrenceId);
+		if (entry) {
+			this.leavingCells.delete(occurrenceId);
+			this.cells.set(occurrenceId, entry);
+			return entry.element;
+		}
 		const occurrence = this.navigator.get(occurrenceId);
 		const definition = this.navigator.definitionOf(occurrence.destination);
 		const element = this.create("section", "supermax-cell");
@@ -578,7 +583,7 @@ export class Workspace extends EventTarget {
 			entry.chain.style.visibility = row.visible ? "" : "hidden";
 			if (row.visible) {
 				entry.chain.style.height = leading ? `${row.height}px` : `calc(${row.height}px - var(--supermax-gutter, 0px))`;
-				this.renderChain(row.chain, entry.chain, animating);
+				this.renderChain(row.chain, entry.chain, animating, { inRow: true });
 			}
 		}
 		this.dividers.sync(host, "horizontal", this.heightDividers(cell.rows.rows, cell.rows.contentHeight));
@@ -603,8 +608,13 @@ export class Workspace extends EventTarget {
 			if (this.peek?.occurrence === occurrenceId) this.closePeek();
 			this.protectFocus([entry.element], entry.parent);
 			this.cells.delete(occurrenceId);
+			this.leavingCells.set(occurrenceId, entry);
 			if (entry.element.classList.contains("is-split")) this.dividers.dispose(entry.body.firstElementChild);
-			this.afterExit(entry.element, () => entry.slot.dispose());
+			this.afterExit(entry.element, () => {
+				if (this.leavingCells.get(occurrenceId) !== entry) return;
+				this.leavingCells.delete(occurrenceId);
+				entry.slot.dispose();
+			});
 		}
 		for (const [rowId, entry] of this.rows) {
 			if (this.navigator.get(rowId)) continue;
@@ -615,10 +625,10 @@ export class Workspace extends EventTarget {
 			if (this.navigator.get(chainRootId)) continue;
 			this.chains.delete(chainRootId);
 			this.dividers.dispose(entry.viewport);
-			this.afterExit(entry.viewport, () => {
+			entry.strip.update([], { animate: this.animating }).then(() => this.afterExit(entry.viewport, () => {
 				entry.strip.destroy();
 				entry.viewport.remove();
-			});
+			}));
 		}
 	}
 
@@ -632,7 +642,8 @@ export class Workspace extends EventTarget {
 		}
 		const [ownerId, entry] = owner;
 		const settle = () => {
-			if (exiting.isConnected && this.chains.get(ownerId) === entry) entry.strip.finished.then(settle);
+			const leaving = exiting.isConnected && this.chains.get(ownerId) === entry && entry.strip.entries.some((candidate) => candidate.element === exiting && candidate.departing);
+			if (leaving) entry.strip.finished.then(settle);
 			else dispose();
 		};
 		entry.strip.finished.then(settle);
@@ -659,9 +670,10 @@ export class Workspace extends EventTarget {
 		this.document.removeEventListener("scroll", this.onViewportChange, true);
 		if (this.originFrame) this.document.defaultView.cancelAnimationFrame(this.originFrame);
 		this.noticeOrigin?.remove();
-		for (const entry of this.cells.values()) entry.slot.dispose();
+		for (const entry of [...this.cells.values(), ...this.leavingCells.values()]) entry.slot.dispose();
 		for (const entry of this.chains.values()) entry.strip.destroy();
 		this.cells.clear();
+		this.leavingCells.clear();
 		this.chains.clear();
 		this.rows.clear();
 		this.element.replaceChildren();
