@@ -14,7 +14,7 @@ import { frustumOrigin } from "./origin.js";
 import { chevronIcon, defaultNoticeIcon } from "./icons.js";
 import { HORIZON } from "./origami.js";
 import { VEIL_PRESENTATION } from "./veil.js";
-import { TIMING, TimeScale } from "./motion.js";
+import { TIMING, TimeScale, animateGeometry } from "./motion.js";
 
 function normalizePresentation(presentation) {
 	if (!presentation || typeof presentation.name !== "string" || presentation.name.length === 0) throw new TypeError("presentation needs a name");
@@ -110,7 +110,7 @@ export class Workspace extends EventTarget {
 		const size = { width: Math.round(rectangle.width), height: Math.round(rectangle.height) };
 		if (size.width === this.navigator.size.width && size.height === this.navigator.size.height && this.rendered) return;
 		this.navigator.resize(size);
-		this.render({ animate: false });
+		this.render({ animate: false, animateVariants: true });
 	}
 
 	warn(kind, message) {
@@ -291,6 +291,11 @@ export class Workspace extends EventTarget {
 		this.setSizes(new Map([[occurrenceId, size]]), axis);
 	}
 
+	setVariants(destination, variants, { row = null, animate = true } = {}) {
+		this.navigator.setVariants(destination, variants, { row });
+		this.render({ animate });
+	}
+
 	setSizes(sizes, axis = "width", { animate = false } = {}) {
 		for (const [occurrenceId, size] of sizes) this.navigator.setSize(occurrenceId, size, axis);
 		this.render({ animate });
@@ -431,7 +436,7 @@ export class Workspace extends EventTarget {
 		return this.layout?.rows.get(rowRootId) ?? null;
 	}
 
-	render({ animate = true } = {}) {
+	render({ animate = true, animateVariants = false } = {}) {
 		if (this.folds.drag && !this.folds.drag.rendering) this.folds.drag.cancel();
 		this.navigator.foldFocuses = this.navigator.foldFocuses.filter((focus) => this.navigator.get(focus.occurrence) && this.navigator.get(focus.scope));
 		if (this.announcing) this.warn("render()", "ran from inside a render or zoom handler, which turns one click into two renders. Act on the event without rendering again, or render from the action that started it.");
@@ -439,6 +444,10 @@ export class Workspace extends EventTarget {
 		this.wasRendered = this.rendered;
 		this.rendered = true;
 		const layout = this.navigator.layout();
+		if (animateVariants && this.layout) animate ||= [...layout.cells].some(([id, cell]) => {
+			const before = this.layout.cells.get(id);
+			return before && (before.variant !== cell.variant || before.rowVariant !== cell.rowVariant);
+		}) || [...this.cells.values()].some((entry) => [...entry.variantAnimations ?? []].some((animation) => ["running", "paused"].includes(animation.playState)));
 		this.layout = layout;
 		this.upDestination = this.navigator.zoomed ? this.zoomedFrom(layout) : layout.back;
 		const animating = this.folds.drag?.rendering || (animate && !this.reducedMotion.matches);
@@ -571,11 +580,13 @@ export class Workspace extends EventTarget {
 			axis: inRow && index === 0 ? "row" : "chain",
 			row,
 			still: !!cell.rows,
+			variantChanged: this.cells.get(cell.occurrence)?.variantState && (this.cells.get(cell.occurrence).variantState.variant !== (cell.variant ?? null) || this.cells.get(cell.occurrence).variantState.rowVariant !== (cell.rowVariant ?? null)),
 			follow: cell.rows ? () => this.reachOfRows(this.cells.get(cell.occurrence) ?? this.leavingCells.get(cell.occurrence)) : undefined,
 		}));
 		for (const cell of chain.cells) this.folds.apply(this.cells.get(cell.occurrence), cell.folded, cell.foldDirection);
-		entry.strip.update(entries, { animate: animating, interactive: !!this.folds.drag?.rendering, arrive: created && this.wasRendered && animating });
-		entry.strip.strip.style.marginLeft = `${chain.spare * ALIGN[this.navigator.spareSpace]}px`;
+		const participants = chain.cells.map((cell) => this.variantParticipant(cell)).filter(Boolean);
+		entry.strip.update(entries, { participants, animate: animating, interactive: !!this.folds.drag?.rendering, arrive: created && this.wasRendered && animating });
+		entry.strip.strip.style.marginLeft = `${Math.round(chain.spare * ALIGN[this.navigator.spareSpace])}px`;
 		for (const cell of chain.cells) {
 			if (cell.rows) this.renderRows(cell, animating, entry.strip);
 		}
@@ -586,9 +597,45 @@ export class Workspace extends EventTarget {
 		return entry.viewport;
 	}
 
+
+	variantParticipant(cell) {
+		const entry = this.cells.get(cell.occurrence);
+		const from = entry.variantState ?? null;
+		const to = Object.freeze({ variant: cell.variant ?? null, rowVariant: cell.rowVariant ?? null, width: cell.width, height: cell.height });
+		const changed = from && (from.variant !== to.variant || from.rowVariant !== to.rowVariant);
+		const running = [...entry.variantAnimations ?? []].some((animation) => animation.playState !== "idle" && animation.playState !== "finished");
+		if (!changed && !running && from) { entry.variantState = to; return null; }
+		const content = entry.slot.handle.element;
+		const opacity = content ? parseFloat(this.document.defaultView.getComputedStyle(content).opacity) : 1;
+		const participant = from && (changed || running) ? entry.slot.handle.transition?.({ from, to }) : null;
+		return {
+			prepare: () => {
+				entry.variantState = to;
+				if (to.variant) entry.element.dataset.variant = to.variant;
+				else delete entry.element.dataset.variant;
+				if (to.rowVariant) entry.element.dataset.rowVariant = to.rowVariant;
+				else delete entry.element.dataset.rowVariant;
+				participant?.prepare?.();
+			},
+			animate: !from || (!changed && !running) || !cell.full ? null : (animate) => {
+				entry.variantAnimations = new Set();
+				const register = (element, frames) => {
+					const animation = animate(element, frames);
+					const owned = entry.variantAnimations;
+					owned.add(animation);
+					const remove = () => owned.delete(animation);
+					animation.finished.then(remove, remove);
+					return animation;
+				};
+				if (participant?.animate) participant.animate({ animate: register });
+				else if (content) register(content, [{ opacity: running ? opacity : 0 }, { opacity: 1 }]);
+			},
+		};
+	}
+
 	widthDividers(chain, visible) {
 		const items = [];
-		const parts = visible.map((cell) => ({ id: cell.occurrence, size: cell.width, min: cell.folded ? cell.width : cell.min, max: cell.folded ? cell.width : cell.max }));
+		const parts = visible.map((cell) => ({ id: cell.occurrence, size: cell.width, min: cell.folded ? cell.width : cell.resizeMin, max: cell.folded ? cell.width : cell.resizeMax }));
 		let offset = 0;
 		visible.forEach((cell, index) => {
 			offset += cell.width;
@@ -601,7 +648,7 @@ export class Workspace extends EventTarget {
 
 	heightDividers(rows, budget) {
 		const items = [];
-		const parts = rows.map((row) => ({ id: row.occurrence, size: row.height, min: row.visible && !row.folded ? row.minHeight : row.height, max: row.visible && !row.folded ? row.maxHeight : row.height }));
+		const parts = rows.map((row) => ({ id: row.occurrence, size: row.height, min: row.visible && !row.folded ? row.resizeMin : row.height, max: row.visible && !row.folded ? row.resizeMax : row.height }));
 		let offset = 0;
 		rows.forEach((row, index) => {
 			offset += row.height;
@@ -746,7 +793,7 @@ export class Workspace extends EventTarget {
 		const paper = Math.max(previous, height);
 		entry.paper = paper;
 		const timing = strip?.roomTiming?.() ?? this.time.timing({ duration: STRIP_TIMING.duration, easing: STRIP_TIMING.easing });
-		entry.animation = entry.element.animate([{ height: `${previous}px` }, { height: `${height}px` }], { ...timing, fill: "backwards" });
+		entry.animation = animateGeometry(entry.element, [{ height: `${previous}px` }, { height: `${height}px` }], { ...timing, fill: "backwards" });
 		if (exchangingFold) {
 			entry.chain.style.marginTop = "0px";
 			const animation = entry.animation;
@@ -757,7 +804,7 @@ export class Workspace extends EventTarget {
 			}, () => {});
 			return;
 		}
-		entry.slide = entry.chain.animate([{ marginTop: `${previous - paper}px` }, { marginTop: `${height - paper}px` }], { ...timing, fill: "both" });
+		entry.slide = animateGeometry(entry.chain, [{ marginTop: `${previous - paper}px` }, { marginTop: `${height - paper}px` }], { ...timing, fill: "both" });
 		const slide = entry.slide;
 		slide.finished.then(() => {
 			if (entry.slide !== slide) return;

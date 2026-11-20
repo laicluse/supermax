@@ -25,6 +25,19 @@ export const EASING = Object.freeze({ appear: "ease-out", disappear: "ease-in", 
 export const APPEAR = Object.freeze({ duration: TIMING.stroke, easing: EASING.appear });
 export const DISAPPEAR = Object.freeze({ duration: TIMING.stroke, easing: EASING.disappear });
 
+export function animateGeometry(element, frames, timing) {
+	const view = element.ownerDocument.defaultView;
+	const first = frames[0];
+	const last = frames.at(-1);
+	const distance = Math.max(0, ...Object.keys(first).map((property) => {
+		if (property === "transform") return Math.abs(new view.DOMMatrix(first[property] === "none" ? undefined : first[property]).m41 - new view.DOMMatrix(last[property] === "none" ? undefined : last[property]).m41);
+		return Math.abs(parseFloat(last[property]) - parseFloat(first[property])) || 0;
+	}));
+	const steps = Math.max(1, Math.round(distance));
+	// allow-comment: the shared timing curve runs before keyframe easing; CSS-pixel steps keep adjacent room planes on the same raster grid without a second timeline.
+	return element.animate([{ ...first, easing: `steps(${steps}, end)` }, ...frames.slice(1)], timing);
+}
+
 // allow-comment: one scale for every millisecond Supermax waits or moves; workspaces that share it, and the host's own waits, slow down together.
 export class TimeScale extends EventTarget {
 	constructor(value = 1) {

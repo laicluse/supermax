@@ -53,6 +53,7 @@ export class ContentSlot {
 
 	settle(handle) {
 		this.handle = handle;
+		if (handle.element) handle.element.setAttribute("data-supermax-content", "");
 		this.element.classList.remove("is-loading", "is-error");
 		this.body.replaceChildren(...(handle.element ? [handle.element] : []));
 		if (handle.header) {

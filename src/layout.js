@@ -1,3 +1,4 @@
+import { definitionFor, resizeBounds, rowDefinitions, selectVariants } from "./variants.js";
 import { CellCollection } from "./cell-collection.js";
 
 export const ELASTIC = "*";
@@ -14,7 +15,7 @@ export function retainFoldAllocation(model, focus, chain) {
 }
 
 function preserveFoldAllocation(model, cells, bounds, sharing, fold) {
-	if (cells[0].parent || model.zoomed) return;
+	if (model.canonicalVariants || cells[0].parent || model.zoomed) return;
 	const saved = foldAllocations.get(model.foldFocuses.at(-1));
 	if (!saved || saved.size.width !== model.size.width || saved.size.height !== model.size.height) return;
 	if (saved.cells.reduce((sum, cell) => sum + (cell.visible ? cell.width : 0), 0) > model.size.width) return;
@@ -54,7 +55,7 @@ export function rowSplitOf(model, occurrence) {
 
 // allow-comment: a full-height cell opened from a cell in a row stands beside that row's split, in the chain the split is in.
 export function isBeside(model, occurrence) {
-	if (!isFull(model.definitionOf(occurrence.destination)) || !occurrence.parent) return false;
+	if (!isFull(definitionFor(model, occurrence)) || !occurrence.parent) return false;
 	return rowSplitOf(model, model.get(occurrence.parent)) !== null;
 }
 
@@ -70,16 +71,24 @@ export function widthBounds(definition) {
 	return { min: definition.min, max: elastic ? definition.preferred : definition.max, reach: elastic ? Infinity : definition.max, preferred: definition.preferred ?? null, elastic };
 }
 
+function widthDefinition(model, occurrence, resizing) {
+	if (!resizing) return definitionFor(model, occurrence);
+	const owner = model.definitionOf(occurrence.destination);
+	if (isSplit(owner)) return owner;
+	const bounds = resizeBounds(owner);
+	return { ...owner, min: bounds.min, max: bounds.max === Infinity ? ELASTIC : bounds.max, preferred: bounds.min };
+}
+
 // allow-comment: a split declares no width; its bounds are its widest row's. A row asks for the sum of its cells' minima and gives that up one cell at a time from its left (steps), down to its newest cell with the kept cells (min); it prefers the sum of its cells' preferences and reaches the sum of their maxima. Only what is open counts, never what is visible, so the demand cannot depend on its own outcome.
-export function boundsOf(model, occurrence) {
-	const definition = model.definitionOf(occurrence.destination);
+export function boundsOf(model, occurrence, resizing = false) {
+	const definition = widthDefinition(model, occurrence, resizing);
 	if (!isSplit(definition)) return { ...widthBounds(definition), steps: [definition.min] };
 	const bounds = { min: 0, max: 0, reach: 0, preferred: 0, elastic: false };
 	const rowSteps = [];
-	definition.rows.forEach((row, index) => {
+	rowDefinitions(model, occurrence).forEach((row, index) => {
 		const root = occurrence.children?.[index] ? model.get(occurrence.children[index]) : null;
 		const rowChain = root ? chainCells(model, root) : [{ destination: row.destination }];
-		const cells = rowChain.map((cell) => model.definitionOf(cell.destination));
+		const cells = rowChain.map((cell) => widthDefinition(model, cell, resizing));
 		const newest = cells[cells.length - 1];
 		const keptBefore = (count) => cells.slice(0, count).reduce((sum, cell) => sum + (cell.keep ? cell.min : cell.fold === false ? 0 : cell.fold?.size ?? TRANSIENT_FOLD.horizontal), 0);
 		const active = root ? activeCell(model, root, rowChain) : rowChain.at(-1)?.id;
@@ -131,7 +140,7 @@ export function validateSplit(model, definitionId, parentOccurrence) {
 	if (parentOccurrence && chainRootOf(model, parentOccurrence).parent) return { ...base, reason: "nested-split" };
 	if (parentOccurrence) {
 		const cells = chainCells(model, chainRootOf(model, parentOccurrence));
-		if (cells.slice(0, cells.indexOf(parentOccurrence)).some((cell) => isSplit(model.definitionOf(cell.destination)))) return { ...base, reason: "second-split" };
+		if (cells.slice(0, cells.indexOf(parentOccurrence)).some((cell) => isSplit(definitionFor(model, cell)))) return { ...base, reason: "second-split" };
 	}
 	if (rows.length === 0) return { ...base, reason: "no-rows" };
 	if (rows.length > maxRows) return { ...base, reason: "too-many-rows", count: rows.length, maxRows };
@@ -150,7 +159,7 @@ export function validateSplit(model, definitionId, parentOccurrence) {
 		if (row.maxHeight !== ELASTIC && row.preferredHeight != null && (!Number.isFinite(row.preferredHeight) || row.preferredHeight < row.minHeight || row.preferredHeight > row.maxHeight)) problems.push("invalid-preferred");
 		if (row.fold != null && row.fold !== false && (!Number.isFinite(row.fold.size) || row.fold.size < 0 || row.fold.size >= row.minHeight)) problems.push("invalid-fold");
 		if (rowDefinition && rowDefinition.min > widthBounds(rowDefinition).reach) problems.push("cell-min-exceeds-max");
-		const required = chrome + row.minHeight;
+		const required = chrome + Math.max(row.minHeight, row.variants?.at(-1)?.minHeight ?? row.minHeight);
 		if (required > model.minViewportHeight) problems.push("exceeds-supported-height");
 		return {
 			row: index,
@@ -211,7 +220,7 @@ function foldPass(model, cells, width) {
 		: Math.abs(cells.indexOf(b) - activeIndex) - Math.abs(cells.indexOf(a) - activeIndex) || cells.indexOf(a) - cells.indexOf(b));
 	for (const occurrence of candidates) {
 		if (required <= width) break;
-		const definition = model.definitionOf(occurrence.destination);
+		const definition = definitionFor(model, occurrence);
 		if (isSplit(definition) || definition.fold === false || definition.keep) continue;
 		const size = definition.fold?.size ?? TRANSIENT_FOLD.horizontal;
 		fold.set(occurrence.id, size);
@@ -270,7 +279,7 @@ function allocateChain(model, cells, width) {
 	const active = activeCell(model, chainRootOf(model, cells[0]), cells);
 	const protectedIndex = Math.max(0, cells.findIndex((occurrence) => occurrence.id === active));
 	const units = cells.map((occurrence, index) => {
-		const definition = model.definitionOf(occurrence.destination);
+		const definition = definitionFor(model, occurrence);
 		const own = boundsOf(model, occurrence);
 		const steps = fold.has(occurrence.id) ? [fold.get(occurrence.id)] : own.steps;
 		return { occurrence, definition, own, steps, level: 0, hidden: false, keep: !!definition.keep || fold.has(occurrence.id) || index >= protectedIndex };
@@ -327,6 +336,10 @@ export function chainWidth(model, chainRoot) {
 }
 
 export function layoutWorkspace(model) {
+	return selectVariants(model, layoutWorkspaceFor);
+}
+
+function layoutWorkspaceFor(model) {
 	const height = Math.max(0, model.size.height);
 	const chain = layoutChain(model, model.root, model.size.width, height, true);
 	const index = { cells: new Map(), rows: new Map(), chains: new Map() };
@@ -396,14 +409,15 @@ function layoutChain(model, chainRoot, width, height, containerInView) {
 	let overflow = false;
 	let contentHeight = height;
 	const layoutCells = cells.map((occurrence, index) => {
-		const definition = model.definitionOf(occurrence.destination);
+		const definition = definitionFor(model, occurrence);
 		const allocated = byId.get(occurrence.id);
 		const bounds = boundsOf(model, occurrence);
+		const resize = boundsOf(model, occurrence, true);
 		const visible = !!allocated && (allocated.visible || fold.has(occurrence.id));
 		const cellWidth = visible ? allocated.actual : bounds.min;
 		const isFolded = visible && fold.has(occurrence.id);
 		const inView = containerInView && visible;
-		const cell = { occurrence: occurrence.id, title: occurrence.title, width: cellWidth, visible, folded: isFolded, inView, full: inView && !isFolded, kept: !!definition.keep, sized: model.sizeOf(occurrence.id, "width") !== null, min: bounds.min, max: bounds.reach };
+		const cell = { occurrence: occurrence.id, title: occurrence.title, width: cellWidth, height, visible, folded: isFolded, inView, full: inView && !isFolded, kept: !!definition.keep, sized: model.sizeOf(occurrence.id, "width") !== null, min: bounds.min, max: bounds.reach, resizeMin: resize.min, resizeMax: resize.reach };
 		if (isSplit(definition)) {
 			const bar = headerOf(model, definition);
 			cell.rows = layoutRows(model, occurrence, cellWidth, Math.max(0, height - bar), inView);
@@ -428,7 +442,8 @@ function layoutChain(model, chainRoot, width, height, containerInView) {
 }
 
 function layoutRows(model, split, width, height, containerInView) {
-	const definition = model.definitionOf(split.destination).rows;
+	const definition = rowDefinitions(model, split);
+	const owners = model.definitionOf(split.destination).rows;
 	const roots = definition.map((row, index) => model.get(split.children[index]));
 	const budget = Math.max(0, height);
 	const allocate = () => {
@@ -467,6 +482,7 @@ function layoutRows(model, split, width, height, containerInView) {
 		return {
 			occurrence: root.id,
 			title: root.title,
+			width,
 			height: rowHeight,
 			visible,
 			folded,
@@ -475,6 +491,8 @@ function layoutRows(model, split, width, height, containerInView) {
 			inView: containerInView && visible,
 			minHeight: definition[index].minHeight,
 			maxHeight: heightBounds(definition[index]).reach,
+			resizeMin: resizeBounds(owners[index], "height").min,
+			resizeMax: resizeBounds(owners[index], "height").max,
 			chain: visible ? layoutChain(model, root, width, folded ? definition[index].minHeight : rowHeight, containerInView && !folded) : null,
 		};
 	});

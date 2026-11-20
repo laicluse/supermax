@@ -1,3 +1,4 @@
+import { variantProblems } from "./variants.js";
 import { ELASTIC, breakoutOf, chainCells, chainFits, chainRootOf, chainWidth, isFull, isSplit, layoutWorkspace, retainFoldAllocation, rowSplitOf, validateSplit } from "./layout.js";
 import { sameLayout, validateDeclarationSet } from "./layout-declaration.js";
 
@@ -26,6 +27,9 @@ export function validateDestinations(destinations, { minViewportHeight, chrome =
 		.filter((problem) => !problem.validation.ok);
 	for (const id of Object.keys(destinations)) {
 		const definition = destinations[id];
+		for (const reason of variantProblems(definition)) problems.push({ destination: id, reason });
+		for (const row of definition.rows ?? []) for (const reason of variantProblems(row, "height")) problems.push({ destination: id, reason });
+		if (definition.rows && definition.variants) problems.push({ destination: id, reason: "split-with-variants" });
 		if (!isSplit(definition) && (!(Number.isFinite(definition.min) && definition.min > 0) || (definition.max !== ELASTIC && !(Number.isFinite(definition.max) && definition.max >= definition.min)))) problems.push({ destination: id, reason: "invalid-size" });
 		if (!isSplit(definition) && definition.max !== ELASTIC && definition.preferred != null && (!Number.isFinite(definition.preferred) || definition.preferred < definition.min || definition.preferred > definition.max)) problems.push({ destination: id, reason: "invalid-preferred" });
 		if (destinations[id].compact != null) problems.push({ destination: id, reason: "unsupported-compact" });
@@ -88,6 +92,25 @@ export class Navigator {
 
 	definitionOf(id) {
 		return Object.hasOwn(this.destinations, id) ? this.destinations[id] : null;
+	}
+
+	setVariants(destinationId, variants, { row = null } = {}) {
+		const definition = this.definitionOf(destinationId);
+		if (!definition) throw new TypeError(`Unknown destination: ${destinationId}`);
+		const owner = row === null ? definition : definition.rows?.find((member) => member.destination === row);
+		if (!owner || row === null && isSplit(definition)) throw new TypeError("Variants belong to an ordinary destination or a named split row");
+		const problems = variantProblems({ ...owner, variants }, row === null ? "width" : "height");
+		if (problems.length) throw new SupermaxConfigurationError(problems.map((reason) => ({ destination: destinationId, reason })));
+		const next = variants == null ? undefined : structuredClone(variants);
+		if (row === null) this.destinations[destinationId] = { ...definition, variants: next };
+		else {
+			const updated = { ...definition, rows: definition.rows.map((member) => member === owner ? { ...member, variants: next } : member) };
+			const model = Object.create(this);
+			model.definitionOf = (id) => id === destinationId ? updated : this.definitionOf(id);
+			const validation = validateSplit(model, destinationId, null);
+			if (!validation.ok) throw new SupermaxConfigurationError([{ destination: destinationId, validation }]);
+			this.destinations[destinationId] = updated;
+		}
 	}
 
 	register(set) {

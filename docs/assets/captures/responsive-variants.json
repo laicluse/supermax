@@ -1,0 +1,37 @@
+{
+  "capturedAt": "2026-10-27T21:18:58.418Z",
+  "allocations": [
+    {
+      "viewport": 549,
+      "variant": "labels",
+      "menu": 167,
+      "content": 382
+    },
+    {
+      "viewport": 479,
+      "variant": "icons",
+      "menu": 48,
+      "content": 431
+    }
+  ],
+  "display": {
+    "frames": 180,
+    "meanFps": 60.00268168409762,
+    "p95FrameMs": 16.799999999999727
+  },
+  "encoded": {
+    "programs": [],
+    "stream_groups": [],
+    "streams": [
+      {
+        "codec_name": "h264",
+        "width": 1100,
+        "height": 710,
+        "pix_fmt": "yuv420p"
+      }
+    ],
+    "format": {
+      "duration": "2.960000"
+    }
+  }
+}

@@ -123,17 +123,15 @@ body {
 }
 .album-item:hover { background: var(--paper); }
 .album-item[aria-current="true"] { background: var(--chosen); color: var(--accent); }
-.supermax-cell[data-occurrence="albums"] { container-type: inline-size; }
 .album-item-icon { display: none; }
-@container (max-width: 160px) {
-	.supermax-cell[data-occurrence="albums"] .supermax-cell-title-text,
-	.supermax-cell[data-occurrence="albums"] .supermax-up-target { display: none; }
-	.album-list { padding: 6px 0; align-items: center; gap: 6px; }
-	.album-list > li { width: 100%; display: flex; justify-content: center; }
-	.album-item { width: 32px; height: 32px; padding: 0; text-align: center; font-weight: 700; }
-	.album-item-label { display: none; }
-	.album-item-icon { display: inline; }
-}
+
+.supermax-cell[data-occurrence="albums"][data-variant="icons"] .supermax-cell-title-text,
+.supermax-cell[data-occurrence="albums"][data-variant="icons"] .supermax-up-target { display: none; }
+.supermax-cell[data-variant="icons"] .album-list { padding: 6px 0; align-items: center; gap: 6px; }
+.supermax-cell[data-variant="icons"] .album-list > li { width: 100%; display: flex; justify-content: center; }
+.supermax-cell[data-variant="icons"] .album-item { width: 32px; height: 32px; padding: 0; text-align: center; font-weight: 700; }
+.supermax-cell[data-variant="icons"] .album-item-label { display: none; }
+.supermax-cell[data-variant="icons"] .album-item-icon { display: inline; }
 .edit-list { list-style: none; margin: 0; padding: 6px; display: flex; flex-direction: column; gap: 4px; }
 .edit-item {
 	width: 100%;
