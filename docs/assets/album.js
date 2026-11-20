@@ -3,15 +3,15 @@ import { LAYOUT_SCHEMA, layoutOf } from "./supermax/layout-declaration.js";
 export const minViewportHeight = 360;
 
 const widths = {
-	albums: { min: 200, max: 320, preferred: 200, keep: true, compact: { min: 48 } },
+	albums: { min: 200, max: 320, preferred: 200, keep: true, compact: { min: 48 }, header: "title" },
 	selector: { min: 200, max: "*", preferred: 360 },
 	map: { min: 220, max: "*", preferred: 480 },
 	photo: { min: 240, max: "*", preferred: 360, zoomable: true },
 	metadata: { min: 200, max: 320, preferred: 220 },
-	history: { min: 200, max: 320 },
-	edit: { min: 200, max: 320 },
-	depth: { min: 160, max: 240 },
-	full: { min: 320, max: "*", preferred: 900, height: "full", header: "none" },
+	history: { min: 200, max: 320, header: "title" },
+	edit: { min: 200, max: 320, header: "title" },
+	depth: { min: 160, max: 240, header: "title" },
+	full: { min: 320, max: "*", preferred: 900, height: "full" },
 };
 
 export const depthCount = 20;
@@ -98,6 +98,7 @@ export function destinations(context = "ana") {
 		const key = ids(album);
 		result[key.album] = {
 			title: album.title,
+			header: "title",
 			rows: album.rows.map(({ key: rowKey, title, ...bounds }) => ({ destination: key.row(rowKey), ...bounds })),
 			data: { kind: "album", album },
 		};
@@ -105,6 +106,7 @@ export function destinations(context = "ana") {
 			result[key.row(row.key)] = {
 				title: row.title,
 				...(row.key === "map" ? widths.map : widths.selector),
+				...(row.key === "people" ? { header: "title" } : {}),
 				defaultChild: album.photos.length ? key.photo(album.photos[0]) : null,
 				data: { kind: "selector", album, row },
 			};

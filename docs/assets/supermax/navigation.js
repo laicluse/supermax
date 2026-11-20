@@ -30,7 +30,7 @@ export function validateDestinations(destinations, { minViewportHeight, chrome =
 	for (const id of Object.keys(destinations)) {
 		if (destinations[id].height != null && (!isFull(destinations[id]) || isSplit(destinations[id]))) problems.push({ destination: id, reason: "invalid-height" });
 		if (isSplit(destinations[id]) && ["min", "max", "preferred"].some((key) => destinations[id][key] != null)) problems.push({ destination: id, reason: "split-with-width" });
-		if (destinations[id].header != null && destinations[id].header !== "none") problems.push({ destination: id, reason: "invalid-header" });
+		if (destinations[id].header != null && destinations[id].header !== "title") problems.push({ destination: id, reason: "invalid-header" });
 	}
 	const elastic = Object.keys(destinations).filter((id) => destinations[id].max === ELASTIC);
 	for (const id of elastic) {

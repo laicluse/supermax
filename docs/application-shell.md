@@ -43,16 +43,16 @@ The ordered list of manual openings is the source of truth for what is open. A d
 
 ## Cell anatomy
 
-A cell has three regions. Only the body is required, but their order is stable:
+A cell is its body: one scroll owner, with the content at the top. Three regions can join it, in a stable order:
 
 ```text
-┌ header: back | identity | cell-scoped controls ┐
-│ body: the cell's single scroll owner            │
-├ optional contextual or batch bar                ┤
-└ optional task toolbar                           ┘
+┌ title bar, only when declared: title | cell-scoped controls ┐
+│ body: the cell's single scroll owner                        │
+├ optional contextual or batch bar                            ┤
+└ optional task toolbar                                       ┘
 ```
 
-- **Header/navigation bar:** orientation and controls that affect the entire cell. Put collection creation, search, sort, filter, view, and cell zoom here. In the V2 workspace the shell draws the cell header (title and reveal control) and the Show control lives in the workspace navigation bar; host content starts below the header. A cell whose content names itself, such as a strip of thumbnails under a conversation, declares `header: "none"`: the shell draws no header, the content starts at the top, the title stays the cell's accessible name and the name the navigation bar and Show use, and the content's own controls live in the content, since a content `header` has no place to go. A split draws its title above its rows and leaves it out the same way.
+- **Title bar:** the exception. A cell has none; its title is its accessible name and the name the navigation bar and Show use, and the Show control lives in the workspace navigation bar. A bar costs a line of height and a glance in every cell that has one, so a cell gets one only when it declares `header: "title"`, and it declares that only when a viewer cannot place the content without a name: a list of edit names, a cell that holds one control, four lettered circles. A strip of thumbnails, a map, a photo that carries its name, a list of dates and places beside its photo need none. With the bar the shell draws the title and the content's own controls (`header` in the content handle); without it those controls live in the content, where the viewer's eye already is. A split may declare `header: "title"` the same way, one bar above all its rows, which is usually all its rows need.
 - **Body:** content and selection. A collection row that opens a detail has one primary interaction: select it. Keep simple contextual actions directly available when they need no separate task space; duplicating a detail's whole toolbar on every row makes the hierarchy ambiguous. [Controls, modals and task cells](#controls-modals-and-task-cells) distinguishes these cases.
 - **Context bar:** temporary state that qualifies the body, such as a batch selection summary. It appears only while that state exists.
 - **Task toolbar:** the stable action set for the current item or task. Use it for repeated decisions, commit/cancel actions, and destructive actions that operate on the body above. Its visual association must be with this cell, never with a neighboring cell or all rows at once.
@@ -61,16 +61,16 @@ Place a control by scope, not by available space:
 
 | Control affects | Placement |
 | --- | --- |
-| Application or workspace | Root cell header |
-| Entire collection | Collection header |
+| Application or workspace | The root cell, at the top of its content |
+| Entire collection | The top of the collection's content, or its title bar when it has one |
 | One collection row | Keep simple contextual actions in place; select the row for a separate detail or task |
-| Current item identity or lightweight utility | Detail header |
+| Current item identity or lightweight utility | The top of the detail's content, or its title bar when it has one |
 | Current item decision or mutation | Detail task toolbar |
 | Form draft | Form toolbar or form footer |
 | Temporary multi-selection | Context bar in the owning collection cell |
 | Child resource | A new cell to the right |
 
-Creation that needs its own task is navigation as well as an action: a collection-level **New** control belongs in the collection header and opens an editor cell to the right. A compact contextual input needs no new cell; a short bounded task can use a modal when the interruption helps. Apply [Controls, modals and task cells](#controls-modals-and-task-cells) to this choice.
+Creation that needs its own task is navigation as well as an action: a collection-level **New** control belongs at the top of the collection and opens an editor cell to the right. A compact contextual input needs no new cell; a short bounded task can use a modal when the interruption helps. Apply [Controls, modals and task cells](#controls-modals-and-task-cells) to this choice.
 
 ## Widths express content semantics
 
@@ -104,7 +104,7 @@ When cells no longer fit, hide ancestors from the left, entirely. Do not squeeze
 
 ## Rows
 
-A split declares no width of its own; it asks the chain for what its widest row holds. A row needs at least its newest cell and its kept cells, prefers the sum of its cells' preferences and reaches the sum of their maxima, and the split takes the largest of those over its rows, elastic as soon as a row holds an elastic cell. Only what is open counts, never what is visible. So a cell that opens in a row widens the split on the next render. Room is given up in reading order: the cells before the split give way first, down to their minimum and then by hiding from the left, then the row's own older cells hide from the left, and the split itself hides last, when a newer cell beside it needs the room; a width the user dragged holds as a session preference. A default in a row opens only when, with the room its chain then asks for, it shows without hiding any cell that showed before. A split spans the full width of its own cell and stacks its rows from top to bottom. Rows never share column boundaries with each other, and no cell spans more than one row. A split draws its own title bar above its rows, the full width of the split, and that bar stays while the rows open cells and the split widens or narrows; `setTitle` renames it. The rows below it leave their own bars out where their content names itself. Rows are owned by their split: they open with it, close with it, and cannot be replaced or promoted on their own. A split opens from the workspace's root chain and its rows are plain cells; a split inside a row is refused. Inside a row the horizontal rules above apply unchanged: ancestors hide from the left and the newest cell survives.
+A split declares no width of its own; it asks the chain for what its widest row holds. A row needs at least its newest cell and its kept cells, prefers the sum of its cells' preferences and reaches the sum of their maxima, and the split takes the largest of those over its rows, elastic as soon as a row holds an elastic cell. Only what is open counts, never what is visible. So a cell that opens in a row widens the split on the next render. Room is given up in reading order: the cells before the split give way first, down to their minimum and then by hiding from the left, then the row's own older cells hide from the left, and the split itself hides last, when a newer cell beside it needs the room; a width the user dragged holds as a session preference. A default in a row opens only when, with the room its chain then asks for, it shows without hiding any cell that showed before. A split spans the full width of its own cell and stacks its rows from top to bottom. Rows never share column boundaries with each other, and no cell spans more than one row. A split that declares `header: "title"` draws its title above its rows, the full width of the split, and that bar stays while the rows open cells and the split widens or narrows; `setTitle` renames it. One bar for the split is usually all its rows need. Rows are owned by their split: they open with it, close with it, and cannot be replaced or promoted on their own. A split opens from the workspace's root chain and its rows are plain cells; a split inside a row is refused. Inside a row the horizontal rules above apply unchanged: ancestors hide from the left and the newest cell survives.
 
 Rows declare `minHeight` and `maxHeight`. When the split is too short for every row, rows give way from the top: they shrink to their minimum first and then hide entirely, the same way cells hide from the left. There are no row tabs. Hiding, resizing and moving the window preserve drafts, scroll positions and every navigation group.
 
@@ -142,7 +142,7 @@ ETag: "sha256-…"
 Cache-Control: private, no-cache
 ```
 
-The header carries a declaration set: `{ schemaVersion: 1, context, root, destinations }`, where `destinations` holds the root and every destination its defaults and rows reach, each as `{ title, min, max, preferred, defaultChild, keep?, compact?: { min }, rows? }` with `preferred` and `defaultChild` written out, also when they are `null`. A large set is served as an immutable snapshot instead, named by `url="…"` in place of `inline`. The server derives the set, the header and the content from one declaration per destination and viewer context, so they cannot disagree. `encodeLayoutHeader(set)` writes the header value, `readLayout(response)` reads a response back, fetches a snapshot when the header names one, and refuses a header without a set, with an unknown schema or with bytes that do not match the hash, as a `SupermaxLayoutError`.
+The header carries a declaration set: `{ schemaVersion: 2, context, root, destinations }`, where `destinations` holds the root and every destination its defaults and rows reach, each as `{ title, min, max, preferred, defaultChild, keep?, compact?: { min }, rows? }` with `preferred` and `defaultChild` written out, also when they are `null`. A large set is served as an immutable snapshot instead, named by `url="…"` in place of `inline`. The server derives the set, the header and the content from one declaration per destination and viewer context, so they cannot disagree. `encodeLayoutHeader(set)` writes the header value, `readLayout(response)` reads a response back, fetches a snapshot when the header names one, and refuses a header without a set, with an unknown schema or with bytes that do not match the hash, as a `SupermaxLayoutError`.
 
 `navigator.register(set)` adds the declarations and opens nothing. It refuses the whole set with a `SupermaxConfigurationError` before anything is registered when a declaration is malformed or carries other fields than layout, when a split declares a width, a default child or a compact form of its own (`split-with-width`), when a default or row names a destination the set does not carry, when defaults form a cycle, when a split cannot fit the supported height, when the set is for another `context` than the navigator's, or when a destination that is already known is declared differently. A difference between what was drawn and what the server says is therefore a configuration error in development and a refused opening in production, never a cell that moves. `open()` takes no layout of its own: an action that carries a `hint` throws a `TypeError`, and an undeclared destination is refused as `unknown-destination`.
 

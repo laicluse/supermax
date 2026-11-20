@@ -201,6 +201,8 @@ body {
 .photo-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: flex-start; }
 .photo-full { display: flex; flex-direction: column; height: 100%; }
 .picture-full { flex: 1 1 auto; min-height: 0; max-height: none; aspect-ratio: auto; }
+.picture { position: relative; }
+.picture .zoom-toggle { position: absolute; top: 6px; right: 6px; }
 .photo-note { margin: 10px 0 0; color: var(--muted); font-size: 13px; }
 .picture {
 	aspect-ratio: 3 / 1;

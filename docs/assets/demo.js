@@ -304,13 +304,13 @@ function renderPhoto(occurrence, data, workspace) {
 	full.addEventListener("click", () => workspace.navigate(key.full(photo), { from: occurrence.id, origin: full }));
 	const actions = element("div", "photo-actions");
 	actions.append(caption, link, editCaption, save, full);
-	host.append(picture, actions);
 	const zoom = element("button", "zoom-toggle", "⤢");
 	zoom.type = "button";
 	zoom.addEventListener("click", () => workspace.zoom(workspace.navigator.zoomed === occurrence.id ? null : occurrence.id));
+	picture.append(zoom);
+	host.append(picture, actions);
 	return {
 		element: host,
-		header: zoom,
 		update(current) {
 			const zoomed = workspace.navigator.zoomed === current?.id;
 			zoom.setAttribute("aria-pressed", String(zoomed));

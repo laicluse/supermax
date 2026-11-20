@@ -124,9 +124,9 @@ export function validateSplit(model, definitionId, parentOccurrence) {
 	return { ok: reason === null, reason, rows: results, chrome, supported: model.minViewportHeight };
 }
 
-// allow-comment: a split draws its title above its rows unless it declares header: "none"; that bar is chrome the rows do not get.
+// allow-comment: a split that declares header: "title" draws it above its rows; that bar is chrome the rows do not get.
 export function headerOf(model, definition) {
-	return definition.header === "none" ? 0 : model.chrome.header;
+	return definition.header === "title" ? model.chrome.header : 0;
 }
 
 export function chainRootOf(model, occurrence) {

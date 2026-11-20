@@ -27,7 +27,7 @@ export function layoutOf(definition) {
 			title: definition.title,
 			keep: !!definition.keep,
 			rows: definition.rows.map((row) => ({ destination: row.destination, minHeight: row.minHeight, maxHeight: row.maxHeight, preferredHeight: row.preferredHeight ?? null, keep: !!row.keep })),
-			...(definition.header === "none" ? { header: "none" } : {}),
+			...(definition.header === "title" ? { header: "title" } : {}),
 		};
 	}
 	return {
@@ -41,7 +41,7 @@ export function layoutOf(definition) {
 		defaultChild: definition.defaultChild ?? null,
 		...(definition.zoomable ? { zoomable: true } : {}),
 		...(definition.height === "full" ? { height: "full" } : {}),
-		...(definition.header === "none" ? { header: "none" } : {}),
+		...(definition.header === "title" ? { header: "title" } : {}),
 	};
 }
 
@@ -60,7 +60,7 @@ function problemsOf(id, declaration) {
 	const problems = [];
 	if (id.includes("/")) problems.push("invalid-id");
 	if (Object.keys(declaration).some((key) => !FIELDS.has(key))) problems.push("unknown-field");
-	if (declaration.header != null && declaration.header !== "none") problems.push("invalid-header");
+	if (declaration.header != null && declaration.header !== "title") problems.push("invalid-header");
 	if (typeof declaration.title !== "string" || declaration.title.trim().length === 0) problems.push("invalid-title");
 	if (declaration.rows != null) {
 		if (REQUIRED_SPLIT.some((key) => !Object.hasOwn(declaration, key))) problems.push("missing-field");

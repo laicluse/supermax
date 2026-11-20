@@ -613,7 +613,7 @@ export class Workspace extends EventTarget {
 			element.classList.add("is-split");
 			body.append(this.create("div", "supermax-rows"));
 		}
-		if (definition.header === "none") element.classList.add("is-headless");
+		if (definition.header !== "title") element.classList.add("is-headless");
 		else {
 			header = this.create("header", "supermax-cell-title");
 			titleNode = this.create("span", "supermax-cell-title-text", occurrence.title);

@@ -1020,8 +1020,8 @@ test("content hears when its cell starts to leave, and again when it comes back 
 });
 
 test("content can place its own controls in the cell header, which keeps them visible and cuts the title short", async () => {
-	await openDemo([open("album:coast", "albums")]);
-	const photo = coast.photo("thumbnails", "a");
+	await openDemo([open("album:coast", "albums"), open("coast:history:a", coast.metadata("thumbnails", "a"))]);
+	const photo = coast.history("thumbnails", "a");
 	const result = await page.evaluate(async (photo) => {
 		const workspace = window.supermaxDemo.frames[0].workspace;
 		const original = workspace.content;
@@ -1103,7 +1103,7 @@ test("zooming a cell hides the cells before it, keeps what follows, and Show zoo
 		const workspace = window.supermaxDemo.frames[0].workspace;
 		window.zoomEvents = [];
 		workspace.addEventListener("zoom", (event) => window.zoomEvents.push(event.detail.occurrence?.split("/").pop() ?? null));
-		document.querySelector(`.frame[data-frame="a"] [data-occurrence="${photo}"] .supermax-cell-title .zoom-toggle`).click();
+		document.querySelector(`.frame[data-frame="a"] [data-occurrence="${photo}"] .zoom-toggle`).click();
 		return window.zoomEvents;
 	}, photo);
 	await settle();
@@ -1933,7 +1933,7 @@ test("a split draws its own title above its rows, which stays while the rows cha
 	assert.equal(measured.barWidth, measured.cellWidth, "across the whole split");
 	assert.equal(measured.firstRowTop, 28, "the rows start below it");
 	assert.equal(measured.rowsHeight, measured.cellHeight - 28, "and share the height that is left");
-	assert.ok(measured.rowBars.every(Boolean), "the row cells keep their own bars unless they declare header: \"none\"");
+	assert.deepEqual(measured.rowBars, [false, false, true], "the row cells draw no bar unless they declare header: \"title\", as People does, since four lettered circles name nothing by themselves");
 	await page.click(inFrame("a", `[data-occurrence="${coast.row("thumbnails")}"] .thumb[data-destination="coast:photo:d"]`));
 	await settle();
 	assert.equal(await page.locator(album + " > .supermax-cell-title .supermax-cell-title-text").textContent(), "Coast", "the bar stays while a row opens another cell");
@@ -1958,7 +1958,7 @@ test("a full-height cell opened from a row breaks out beside its split, and Back
 	assert.equal(placed.rightOfSplit, true, "to the right of the album's split");
 	assert.equal(placed.height, placed.splitHeight, "as tall as the split beside it");
 	const headless = await page.locator(inFrame("a", `[data-occurrence="${fullB}"]`)).evaluate((cell) => ({ bars: cell.querySelectorAll(":scope > .supermax-cell-title").length, label: cell.getAttribute("aria-label"), headless: cell.classList.contains("is-headless"), bodyTop: Math.round(cell.querySelector(".supermax-cell-body").getBoundingClientRect().top - cell.getBoundingClientRect().top) }));
-	assert.deepEqual(headless, { bars: 0, label: "Photo B at full height", headless: true, bodyTop: 0 }, "a cell declared header: \"none\" draws no title bar, its body starts at the top, and it keeps its title as its accessible name");
+	assert.deepEqual(headless, { bars: 0, label: "Photo B at full height", headless: true, bodyTop: 0 }, "a cell without header: \"title\" draws no title bar, its body starts at the top, and it keeps its title as its accessible name");
 	assert.equal(await page.locator(inFrame("a", `[data-occurrence="${photoB}"] .full-link`)).getAttribute("aria-current"), null);
 	assert.equal(await page.locator(inFrame("a", `[data-row="${coast.row("thumbnails")}"] [data-occurrence="${fullB}"]`)).count(), 0, "the row's own chain does not hold it");
 	await closeNewest("a");

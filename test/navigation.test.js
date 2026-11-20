@@ -631,6 +631,7 @@ const mail = ({ defaults = false, width = 1600 } = {}) => {
 			inbox: { title: "Inbox", min: 200, max: 300 },
 			conversation: {
 				title: "Conversation",
+				header: "title",
 				rows: [
 					{ destination: "messages", minHeight: 120, maxHeight: "*", preferredHeight: 300 },
 					{ destination: "attachments", minHeight: 100, maxHeight: 160 },
@@ -812,7 +813,7 @@ scenario("sync names a path into a row: the next id after a split is one of its 
 			conversation: { title: "Subject", rows: [{ destination: "metadata", minHeight: 240, maxHeight: E, preferredHeight: 560 }, { destination: "attachments", minHeight: 96, maxHeight: 120 }] },
 			metadata: { title: "Subject", min: 320, max: 640, defaultChild: "messages" },
 			messages: { title: "Subject", min: 320, max: E, preferred: 960, zoomable: true },
-			attachments: { title: "Attachments", min: 320, max: E, preferred: 960, header: "none" },
+			attachments: { title: "Attachments", min: 320, max: E, preferred: 960 },
 			attachment: { title: "Attachment", min: 320, max: E, preferred: 960, height: "full" },
 		},
 		root: "modes",
@@ -864,7 +865,7 @@ scenario("room gives way in reading order through a split: the cells before it f
 		conversation: { title: "Subject", rows: [{ destination: "metadata", minHeight: 240, maxHeight: E, preferredHeight: 560 }, { destination: "attachments", minHeight: 96, maxHeight: 120 }] },
 		metadata: { title: "Summary", min: 320, max: 640, defaultChild: "messages" },
 		messages: { title: "Messages", min: 320, max: E, preferred: 960 },
-		attachments: { title: "Attachments", min: 320, max: E, preferred: 960, header: "none" },
+		attachments: { title: "Attachments", min: 320, max: E, preferred: 960 },
 		attachment: { title: "Attachment", min: 320, max: E, preferred: 960, height: "full" },
 	};
 	const at = (width) => {

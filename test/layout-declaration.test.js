@@ -42,13 +42,13 @@ for (const context of ["ana", "ben"]) {
 	const plain = layoutOf({ title: "Plain", min: 200, max: 300 });
 	assert.equal(Object.hasOwn(plain, "zoomable"), false, "a declaration that cannot zoom carries no zoomable field, so existing hashes stay the same");
 	assert.equal(layoutOf({ title: "Zoomable", min: 200, max: 300, zoomable: true }).zoomable, true, "one that can zoom says so");
-	assert.equal(Object.hasOwn(layoutOf({ title: "Titled", min: 200, max: 300 }), "header"), false, "a cell with its title bar carries no header field");
-	assert.equal(layoutOf({ title: "Strip", min: 200, max: 300, header: "none" }).header, "none", "a cell whose content names itself says it has no title bar");
-	const headless = (declaration) => validateDeclarationSet({ schemaVersion: 2, context: "ana", root: "x", destinations: { x: { title: "X", min: 200, max: 300, preferred: null, defaultChild: null, ...declaration } } }).map((problem) => problem.reason);
-	assert.deepEqual(headless({ header: "none" }), [], "header: \"none\" is a valid declaration");
-	assert.deepEqual(headless({ header: "small" }), ["invalid-header"], "any other value is refused");
-	assert.deepEqual(validateDeclarationSet({ schemaVersion: 2, context: "ana", root: "s", destinations: { s: { title: "S", rows: [{ destination: "x", minHeight: 100, maxHeight: "*", preferredHeight: 200 }], header: "none" }, x: { title: "X", min: 200, max: 300, preferred: null, defaultChild: null } } }).map((problem) => problem.reason), [], "a split draws its title above its rows and may leave it out the same way");
-	assert.equal(layoutOf({ title: "S", rows: [{ destination: "x", minHeight: 100, maxHeight: "*", preferredHeight: 200 }], header: "none" }).header, "none");
+	assert.equal(Object.hasOwn(layoutOf({ title: "Plain", min: 200, max: 300 }), "header"), false, "a cell without a title bar, the common case, carries no header field");
+	assert.equal(layoutOf({ title: "Named", min: 200, max: 300, header: "title" }).header, "title", "a cell that needs its title bar says so");
+	const headed = (declaration) => validateDeclarationSet({ schemaVersion: 2, context: "ana", root: "x", destinations: { x: { title: "X", min: 200, max: 300, preferred: null, defaultChild: null, ...declaration } } }).map((problem) => problem.reason);
+	assert.deepEqual(headed({ header: "title" }), [], "header: \"title\" is a valid declaration");
+	assert.deepEqual(headed({ header: "none" }), ["invalid-header"], "there is no other value: no bar is the default");
+	assert.deepEqual(validateDeclarationSet({ schemaVersion: 2, context: "ana", root: "s", destinations: { s: { title: "S", rows: [{ destination: "x", minHeight: 100, maxHeight: "*", preferredHeight: 200 }], header: "title" }, x: { title: "X", min: 200, max: 300, preferred: null, defaultChild: null } } }).map((problem) => problem.reason), [], "a split may draw its title above its rows the same way");
+	assert.equal(layoutOf({ title: "S", rows: [{ destination: "x", minHeight: 100, maxHeight: "*", preferredHeight: 200 }], header: "title" }).header, "title");
 }
 
 console.log("Layout declaration scenarios passed");
