@@ -103,7 +103,7 @@
 .supermax-chain { position: relative; height: 100%; perspective: var(--supermax-perspective); }
 .supermax-strip { transform-style: preserve-3d; }
 .supermax-room { overflow: clip; perspective: var(--supermax-perspective); }
-.supermax-room:has(> .supermax-cell:not(.is-leading, .is-split)) { clip-path: inset(0 0 0 var(--supermax-gutter)); }
+.supermax-room:has(> .supermax-cell:not(.is-leading, .is-split)), .supermax-cell.is-split:not(.is-leading) .supermax-row-chain { clip-path: inset(0 0 0 var(--supermax-gutter)); }
 .supermax-cell {
 	position: relative;
 	display: flex;
@@ -124,7 +124,6 @@
 	pointer-events: none;
 }
 .supermax-cell.is-leading, .supermax-cell.is-split { border-left-width: 0; }
-.supermax-cell.is-split:not(.is-leading) .supermax-row-chain .supermax-cell.is-leading { border-left-width: var(--supermax-gutter); }
 .supermax-cell.is-split { background: transparent; }
 .supermax-workspace { --supermax-cell-title: 28px; }
 .supermax-cell-title {

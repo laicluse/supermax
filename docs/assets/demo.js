@@ -447,7 +447,7 @@ class Session {
 		await this.prepareAll(history.state?.log ?? decodeLog(location.hash));
 		this.frames = frames.map((frame) => this.buildFrame(frame));
 		if (requested && presentations[requested]) this.setPresentation(requested);
-		window.addEventListener("popstate", (event) => this.arrive(event.state));
+		window.addEventListener("popstate", (event) => this.arrive(event.state, { animate: true }));
 		this.arrive(history.state);
 	}
 
@@ -640,9 +640,9 @@ class Session {
 		history[`${mode}State`](state, "", url);
 	}
 
-	async arrive(state) {
+	async arrive(state, { animate = false } = {}) {
 		await this.prepareAll(state?.log ?? decodeLog(location.hash));
-		if (state?.snapshots && this.frames.every((frame, index) => frame.workspace.restore(state.snapshots[index]))) {
+		if (state?.snapshots && this.frames.every((frame, index) => frame.workspace.restore(state.snapshots[index], { animate }))) {
 			this.replaying = null;
 			this.log = state.log;
 			return;

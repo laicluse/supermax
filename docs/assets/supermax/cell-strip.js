@@ -109,8 +109,7 @@ export class CellStrip {
 			totalWidth += entry.displayWidth;
 		});
 		for (const entry of leaving) entry.displayWidth = 0;
-		const unfolding = (entry) => ["enter", "return"].includes(this.motions.get(entry.id)?.kind);
-		for (const entry of this.entries) entry.card = !!this.motion && !entry.overlay && (entry.departing || arriving.includes(entry) || returning.includes(entry) || unfolding(entry));
+		for (const entry of this.entries) entry.card = !!this.motion && !entry.overlay;
 		this.place(previous);
 		const targetTransform = `translateX(${-offset}px)`;
 		this.strip.style.width = `${totalWidth}px`;
@@ -180,7 +179,8 @@ export class CellStrip {
 				Object.assign(style, { position: "absolute", top: "0", left: `${old?.overlay ? parseFloat(style.left) : old?.currentLeft ?? 0}px`, width: `${old?.overlay ? parseFloat(style.width) : old?.currentWidth ?? entry.width}px` });
 			} else {
 				for (const property of ["position", "top", "left"]) style.removeProperty(property);
-				const card = entry.card && entry.departing ? (old?.departing ? parseFloat(style.width) : old?.currentWidth ?? 0) : entry.displayWidth;
+				const kept = old?.overlay ? 0 : parseFloat(style.width) || old?.currentWidth || 0;
+				const card = entry.card ? Math.max(kept, entry.displayWidth) : entry.displayWidth;
 				style.width = `${card}px`;
 				if (entry.card) style.marginRight = `${entry.displayWidth - card}px`;
 				else style.removeProperty("margin-right");
@@ -302,7 +302,9 @@ export class CellStrip {
 			if (entry.departing && !this.motions.has(entry.id)) this.drop(entry);
 			else if (!entry.departing) {
 				entry.element.style.visibility = entry.visible ? "" : "hidden";
-				this.boxOf(entry).style.removeProperty("margin-right");
+				const box = this.boxOf(entry);
+				if (entry.card) box.style.width = `${entry.displayWidth}px`;
+				box.style.removeProperty("margin-right");
 			}
 		}
 	}

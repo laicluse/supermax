@@ -434,6 +434,7 @@ test("cells stand one gutter apart over the canvas, and rows never run past thei
 			canvas: getComputedStyle(root.querySelector(".supermax-workspace")).backgroundColor,
 			gutters: cells.map((cell) => [cell.dataset.occurrence.split("/").pop(), getComputedStyle(cell).borderLeftWidth]),
 			rows: [...root.querySelectorAll(".supermax-row")].map((row) => getComputedStyle(row).borderTopWidth),
+			frames: [...root.querySelectorAll(".supermax-row-chain")].map((frame) => getComputedStyle(frame).clipPath),
 			overflow: cells.filter((cell) => cell.closest(".supermax-row")).some((cell) => cell.getBoundingClientRect().right > split.right + 0.5),
 			radius: getComputedStyle(root.querySelector(".supermax-up")).borderRadius,
 		};
@@ -442,16 +443,17 @@ test("cells stand one gutter apart over the canvas, and rows never run past thei
 	assert.deepEqual(Object.fromEntries(geometry.gutters), {
 		albums: "0px",
 		"album:coast": "0px",
-		"coast:thumbnails": "1px",
+		"coast:thumbnails": "0px",
 		"coast:photo:a": "1px",
 		"coast:metadata:a": "1px",
-		"coast:map": "1px",
+		"coast:map": "0px",
 		"coast:photo:b": "1px",
 		"coast:metadata:b": "1px",
-		"coast:people": "1px",
+		"coast:people": "0px",
 		"coast:photo:c": "1px",
 		"coast:metadata:c": "1px",
-	}, "one gutter before every cell but the first, the split passing its own to each row");
+	}, "one gutter before every cell but the first of its chain");
+	assert.deepEqual(geometry.frames, ["inset(0px 0px 0px 1px)", "inset(0px 0px 0px 1px)", "inset(0px 0px 0px 1px)"], "and the split's own gutter is the left edge of each row's frame, which stays in place");
 	assert.deepEqual(geometry.rows, ["0px", "1px", "1px"], "one gutter between rows");
 	assert.equal(geometry.overflow, false);
 	assert.equal(geometry.radius, "0px", "no rounded rectangles");
@@ -583,7 +585,7 @@ test("a card keeps its final size while it folds, and only its room opens or clo
 	await settle();
 });
 
-test("a folding card is clipped to its own room and never covers its gutter", { skip: PRESENTATION !== "origami" }, async () => {
+test("a folding card is clipped to its own room, which keeps its gutter free", { skip: PRESENTATION !== "origami" }, async () => {
 	await openDemo([open("album:coast", "albums"), open("coast:photo:b", coast.row("map"))]);
 	await page.evaluate(() => window.supermaxDemo.prepare("coast:photo:c"));
 	await page.click(inFrame("a", `[data-occurrence="${coast.row("map")}"] .pin[data-destination="coast:photo:c"]`));
@@ -592,15 +594,105 @@ test("a folding card is clipped to its own room and never covers its gutter", { 
 		const cell = document.querySelector(selector);
 		const room = cell.parentElement;
 		const style = getComputedStyle(room);
-		const gutter = parseFloat(getComputedStyle(cell).borderLeftWidth);
+		const gutter = getComputedStyle(cell).borderLeftWidth;
 		return { room: room.classList.contains("supermax-room"), overflow: style.overflowX, clip: style.clipPath, gutter, projected: cell.getBoundingClientRect().left, rest: room.getBoundingClientRect().left };
 	}, inFrame("a", `[data-occurrence="${coast.metadata("map", "b")}"]`));
 	assert.equal(leaving.room, true, "the card folds inside a room of its own");
 	assert.equal(leaving.overflow, "clip", "which clips whatever the perspective draws outside it");
 	assert.ok(leaving.projected < leaving.rest, "the perspective pulls the card past its own left edge here");
-	assert.equal(leaving.clip, `inset(0px 0px 0px ${leaving.gutter}px)`, "and the room cuts that off at the gutter");
+	assert.equal(leaving.clip, `inset(0px 0px 0px ${leaving.gutter})`, "and the room cuts that off at the gutter");
 	await page.evaluate(() => document.getAnimations().forEach((animation) => animation.play()));
 	await settle();
+});
+
+test("the gutter beside a split stays in place while the cells in its rows slide past it", { skip: PRESENTATION !== "origami" }, async () => {
+	await openDemo([open("album:coast", "albums"), open("coast:photo:c", coast.row("thumbnails"))]);
+	await resize([[420, 640], [960, 640]]);
+	const album = inFrame("a", ".supermax-cell.is-split");
+	const edge = () => page.locator(album).evaluate((cell) => {
+		const frame = cell.querySelector(".supermax-row-chain");
+		return { clip: getComputedStyle(frame).clipPath, left: Math.round(frame.getBoundingClientRect().left) };
+	});
+	const atRest = await edge();
+	await page.evaluate(() => window.supermaxDemo.dispatch({ type: "close" }, window.supermaxDemo.frames[1].workspace));
+	await page.evaluate(() => document.getAnimations().forEach((animation) => { animation.pause(); animation.currentTime = 100; }));
+	assert.equal((await page.locator(inFrame("a", `[data-row="${coast.row("thumbnails")}"] .supermax-strip`)).evaluate((strip) => strip.getAnimations().length)) > 0, true, "the row is sliding");
+	assert.deepEqual(await edge(), { ...atRest, clip: "inset(0px 0px 0px 1px)" }, "the row frame keeps the gutter beside the split where it was and clips what slides past it");
+	await page.evaluate(() => document.getAnimations().forEach((animation) => animation.play()));
+	await settle();
+});
+
+test("a cell that stays but changes size takes its final size at once, and only its room moves", { skip: PRESENTATION !== "origami" }, async () => {
+	await openDemo([open("album:coast", "albums"), open("coast:photo:c", coast.row("thumbnails"))]);
+	await resize([[420, 640], [960, 640]]);
+	const thumbnails = inFrame("a", `[data-occurrence="${coast.row("thumbnails")}"]`);
+	await page.evaluate(() => window.supermaxDemo.dispatch({ type: "close" }, window.supermaxDemo.frames[1].workspace));
+	const during = await page.evaluate((selector) => [60, 140].map((time) => {
+		document.getAnimations().forEach((animation) => { animation.pause(); animation.currentTime = time; });
+		return document.querySelector(selector).offsetWidth;
+	}), thumbnails);
+	await page.evaluate(() => document.getAnimations().forEach((animation) => animation.play()));
+	await settle();
+	const final = await page.locator(thumbnails).evaluate((cell) => cell.offsetWidth);
+	assert.deepEqual(during, [final, final], `Thumbnails lays out once, at its final width ${final}px`);
+});
+
+test("browser back and forward animate, while a reload shows its state at once", { skip: PRESENTATION !== "origami" }, async () => {
+	await openDemo([open("album:coast", "albums")]);
+	await page.evaluate(() => window.supermaxDemo.prepare("coast:photo:b"));
+	await page.click(inFrame("a", `[data-occurrence="${coast.row("thumbnails")}"] .thumb[data-destination="coast:photo:b"]`));
+	await settle();
+	const folds = () => page.evaluate(() => document.getAnimations().filter((animation) => animation.effect?.target?.classList?.contains("supermax-cell") && animation.effect.getKeyframes().some((frame) => String(frame.transform ?? "").includes("rotate"))).length);
+	await page.goBack();
+	await page.waitForFunction(() => !location.hash.includes("photo:b"));
+	assert.ok(await folds() > 0, "browser back folds the cells it changes");
+	await settle();
+	await page.goForward();
+	await page.waitForFunction(() => location.hash.includes("photo:b"));
+	assert.ok(await folds() > 0, "and so does browser forward");
+	await settle();
+});
+
+test("a split that closes stays until the cells in its rows have folded away", { skip: PRESENTATION !== "origami" }, async () => {
+	await openDemo([open("album:coast", "albums")]);
+	await closeNewest("a");
+	const midway = await page.evaluate(() => {
+		document.getAnimations().forEach((animation) => { animation.pause(); animation.currentTime = 100; });
+		const split = document.querySelector('.frame[data-frame="a"] .supermax-cell.is-split');
+		const inner = split ? [...split.querySelectorAll(".supermax-cell")] : [];
+		return {
+			split: !!split?.isConnected,
+			splitFolds: split ? split.getAnimations().some((animation) => animation.effect.getKeyframes().some((frame) => String(frame.transform ?? "").includes("rotate"))) : null,
+			inner: inner.length,
+			folding: inner.filter((cell) => cell.getAnimations().some((animation) => animation.effect.getKeyframes().some((frame) => String(frame.transform ?? "").includes("rotate")))).length,
+		};
+	});
+	assert.equal(midway.split, true, "halfway the split is still there");
+	assert.equal(midway.splitFolds, false, "it does not fold itself");
+	assert.ok(midway.inner > 0 && midway.folding === midway.inner, `while every cell in its rows folds away: ${midway.folding} of ${midway.inner}`);
+	await page.evaluate(() => document.getAnimations().forEach((animation) => animation.play()));
+	await settle();
+	assert.equal(await page.locator(inFrame("a", ".supermax-cell.is-split")).count(), 0, "and it is gone once they have");
+});
+
+test("a cell that shrinks keeps its layout until the transition ends, and slides under the cell that opens", { skip: PRESENTATION !== "origami" }, async () => {
+	await openDemo([open("album:coast", "albums"), open("coast:photo:c", coast.row("thumbnails"))]);
+	await resize([[420, 640], [960, 640]]);
+	await closeNewest("a");
+	await settle();
+	await page.evaluate(() => window.supermaxDemo.prepare("coast:photo:b"));
+	const thumbnails = inFrame("a", `[data-occurrence="${coast.row("thumbnails")}"]`);
+	const before = await page.locator(thumbnails).evaluate((cell) => cell.offsetWidth);
+	await page.evaluate((selector) => document.querySelector(selector).click(), `${thumbnails} .thumb[data-destination="coast:photo:b"]`);
+	const during = await page.evaluate((selector) => [20, 120, 190].map((time) => {
+		document.getAnimations().forEach((animation) => { animation.pause(); animation.currentTime = time; });
+		return document.querySelector(selector).offsetWidth;
+	}), thumbnails);
+	await page.evaluate(() => document.getAnimations().forEach((animation) => animation.play()));
+	await settle();
+	const after = await page.locator(thumbnails).evaluate((cell) => cell.offsetWidth);
+	assert.ok(after < before, `Thumbnails shrinks from ${before}px to ${after}px`);
+	assert.deepEqual(during, [before, before, before], "and lays out at its old width for the whole transition");
 });
 
 test("clicks faster than a stroke tear the earlier cells off from where they are, and nothing jumps", { skip: PRESENTATION !== "origami" }, async () => {
