@@ -476,11 +476,14 @@ export class Navigator {
 	}
 
 	reachWindow(members, target, find, start) {
-		const shown = (id) => !!find(this.layout(), id)?.visible;
+		const shown = (id) => {
+			const placement = find(this.layout(), id);
+			return !!placement?.visible && !placement.folded;
+		};
 		if (shown(target.id)) return;
 		const layout = this.layout();
 		const targetIndex = members.findIndex((member) => member?.id === target.id);
-		const first = members.findIndex((member) => member && find(layout, member.id)?.visible && !find(layout, member.id).kept);
+		const first = members.findIndex((member) => member && find(layout, member.id)?.visible && !find(layout, member.id).folded && !find(layout, member.id).kept);
 		if (first === -1 || targetIndex < first) {
 			start(target.id);
 			return;
@@ -495,6 +498,7 @@ export class Navigator {
 	showByClosing(occurrenceId) {
 		const target = this.get(occurrenceId);
 		if (!target) return [];
+		this.foldFocus = null;
 		this.bringIntoView(occurrenceId, { chains: false });
 		const levels = [];
 		for (let member = target; member; ) {
@@ -505,7 +509,9 @@ export class Navigator {
 		const closed = [];
 		for (const { root, member } of levels) {
 			this.windowStarts.delete(root.id);
-			while (this.get(member.id) && !this.layout().cells.get(member.id)?.visible) {
+			while (this.get(member.id)) {
+				const placement = this.layout().cells.get(member.id);
+				if (placement?.visible && !placement.folded) break;
 				const cells = chainCells(this, root);
 				const last = cells[cells.length - 1];
 				if (last.id === member.id) break;
@@ -530,12 +536,12 @@ export class Navigator {
 			if (container !== "in") return container;
 			const rows = layout.cells.get(split.id)?.rows?.rows ?? [];
 			const index = rows.findIndex((row) => row.occurrence === root.id);
-			if (!rows[index]?.visible) return index < rows.findIndex((row) => row.visible) ? "above" : "after";
+			if (!rows[index]?.visible || rows[index]?.folded) return index < rows.findIndex((row) => row.visible && !row.folded) ? "above" : "after";
 		}
 		const cells = layout.chains.get(root.id)?.cells ?? [];
 		const index = cells.findIndex((cell) => cell.occurrence === occurrence.id);
-		if (cells[index]?.visible) return "in";
-		return index < cells.findIndex((cell) => cell.visible && !cell.kept) ? "above" : "after";
+		if (cells[index]?.visible && !cells[index]?.folded) return "in";
+		return index < cells.findIndex((cell) => cell.visible && !cell.folded && !cell.kept) ? "above" : "after";
 	}
 
 	upTarget(layout = this.layout()) {
@@ -546,7 +552,12 @@ export class Navigator {
 		for (const members of branches) {
 			for (const tip of tipsOf(members).reverse()) {
 				for (let current = tip; current; current = current.parent ? this.get(current.parent) : null) {
-					if (this.placeOf(current, layout) === "above") return { id: current.id, title: current.title };
+					if (this.placeOf(current, layout) === "above") {
+						const root = chainRootOf(this, current);
+						const row = layout.rows.get(root.id);
+						const target = row?.inView && row.folded ? root : current;
+						return { id: target.id, title: target.title };
+					}
 				}
 			}
 		}

@@ -195,8 +195,6 @@ export class Workspace extends EventTarget {
 		}
 		const target = this.navigator.upTarget(this.layout ?? undefined);
 		if (!target) return { ok: false, reason: "nothing-hidden" };
-		const previousFocus = this.navigator.foldFocus;
-		this.navigator.foldFocus = null;
 		const before = this.navigator.snapshot();
 		const closed = this.navigator.showByClosing(target.id);
 		const after = this.navigator.snapshot();
@@ -205,7 +203,6 @@ export class Workspace extends EventTarget {
 		const closing = closed.map(({ id, destination, title }) => ({ occurrence: id, destination, title }));
 		const question = new CustomEvent("show", { cancelable: true, detail: { shown: { occurrence: shown.id, destination: shown.destination, title: shown.title }, closing } });
 		if (!this.dispatchEvent(question)) {
-			this.navigator.foldFocus = previousFocus;
 			return { ok: false, reason: "cancelled" };
 		}
 		this.navigator.restore(after);

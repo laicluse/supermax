@@ -972,3 +972,50 @@ scenario("ifRoom may name a path into a row, and opens it whole or not at all", 
 	const alone = tight.sync(["modes", "conversations"], { ifRoom: [["conversation"]] });
 	assert.deepEqual(alone.optional.map((id) => id.split("/").pop()), ["conversation"], "offered on its own the summary alone fits");
 });
+
+scenario("Show navigates to folded ancestors by closing their trailing content", () => {
+	const model = new BaseNavigator({ root: "root", minViewportHeight: 300, destinations: {
+		root: { title: "Root", min: 40, max: 40, keep: true },
+		a: { title: "A", min: 100, max: 100 },
+		b: { title: "B", min: 100, max: 100 },
+		c: { title: "C", min: 100, max: "*", preferred: 140 },
+	} });
+	model.resize({ width: 180, height: 300 });
+	model.open("a", { from: "root" });
+	model.open("b", { from: "root/a" });
+	model.open("c", { from: "root/a/b" });
+	const shown = [];
+	for (let step = 0; step < 2; step++) {
+		const target = model.upTarget();
+		assert.equal(model.showByClosing(target.id).length, 1);
+		assert.equal(model.layout().cells.get(target.id).full, true);
+		shown.push(target.title);
+	}
+	assert.deepEqual(shown, ["B", "A"]);
+	assert.equal(model.upTarget(), null);
+	assert.equal(model.occurrences.size, 2);
+});
+
+scenario("Show traverses folded vertical rows toward earlier context without toggling", () => {
+	const model = new BaseNavigator({ root: "home", minViewportHeight: 300, destinations: {
+		home: { title: "Home", min: 40, max: 40, keep: true },
+		split: { title: "Work", rows: [
+			{ destination: "first", minHeight: 170, maxHeight: 170 },
+			{ destination: "summary", minHeight: 170, maxHeight: 170 },
+			{ destination: "detail", minHeight: 260, maxHeight: "*", preferredHeight: 300 },
+		] },
+		first: { title: "First", min: 200, max: 200 },
+		summary: { title: "Summary", min: 200, max: 200 },
+		detail: { title: "Detail", min: 200, max: "*", preferred: 300 },
+	} });
+	model.resize({ width: 340, height: 300 });
+	model.open("split", { from: "home" });
+	assert.equal(model.upTarget().id, "home/split/summary");
+	assert.deepEqual(model.showByClosing(model.upTarget().id), []);
+	assert.equal(model.layout().rows.get("home/split/summary").folded, false);
+	assert.equal(model.upTarget().id, "home/split/first", "the next click continues above the revealed fold");
+	assert.deepEqual(model.showByClosing(model.upTarget().id), []);
+	assert.equal(model.layout().rows.get("home/split/first").folded, false);
+	assert.equal(model.upTarget(), null, "later rows are not back targets");
+	assert.equal(model.occurrences.size, 5, "rows remain owned by the split");
+});

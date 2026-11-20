@@ -2,6 +2,8 @@
 
 Folding keeps a place for intermediate content when a chain or split cannot show every full surface. A fold cue is a narrow seam, distinct from a resize divider. Clicking it gives that surface room and folds the nearest neighbours that must yield space. Clicking another cue trades the space again. Every destination stays open, so its draft, scroll position and navigation identity survive. This is a local layout focus, not a modal or browser-history step.
 
+The up/back (Show) control also reaches earlier folded cells and rows, so the seam is not their only entry point. Unlike a fold click, Show navigates backward: it closes trailing cells as needed or moves the row window upward. Further clicks continue to earlier context, never toggling back to a fold on the right or below. Rows remain part of their split. The existing cancelable `show` event lists any cells that would close, and `up` reports those actually closed.
+
 ## Vocabulary
 
 | Term | Meaning |
@@ -54,3 +56,5 @@ Choose **Folding: cells and rows** in the [main demo](index.html) to see both ax
 [Horizontal space traded](assets/captures/folding-horizontal.png) · [Vertical space traded](assets/captures/folding-vertical.png)
 
 [Watch the two horizontal trades at normal speed](assets/captures/folding-horizontal-trade.mp4).
+
+[Watch up/back continue toward earlier content](assets/captures/folding-up.mp4) · [After the first back step](assets/captures/folding-up.png).

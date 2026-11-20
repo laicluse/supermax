@@ -196,3 +196,42 @@ test("the main demo exposes both fold axes and follows its Motion choice", async
 		await server.close();
 	}
 });
+
+test("Show navigates backward through folds instead of toggling them", async () => {
+	const server = await serveDocs();
+	const browser = await chromium.launch({ channel: "chrome", headless: true });
+	try {
+		const page = await browser.newPage({ viewport: { width: 1800, height: 1000 } });
+		await page.goto(server.url);
+		await page.getByRole("button", { name: "Folding: cells and rows" }).click();
+		const frame = page.locator('[data-frame="b"]');
+		await page.waitForTimeout(400);
+		assert.equal(await frame.locator('.supermax-up:visible').count(), 1, "folds remain discoverable through Show");
+		const result = await page.evaluate(() => {
+			const workspace = window.supermaxDemo.frames[1].workspace;
+			const navigator = workspace.navigator;
+			const before = [...navigator.occurrences.keys()];
+			const seen = [];
+			for (let step = 0; step < 8 && navigator.upTarget(); step++) {
+				const target = navigator.upTarget();
+				const axis = workspace.layout.rows.get(target.id)?.folded ? "vertical" : "horizontal";
+				const refuse = (event) => event.preventDefault();
+				const snapshot = JSON.stringify(navigator.snapshot());
+				workspace.addEventListener("show", refuse);
+				const cancelled = workspace.requestUp();
+				workspace.removeEventListener("show", refuse);
+				if (cancelled.ok || JSON.stringify(navigator.snapshot()) !== snapshot) throw new Error("cancelled Show changed navigation");
+				const shown = workspace.requestUp();
+				seen.push({ axis, closed: shown.closed.length, full: axis === "vertical" ? !workspace.layout.rows.get(target.id).folded : workspace.layout.cells.get(target.id).full });
+			}
+			return { before, after: [...navigator.occurrences.keys()], seen, target: navigator.upTarget() };
+		});
+		assert.ok(result.after.length < result.before.length, "back closes trailing cells to restore earlier context");
+		assert.equal(result.target, null, "back stops rather than reopening a later fold");
+		assert.ok(result.seen.every((step) => step.full));
+		assert.deepEqual(new Set(result.seen.map((step) => step.axis)), new Set(["horizontal", "vertical"]));
+	} finally {
+		await browser.close();
+		await server.close();
+	}
+});
