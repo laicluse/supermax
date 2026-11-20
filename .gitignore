@@ -1,3 +1,6 @@
 /node_modules
 pkg/
 .idea
+!.agents/
+!.agents/plugins/
+!.agents/plugins/**

@@ -2,6 +2,19 @@
 
 Framework-free cell layout and navigation primitives for workspaces that open content below and to the right.
 
+## For coding agents
+
+This repository is also a plugin marketplace, `supermax`, with the Supermax skill for Claude Code and Codex: the contract every click follows, which feature fits which need, and what a host never does. An agent that works on an application built on Supermax installs that skill, or asks for it to be installed, before it writes code against the library:
+
+```bash
+claude plugins marketplace add laicluse/supermax
+claude plugins install supermax@supermax
+codex plugin marketplace add laicluse/supermax
+codex plugin add supermax@supermax
+```
+
+The skill loads by itself whenever Supermax comes up and points at this README and the [application-shell guide](docs/application-shell.md) for the signatures.
+
 The package has four parts. `CellCollection` allocates one horizontal chain of cells within a budget. `CellStrip` animates such a chain. `Navigator` models a workspace whose cells can split into independent rows, with one Show control that brings back whatever hid above the window; `validateSplit` checks a split against the declared minimum height. `Workspace` renders a navigator into the DOM with the stylesheet `@laicluse/supermax/workspace.css`, and `ORIGAMI_PRESENTATION` is its default motion. Hosts own their content and their routing. A GitHub Pages demo lives in `docs/` outside the package files.
 
 ## A single row

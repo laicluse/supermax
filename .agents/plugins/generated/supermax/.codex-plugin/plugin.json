@@ -1,0 +1,26 @@
+{
+  "name": "supermax",
+  "version": "0.1.1",
+  "description": "Build on Supermax the way it is meant to be used: the per-click contract, which feature fits which need, and what a host never does. Use whenever Supermax, @laicluse/supermax, supermax- classes or a Supermax Workspace come up.",
+  "author": {
+    "name": "l'Aicluse"
+  },
+  "keywords": [
+    "agent-skills",
+    "supermax"
+  ],
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "Supermax",
+    "shortDescription": "Build on Supermax the way it is meant to be used: the per-click contract, which feature fits which need, and what a h...",
+    "longDescription": "Build on Supermax the way it is meant to be used: the per-click contract, which feature fits which need, and what a host never does. Use whenever Supermax, @laicluse/supermax, supermax- classes or a Supermax Workspace come up.",
+    "developerName": "l'Aicluse",
+    "category": "Productivity",
+    "capabilities": [
+      "Read"
+    ],
+    "defaultPrompt": [
+      "Use the Supermax plugin."
+    ]
+  }
+}
