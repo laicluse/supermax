@@ -12,6 +12,7 @@ const widths = {
 	history: { min: 200, max: 320 },
 	edit: { min: 200, max: 320 },
 	depth: { min: 160, max: 240 },
+	full: { min: 320, max: "*", preferred: 900, height: "full" },
 };
 
 export const depthCount = 20;
@@ -67,6 +68,7 @@ export function ids(album) {
 		metadata: (photo) => `${album.id}:metadata:${photo.id}`,
 		history: (photo) => `${album.id}:history:${photo.id}`,
 		edit: (photo, edit) => `${album.id}:edit:${photo.id}:${edit.n}`,
+		full: (photo) => `${album.id}:full:${photo.id}`,
 	};
 }
 
@@ -78,7 +80,8 @@ export function paths(album) {
 	const metadata = (rowKey, photoId) => `${photo(rowKey, photoId)}/${key.metadata({ id: photoId })}`;
 	const history = (rowKey, photoId) => `${metadata(rowKey, photoId)}/${key.history({ id: photoId })}`;
 	const edit = (rowKey, photoId, n) => `${history(rowKey, photoId)}/${key.edit({ id: photoId }, { n })}`;
-	return { album: albumPath, row, photo, metadata, history, edit };
+	const full = (rowKey, photoId) => `${photo(rowKey, photoId)}/${key.full({ id: photoId })}`;
+	return { album: albumPath, row, photo, metadata, history, edit, full };
 }
 
 export const remoteLayouts = new Set(["photo", "metadata", "history", "edit"]);
@@ -112,6 +115,7 @@ export function destinations(context = "ana") {
 			result[key.photo(photo)] = { title: photo.title, ...widths.photo, defaultChild: key.metadata(photo), data: { kind: "photo", album, photo } };
 			result[key.metadata(photo)] = { title: `Metadata ${photo.id.toUpperCase()}`, ...widths.metadata, defaultChild: context === "ben" ? null : key.history(photo), data: { kind: "metadata", album, photo } };
 			result[key.history(photo)] = { title: `History ${photo.id.toUpperCase()}`, ...widths.history, data: { kind: "history", album, photo } };
+			result[key.full(photo)] = { title: `${photo.title} at full height`, ...widths.full, data: { kind: "full", album, photo } };
 			for (const edit of edits) {
 				result[key.edit(photo, edit)] = { title: `${edit.title} (${photo.id.toUpperCase()})`, ...widths.edit, data: { kind: "edit", album, photo, edit } };
 			}

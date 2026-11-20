@@ -9,6 +9,7 @@ const outputDir = resolve(repoRoot, process.argv[2] ?? "docs/assets/captures");
 const captures = [
 	{ name: "three-rows", hash: "o:album:coast@albums;o:coast:photo:a@albums/album:coast/coast:thumbnails;o:coast:photo:b@albums/album:coast/coast:map;o:coast:photo:c@albums/album:coast/coast:people" },
 	{ name: "short-frame", hash: "o:album:coast@albums;o:coast:photo:c@albums/album:coast/coast:people", sizes: [[960, 640], [420, 400]] },
+	{ name: "breakout", hash: "o:album:coast@albums;o:coast:photo:b@albums/album:coast/coast:thumbnails;o:coast:full:b@albums/album:coast/coast:thumbnails/coast:photo:b" },
 	{ name: "fold", hash: "o:album:coast@albums;o:coast:photo:a@albums/album:coast/coast:thumbnails;o:coast:photo:b@albums/album:coast/coast:map;o:coast:photo:c@albums/album:coast/coast:people", presentation: "fold" },
 ];
 

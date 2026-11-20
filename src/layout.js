@@ -6,6 +6,36 @@ export function isSplit(definition) {
 	return Array.isArray(definition?.rows);
 }
 
+export function isFull(definition) {
+	return definition?.height === "full";
+}
+
+// allow-comment: the split whose row holds an occurrence, or null for a cell in the root chain; a breakout and everything after it count as the root chain.
+export function rowSplitOf(model, occurrence) {
+	if (isBeside(model, occurrence)) return null;
+	let current = occurrence;
+	while (current.parent) {
+		const parent = model.get(current.parent);
+		if (isSplit(model.definitionOf(parent.destination))) return parent;
+		if (isBeside(model, parent)) return null;
+		current = parent;
+	}
+	return null;
+}
+
+// allow-comment: a full-height cell opened from a cell in a row stands beside that row's split, in the chain the split is in.
+export function isBeside(model, occurrence) {
+	if (!isFull(model.definitionOf(occurrence.destination)) || !occurrence.parent) return false;
+	return rowSplitOf(model, model.get(occurrence.parent)) !== null;
+}
+
+export function breakoutOf(model, split) {
+	for (const occurrence of model.occurrences.values()) {
+		if (isBeside(model, occurrence) && rowSplitOf(model, model.get(occurrence.parent)) === split) return occurrence;
+	}
+	return null;
+}
+
 export function widthBounds(definition) {
 	const elastic = definition.max === ELASTIC;
 	return { min: definition.min, max: elastic ? definition.preferred : definition.max, reach: elastic ? Infinity : definition.max, preferred: definition.preferred ?? null, elastic };
@@ -22,6 +52,10 @@ export function validateSplit(model, definitionId, parentOccurrence) {
 	const rows = definition.rows;
 	const base = { ok: false, rows: [], chrome: null, supported: model.minViewportHeight };
 	if (parentOccurrence && chainRootOf(model, parentOccurrence).parent) return { ...base, reason: "nested-split" };
+	if (parentOccurrence) {
+		const cells = chainCells(model, chainRootOf(model, parentOccurrence));
+		if (cells.slice(0, cells.indexOf(parentOccurrence)).some((cell) => isSplit(model.definitionOf(cell.destination)))) return { ...base, reason: "second-split" };
+	}
 	if (rows.length === 0) return { ...base, reason: "no-rows" };
 	if (rows.length > maxRows) return { ...base, reason: "too-many-rows", count: rows.length, maxRows };
 	const chrome = navbar;
@@ -31,6 +65,7 @@ export function validateSplit(model, definitionId, parentOccurrence) {
 		const problems = [];
 		if (!rowDefinition) problems.push("unknown-row-destination");
 		if (rowDefinition && isSplit(rowDefinition)) problems.push("split-row");
+		if (rowDefinition && isFull(rowDefinition)) problems.push("full-height-row");
 		if (seen.has(row.destination)) problems.push("duplicate-row-destination");
 		seen.add(row.destination);
 		if (row.minHeight > heightBounds(row).reach) problems.push("row-min-exceeds-max");
@@ -56,22 +91,28 @@ export function validateSplit(model, definitionId, parentOccurrence) {
 
 export function chainRootOf(model, occurrence) {
 	let current = occurrence;
-	while (current.parent) {
-		const parent = model.get(current.parent);
-		if (isSplit(model.definitionOf(parent.destination))) break;
+	for (;;) {
+		if (isBeside(model, current)) current = rowSplitOf(model, model.get(current.parent));
+		const parent = current.parent ? model.get(current.parent) : null;
+		if (!parent || isSplit(model.definitionOf(parent.destination))) return current;
 		current = parent;
 	}
-	return current;
 }
 
 export function chainCells(model, chainRoot) {
 	const cells = [chainRoot];
 	let current = chainRoot;
-	while (!isSplit(model.definitionOf(current.destination)) && current.children[0]) {
-		current = model.get(current.children[0]);
-		cells.push(current);
+	for (;;) {
+		let next = null;
+		if (isSplit(model.definitionOf(current.destination))) next = breakoutOf(model, current);
+		else if (current.children[0]) {
+			const child = model.get(current.children[0]);
+			next = child && !isBeside(model, child) ? child : null;
+		}
+		if (!next) return cells;
+		cells.push(next);
+		current = next;
 	}
-	return cells;
 }
 
 function compactWidth(definition) {

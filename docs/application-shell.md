@@ -8,6 +8,7 @@ Supermax is an application shell, not merely a responsive column allocator. New 
 - **Occurrence:** one opened destination at one place, identified by the path of destination ids from the root.
 - **Chain:** a row of cells from a root cell to the right; the workspace root is a chain and every row is a chain.
 - **Split:** a cell whose rows are chains stacked below each other.
+- **Breakout:** a full-height cell (`height: "full"`) opened from a cell in a row; it stands beside the split instead of inside the row.
 - **Group:** a manual opening together with every default it brought along, named after its root cell; `navigator.closeNewestGroup()` closes the newest one.
 - **Default:** a cell that opened by itself because its parent names it as `defaultChild` and the row had room; a click on it promotes it into a group of its own.
 - **Kept cell:** a destination or row the host marks `keep: true`; it stays in view while the cells or rows around it hide, if need be in a compact form the host supplies.
@@ -86,6 +87,8 @@ Use these as starting ranges in pixels, then verify against real content:
 | Media or working surface | 480 | 1200 | Visual comparison benefits from width |
 | Canvas or world | 480 | 1600 | May consume remaining space; often zoomable |
 
+Height is content semantics too. A cell whose content needs the full height, such as an attachment, a document or a working surface, declares `height: "full"`; opened from a cell in a row it then stands beside the split instead of inside the row (see "Breaking out of a row"). A row's `minHeight` and `maxHeight` describe what its own content needs, never the needs of what opens from it.
+
 Do not copy these numbers mechanically. A dense data table may need more width than a list; a short inspector may need less than a document. If every cell receives the same bounds, the information architecture has not been expressed in the layout.
 
 ## Collection and detail behavior
@@ -104,6 +107,10 @@ When cells no longer fit, hide ancestors from the left, entirely. Do not squeeze
 A split spans the full width of its own cell and stacks its rows from top to bottom. Rows never share column boundaries with each other, and no cell spans more than one row. Rows are owned by their split: they open with it, close with it, and cannot be replaced or promoted on their own. A split opens from the workspace's root chain and its rows are plain cells; a split inside a row is refused. Inside a row the horizontal rules above apply unchanged: ancestors hide from the left and the newest cell survives.
 
 Rows declare `minHeight` and `maxHeight`. When the split is too short for every row, rows give way from the top: they shrink to their minimum first and then hide entirely, the same way cells hide from the left. There are no row tabs. Hiding, resizing and moving the window preserve drafts, scroll positions and every navigation group.
+
+### Breaking out of a row
+
+A destination that declares `height: "full"` needs the full height of the workspace, the height below the navigation bar. Opened from the root chain it is an ordinary cell. Opened from a cell inside a row it breaks out: it stands beside the split, in the chain the split is in and as tall as the split, and its own chain continues to the right of it at that height; this is the shell's answer to a table's colspan. A mail conversation, for example, is a split with the messages above and the attachments below, and an attachment declared `height: "full"` opens beside that split when its thumbnail is clicked, not inside the attachments row. The breakout keeps the path of the cell that opened it: that cell's `child()` names it, closing or replacing that cell closes it, and Back closes it like any other group. A split holds one breakout at a time. A full-height cell opened from another row, or another one from the same cell, replaces it, and Back then closes the replacement without bringing the first one back; the same destination opened from another row is a new occurrence. A `defaultChild` with `height: "full"` opens beside the split by itself when the root chain has room and nothing stands beside the split yet; defaults never replace a breakout, so when several rows name one, the first row's default takes the place. Show frees the root chain first: when a breakout has pushed its split out of view, Show closes the breakout before it reaches the cell inside the row. A zoom on the breakout hides the split; a zoom inside a row keeps the breakout beside it. The declaration is validated with the rest: a full-height destination cannot be a row (`full-height-row`), a split cannot declare a height (`invalid-height`), and a split cannot open beside a split (`second-split`). `sync` names only the root chain, which runs past the split to its breakout: a sync whose chain ends at the split closes the breakout, and `navigator.next(split)` names it. A deep link that ends in a breakout replays a `sync` action for the chain, with its `ifRoom`, followed by the `open` from the row cell, with `replay`, which renders once.
 
 ### The window and Show
 
@@ -153,7 +160,7 @@ Give an interaction the space its task needs. Decide from task length, frequency
 
 - A direct action or compact contextual input stays where its task happens. Show pending and result feedback in proportion to the change. Ask for confirmation only when the risk warrants interruption, such as a serious consequence that cannot easily be undone; a readily reversible toggle needs no confirmation.
 - A modal holds a short, bounded, infrequent task whose completion or deliberate choice benefits from blocking the surrounding view. Open it with `from` set to its source cell. Frequently repeated actions belong on the main surface rather than behind repeated interruptions.
-- A substantial edit, multi-step process, draft, detail or comparison gets its own cell. Work that needs to consult the background must not block that background in a modal.
+- A substantial edit, multi-step process, draft, detail or comparison gets its own cell. Work that needs to consult the background must not block that background in a modal. Content that needs the full height, such as an attachment opened from a strip of thumbnails in a row, is a cell declared `height: "full"`, which stands beside the split rather than a modal or a cell squeezed into the row.
 - Disclosure reveals additional reading information without changing the cell's task. It does not unfold a new editor between reading content; that is a different boundary from a compact control already present where its task happens.
 
 Moving an action between these forms preserves its choices, defaults, pending/result feedback, errors, recovery and focus. The host moves focus into a task, returns it on dismissal and handles modal focus containment; Supermax does not do that itself.
@@ -249,9 +256,9 @@ A manual opening is offered to every viewport. Automatic defaults depend on room
 
 Before implementing a Supermax adaptation:
 
-1. Draw every reachable route as a cell tree, including create, edit, empty, error, and external-leaf states.
+1. Draw every reachable route as a cell tree, including create, edit, empty, error, and external-leaf states, and mark which cells open inside a row and which break out beside the split.
 2. Inventory every existing control and assign its scope: application, collection, selection, item, task, form, or child resource.
-3. Classify each cell by content and set independent `min` and `max` bounds; give each row `minHeight` and `maxHeight`.
+3. Classify each cell by content and set independent `min` and `max` bounds; give each row `minHeight` and `maxHeight`, and declare `height: "full"` on every cell whose content needs the full height wherever it opens.
 4. Specify each cell's header controls, scroll owner, context bar, and task toolbar.
 5. Define the cold-start selection and the defaults that may open automatically when there is room.
 6. Declare the minimum supported viewport height and check every split against it.
@@ -271,3 +278,4 @@ Verify the result with real content at narrow and wide sizes, preferably side by
 - Putting item mutations on every row instead of in the selected item's child cell.
 - Mixing identity, explanation, and repeated task actions in one verbose body block.
 - Choosing cell widths to fill one screenshot rather than to suit the information carrier.
+- Opening full-height content, such as an attachment or a document, inside the row that lists it, or in a modal, instead of declaring `height: "full"` so it stands beside the split.

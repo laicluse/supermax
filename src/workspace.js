@@ -304,9 +304,9 @@ export class Workspace extends EventTarget {
 	}
 
 	run(action) {
-		return action.type === "close"
-			? this.navigator.closeNewestGroup()
-			: this.navigator.open(action.destination, { from: action.from });
+		if (action.type === "close") return this.navigator.closeNewestGroup();
+		if (action.type === "sync") return this.navigator.sync(action.destinations, { ifRoom: action.ifRoom ?? [], zoom: action.zoom });
+		return this.navigator.open(action.destination, { from: action.from });
 	}
 
 	mountContent(entry, occurrence) {

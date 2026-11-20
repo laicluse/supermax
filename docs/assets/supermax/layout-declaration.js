@@ -5,7 +5,7 @@ export const LAYOUT_HEADER = "Supermax-Layout";
 export const LAYOUT_SCHEMA = 1;
 
 const REQUIRED = ["title", "min", "max", "preferred", "defaultChild"];
-const FIELDS = new Set([...REQUIRED, "keep", "compact", "rows", "zoomable"]);
+const FIELDS = new Set([...REQUIRED, "keep", "compact", "rows", "zoomable", "height"]);
 const ROW_FIELDS = new Set(["destination", "minHeight", "maxHeight", "preferredHeight", "keep"]);
 
 export class SupermaxLayoutError extends Error {
@@ -30,6 +30,7 @@ export function layoutOf(definition) {
 		rows: definition.rows ? definition.rows.map((row) => ({ destination: row.destination, minHeight: row.minHeight, maxHeight: row.maxHeight, preferredHeight: row.preferredHeight ?? null, keep: !!row.keep })) : null,
 		defaultChild: definition.defaultChild ?? null,
 		...(definition.zoomable ? { zoomable: true } : {}),
+		...(definition.height === "full" ? { height: "full" } : {}),
 	};
 }
 
@@ -62,6 +63,7 @@ function problemsOf(id, declaration) {
 		if (!Array.isArray(rows) || rows.length === 0 || rows.some(badRow)) problems.push("invalid-row-shape");
 	}
 	if (declaration.defaultChild != null && (typeof declaration.defaultChild !== "string" || declaration.defaultChild.length === 0 || declaration.defaultChild === id)) problems.push("invalid-default");
+	if (declaration.height != null && (declaration.height !== "full" || declaration.rows != null)) problems.push("invalid-height");
 	return problems;
 }
 

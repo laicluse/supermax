@@ -101,6 +101,7 @@ const renderers = {
 	depth: renderDepth,
 	selector: renderSelector,
 	photo: renderPhoto,
+	full: renderFull,
 	metadata: renderMetadata,
 	history: renderHistory,
 	edit: renderEdit,
@@ -297,8 +298,12 @@ function renderPhoto(occurrence, data, workspace) {
 	const save = element("button", "metadata-link caption-save", "Save");
 	save.type = "button";
 	save.addEventListener("click", () => session.saveCaption(occurrence, photo, key.photo(photo)));
+	const full = element("button", "metadata-link full-link", "Full height");
+	full.type = "button";
+	full.dataset.destination = key.full(photo);
+	full.addEventListener("click", () => workspace.navigate(key.full(photo), { from: occurrence.id, origin: full }));
 	const actions = element("div", "photo-actions");
-	actions.append(caption, link, editCaption, save);
+	actions.append(caption, link, editCaption, save, full);
 	host.append(picture, actions);
 	const zoom = element("button", "zoom-toggle", "⤢");
 	zoom.type = "button";
@@ -317,6 +322,16 @@ function renderPhoto(occurrence, data, workspace) {
 			link.textContent = auto ? "Metadata (auto)" : "Metadata";
 		},
 	};
+}
+
+function renderFull(occurrence, data) {
+	const { photo } = data;
+	const host = element("div", "photo photo-full");
+	const picture = element("div", "picture picture-full", photo.title);
+	picture.style.setProperty("--hue", String(photo.hue));
+	const note = element("p", "photo-note", `${photo.place}, ${photo.date}. Opened beside the album's rows, at the full height of the workspace.`);
+	host.append(picture, note);
+	return { element: host };
 }
 
 function renderCaptionEditor(modal, workspace, { photo, caption, content }) {

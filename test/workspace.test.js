@@ -1889,6 +1889,37 @@ test("veil replaces a cell without turning it, keeps its surface and lifts the n
 	await page.selectOption("[data-presentation]", PRESENTATION);
 });
 
+test("a full-height cell opened from a row breaks out beside its split, and Back closes it alone", async () => {
+	await openDemo([open("album:coast", "albums"), open("coast:photo:b", coast.row("thumbnails"))]);
+	const photoB = coast.photo("thumbnails", "b");
+	const fullB = coast.full("thumbnails", "b");
+	await page.click(inFrame("a", `[data-occurrence="${photoB}"] .full-link`));
+	await settle();
+	const placed = await page.locator(inFrame("a", `[data-occurrence="${fullB}"]`)).evaluate((cell) => {
+		const workspace = cell.closest(".supermax-workspace");
+		const body = workspace.querySelector(":scope > .supermax-body, :scope > .supermax-chain")?.getBoundingClientRect() ?? workspace.getBoundingClientRect();
+		const split = workspace.querySelector('[data-occurrence="albums/album:coast"]').getBoundingClientRect();
+		const rect = cell.getBoundingClientRect();
+		return { inRow: !!cell.closest(".supermax-row"), rightOfSplit: Math.round(rect.left) >= Math.round(split.right) - 1, height: Math.round(rect.height), splitHeight: Math.round(split.height), bodyHeight: Math.round(body.height) };
+	});
+	assert.equal(placed.inRow, false, "the full-height cell stands in the root chain, not inside the thumbnails row");
+	assert.equal(placed.rightOfSplit, true, "to the right of the album's split");
+	assert.equal(placed.height, placed.splitHeight, "as tall as the split beside it");
+	assert.equal(await page.locator(inFrame("a", `[data-occurrence="${photoB}"] .full-link`)).getAttribute("aria-current"), null);
+	assert.equal(await page.locator(inFrame("a", `[data-row="${coast.row("thumbnails")}"] [data-occurrence="${fullB}"]`)).count(), 0, "the row's own chain does not hold it");
+	await closeNewest("a");
+	await settle();
+	assert.equal(await page.locator(inFrame("a", `[data-occurrence="${fullB}"]`)).count(), 0, "Back closes the breakout");
+	assert.equal(await page.locator(inFrame("a", `[data-occurrence="${photoB}"]`)).count(), 1, "and leaves the photo that opened it");
+	const replayed = await page.evaluate(([row, photo, full]) => {
+		const workspace = window.supermaxDemo.frames[0].workspace;
+		const results = workspace.replay([{ type: "sync", destinations: ["albums", "album:coast"] }, { type: "open", destination: "coast:photo:b", from: row }, { type: "open", destination: "coast:full:b", from: photo }]);
+		return { ok: results.map((result) => result.ok), beside: workspace.navigator.next(workspace.navigator.get("albums/album:coast"))?.id, renders: document.querySelector(`.frame[data-frame="a"] [data-occurrence="${full}"]`)?.closest(".supermax-row") === null };
+	}, [coast.row("thumbnails"), photoB, fullB]);
+	assert.deepEqual(replayed, { ok: [true, true, true], beside: fullB, renders: true }, "a replay with a sync action and the opening from the row rebuilds the breakout in one render, and next() names it beside the split");
+	await settle();
+});
+
 test("a twenty-cell chain stays navigable in both presentations", async () => {
 	await openDemo(TWENTY_DEEP);
 	await resize([[960, 640], [420, 640]]);
