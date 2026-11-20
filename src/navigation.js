@@ -1,4 +1,4 @@
-import { chainCells, chainRootOf, isSplit, layoutWorkspace, rowWidth, validateSplit } from "./layout.js";
+import { chainCells, chainRootOf, chainWidth, isSplit, layoutWorkspace, validateSplit } from "./layout.js";
 
 const DEFAULT_CHROME = { navbar: 44, rowTab: 32, maxRows: 4 };
 
@@ -135,16 +135,22 @@ export class Navigator {
 
 	fits(parentOccurrence, candidateId) {
 		const chainRoot = chainRootOf(this, parentOccurrence);
-		const width = rowWidth(this, chainRoot);
+		const width = chainWidth(this, chainRoot);
 		const sumOfMins = chainCells(this, chainRoot).reduce((sum, occurrence) => sum + this.destination(occurrence.destination).min, 0);
 		return sumOfMins + this.destination(candidateId).min <= width;
 	}
 
 	closeSubtree(occurrence) {
+		const closed = this.removeSubtree(occurrence);
+		this.dropEmptyGroups();
+		return closed;
+	}
+
+	removeSubtree(occurrence) {
 		const closed = [];
 		for (const childId of occurrence.children) {
 			const child = this.get(childId);
-			if (child) closed.push(...this.closeSubtree(child));
+			if (child) closed.push(...this.removeSubtree(child));
 		}
 		const parent = occurrence.parent ? this.get(occurrence.parent) : null;
 		if (parent && parent.children[occurrence.row] === occurrence.id) parent.children[occurrence.row] = undefined;
@@ -152,7 +158,6 @@ export class Navigator {
 		this.revealOffsets.delete(occurrence.id);
 		if (this.focused === occurrence.id) this.focused = parent ? parent.id : this.root.id;
 		closed.unshift({ id: occurrence.id, title: occurrence.title });
-		this.dropEmptyGroups();
 		return closed;
 	}
 
@@ -224,12 +229,14 @@ export class Navigator {
 	}
 
 	restore(snapshot) {
+		if (!snapshot.occurrences.every((occurrence) => this.destination(occurrence.destination))) return false;
 		this.occurrences = new Map(snapshot.occurrences.map((occurrence) => [occurrence.id, { ...occurrence, children: [...occurrence.children] }]));
 		this.groups = snapshot.groups.map((group) => ({ ...group }));
 		this.groupSequence = snapshot.groupSequence;
 		this.focused = snapshot.focused;
 		this.revealOffsets = new Map(snapshot.revealOffsets);
 		this.root = this.get(this.rootDestination);
+		return true;
 	}
 
 	state() {

@@ -63,7 +63,7 @@ scenario("Back closes groups in reverse opening order across rows", () => {
 		for (const title of expected) assert.deepEqual(closedTitles(instance.back()), [title]);
 		for (const key of keys) assert.ok(instance.get(row(key)), `${key} survives`);
 		assert.deepEqual(titles(instance), ["Gallery"]);
-		assert.equal(instance.focused, row(keys[order.indexOf(expected[2].slice(-1).toLowerCase())]), "focus returns to the selector of the last closed group");
+		assert.equal(instance.focused, row(keys[0]), "focus returns to the selector of the last closed group, which opened first");
 	}
 });
 
@@ -117,7 +117,7 @@ scenario("rejections leave the model untouched and name their reason", () => {
 	assert.equal(instance.open("list", { from: GALLERY }).reason, "split-source", "a row root cannot be promoted or replaced");
 	assert.equal(instance.open("constructor", { from: "root" }).reason, "unknown-destination");
 	assert.deepEqual(instance.state(), before);
-	assert.ok(instance.layout(), "the layout still renders");
+	assert.deepEqual(instance.layout().chain.cells.map((cell) => cell.occurrence), ["root", GALLERY], "the layout still renders the same chain");
 });
 
 scenario("a split is validated against the declared minimum height before it opens", () => {
@@ -148,6 +148,29 @@ scenario("a split reached through a default is validated with its ancestors' chr
 	assert.equal(instance.open("item:deep", { from: row("grid") }).ok, true);
 	assert.ok(instance.get(`${item("grid", "deep")}/innerfit`), "40 + 20 x 3 + 200 fits exactly");
 	assert.equal(instance.open("inner", { from: item("list", "nested") }).reason, "invalid-rows", "the manual click gets the same verdict");
+});
+
+scenario("a split whose row is itself a split is validated through that row", () => {
+	const instance = model(1000, 300);
+	assert.equal(instance.open("outer", { from: "root" }).reason, "invalid-rows");
+	assert.deepEqual(instance.state().occurrences, ["root"], "nothing opened");
+	assert.ok(validateSplit(instance, "outer", instance.root).rows[0].problems.includes("invalid-nested-split"));
+	assert.equal(validateSplit(instance, "outerfit", instance.root).ok, true, "a nested split that fits with the outer tabs counted passes");
+	assert.equal(instance.open("outerfit", { from: "root" }).ok, true);
+	assert.ok(instance.get("root/outerfit/innerfit/list"), "the nested rows exist");
+});
+
+scenario("a nested chain that needs more height than its row gets grows the row and marks overflow", () => {
+	const instance = model(1000, 300);
+	openGallery(instance);
+	instance.open("item:deep", { from: row("grid") });
+	instance.focus(`${item("grid", "deep")}/innerfit/list`);
+	const layout = instance.layout();
+	const gridRow = layout.chain.cells[1].rows.rows[1];
+	assert.equal(layout.overflow, true);
+	assert.equal(gridRow.height, gridRow.chain.contentHeight, "the row takes the height its nested rows need");
+	assert.ok(gridRow.height >= 200 + 20, "inner list at its minimum plus one tab");
+	assert.equal(layout.contentHeight, layout.chain.cells[1].rows.rows.reduce((sum, candidate) => sum + candidate.height, 0), "the workspace scroll height is the sum of the rows");
 });
 
 scenario("rows collapse from the top and the focused row keeps its minimum below the supported height", () => {
@@ -225,9 +248,14 @@ scenario("a snapshot restores the exact state, including groups and focus", () =
 	const expected = instance.state();
 	instance.reset();
 	assert.deepEqual(instance.state(), { occurrences: ["root"], groups: [], focused: "root" });
-	instance.restore(snapshot);
+	assert.equal(instance.restore(snapshot), true);
 	assert.deepEqual(instance.state(), expected);
 	assert.deepEqual(closedTitles(instance.back()), ["Item B", "Detail B"], "history continues from the restored state");
+	const stale = structuredClone(snapshot);
+	stale.occurrences[1].destination = "renamed";
+	assert.equal(instance.restore(stale), false, "a snapshot naming an unknown destination is refused");
+	assert.equal(instance.back().title, "Gallery", "the model is unchanged by the refused restore");
+	assert.deepEqual(instance.state().occurrences, ["root"]);
 });
 
 console.log("Navigation scenarios passed");

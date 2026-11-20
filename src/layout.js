@@ -4,14 +4,14 @@ export function isSplit(definition) {
 	return Array.isArray(definition?.rows);
 }
 
-export function validateSplit(model, definitionId, parentOccurrence) {
+export function validateSplit(model, definitionId, parentOccurrence, inheritedTabs = null) {
 	const definition = model.destination(definitionId);
 	const { navbar, rowTab, maxRows } = model.chrome;
 	const rows = definition.rows;
 	const base = { ok: false, rows: [], chrome: null, supported: model.minViewportHeight };
 	if (rows.length === 0) return { ...base, reason: "no-rows" };
 	if (rows.length > maxRows) return { ...base, reason: "too-many-rows", count: rows.length, maxRows };
-	const ancestorTabs = ancestorSplits(model, parentOccurrence)
+	const ancestorTabs = inheritedTabs ?? ancestorSplits(model, parentOccurrence)
 		.reduce((sum, split) => sum + model.destination(split.destination).rows.length - 1, 0);
 	const chrome = navbar + rowTab * (ancestorTabs + rows.length - 1);
 	const seen = new Set();
@@ -23,6 +23,7 @@ export function validateSplit(model, definitionId, parentOccurrence) {
 		seen.add(row.destination);
 		if (row.minHeight > row.maxHeight) problems.push("row-min-exceeds-max");
 		if (rowDefinition && rowDefinition.min > rowDefinition.max) problems.push("cell-min-exceeds-max");
+		if (rowDefinition && isSplit(rowDefinition) && !validateSplit(model, row.destination, null, ancestorTabs + rows.length - 1).ok) problems.push("invalid-nested-split");
 		const required = chrome + row.minHeight;
 		if (required > model.minViewportHeight) problems.push("exceeds-supported-height");
 		return {
@@ -76,12 +77,12 @@ function configsOf(model, cells) {
 	});
 }
 
-export function rowWidth(model, chainRoot) {
+export function chainWidth(model, chainRoot) {
 	if (!chainRoot.parent) return model.size.width;
 	const split = model.get(chainRoot.parent);
 	const outerRoot = chainRootOf(model, split);
 	const outerCells = chainCells(model, outerRoot);
-	const allocation = new CellCollection(configsOf(model, outerCells)).distribute(rowWidth(model, outerRoot));
+	const allocation = new CellCollection(configsOf(model, outerCells)).distribute(chainWidth(model, outerRoot));
 	const cell = allocation.cells.find((candidate) => candidate.config.id === split.id);
 	return cell && cell.visible ? cell.actual : model.destination(split.destination).min;
 }
@@ -160,7 +161,10 @@ function layoutRows(model, split, width, height) {
 		}
 		const collapsed = !pinned && !allocated.visible;
 		const chain = collapsed ? null : layoutChain(model, root, width, rowHeight);
-		if (chain?.overflow) overflow = true;
+		if (chain && chain.contentHeight > rowHeight) {
+			rowHeight = chain.contentHeight;
+			overflow = true;
+		}
 		return {
 			occurrence: root.id,
 			title: root.title,
@@ -170,7 +174,7 @@ function layoutRows(model, split, width, height) {
 			chain,
 		};
 	});
-	const contentHeight = rows.reduce((sum, row) => sum + (row.collapsed ? row.height : Math.max(row.height, row.chain.contentHeight)), 0);
+	const contentHeight = rows.reduce((sum, row) => sum + row.height, 0);
 	return { rows, overflow, contentHeight };
 }
 

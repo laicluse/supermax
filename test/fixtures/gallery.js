@@ -37,6 +37,9 @@ export const destinations = {
 	innerfit: { title: "Inner fit", min: 200, max: 1000, rows: [{ destination: "list", minHeight: 200, maxHeight: 300 }, { destination: "grid", minHeight: 100, maxHeight: 200 }] },
 };
 
+destinations.outer = { title: "Outer", min: 300, max: 1000, rows: [{ destination: "empty", minHeight: 100, maxHeight: 200 }] };
+destinations.outerfit = { title: "Outer fit", min: 300, max: 1000, rows: [{ destination: "innerfit", minHeight: 240, maxHeight: 300 }] };
+
 export const GALLERY = "root/gallery";
 export const row = (key) => `${GALLERY}/${key}`;
 export const item = (key, id) => `${row(key)}/item:${id}`;
