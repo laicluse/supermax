@@ -43,6 +43,7 @@ export function sameLayout(first, second) {
 function problemsOf(id, declaration) {
 	if (!declaration || typeof declaration !== "object") return ["not-an-object"];
 	const problems = [];
+	if (id.includes("/")) problems.push("invalid-id");
 	if (Object.keys(declaration).some((key) => !FIELDS.has(key))) problems.push("unknown-field");
 	if (REQUIRED.some((key) => !Object.hasOwn(declaration, key))) problems.push("missing-field");
 	if (typeof declaration.title !== "string" || declaration.title.trim().length === 0) problems.push("invalid-title");

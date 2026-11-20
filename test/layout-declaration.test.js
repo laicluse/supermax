@@ -45,3 +45,8 @@ for (const context of ["ana", "ben"]) {
 }
 
 console.log("Layout declaration scenarios passed");
+
+{
+	const set = { schemaVersion: 1, context: "ana", root: "a/b", destinations: { "a/b": { title: "Slashed", min: 200, max: "*", preferred: 300, defaultChild: null } } };
+	assert.ok(validateDeclarationSet(set).some((problem) => problem.destination === "a/b" && problem.reason === "invalid-id"), "a destination id with a slash is refused, because occurrence ids are paths of destination ids joined by slashes");
+}
