@@ -7,6 +7,7 @@ Start with [Migrating from v1 to v2](docs/migrating-to-v2.md). A dependency vers
 ### Workspace composition
 
 - Independent splits can follow full-height cells along the root chain, retaining their own row windows and correct path sync and zoom. The guides document `Navigator.startRows()` for the initial task row.
+- A fold between two full cells or rows opens toward the neighbour that yields. Its handle, hinge and drag direction follow that moving gutter, where a drag used to grow the fold away from a handle left on the other edge.
 
 ### Breaking changes
 

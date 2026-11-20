@@ -980,6 +980,52 @@ test("folds opening left or up keep their handles on the interior gutter", async
 	}
 });
 
+test("a fold between two full cells opens toward the neighbour that yields, with its handle on that moving gutter", async () => {
+	const server = await serveDocs();
+	const browser = await chromium.launch({ channel: "chrome", headless: true });
+	try {
+		const page = await browser.newPage({ viewport: { width: 700, height: 1000 } });
+		await page.goto(`${server.url}/blank`);
+		await page.addStyleTag({ url: `${server.url}/src/workspace.css` });
+		await page.evaluate(async () => {
+			const { Navigator, Workspace } = await import("/src/index.js");
+			document.body.style.margin = "0";
+			const host = document.createElement("div");
+			host.style.cssText = "position:fixed;left:0;top:0;width:580px;height:1000px";
+			document.body.append(host);
+			const navigator = new Navigator({ root: "mode", minViewportHeight: 320, destinations: {
+				mode: { title: "Mode", min: 52, max: 52, overflow: { mode: "keep" } },
+				nav: { title: "Nav", min: 208, max: 208 },
+				parent: { title: "Parent", min: 320, max: "*", preferred: 400 },
+				child: { title: "Child", min: 320, max: "*", preferred: 400 },
+			} });
+			window.middle = new Workspace(host, { navigator, content: () => ({ element: document.createElement("textarea") }) });
+			window.middle.sync(["mode", "nav", "parent", "child"], { origin: null, animate: false });
+			navigator.focusFold("mode/nav", "horizontal");
+			window.middle.render({ animate: false });
+		});
+		const cue = page.locator('.supermax-fold-cue[data-fold-occurrence="mode/nav/parent"]');
+		assert.equal(await cue.getAttribute("data-direction"), "right", "the handle faces Child, the neighbour that folds when Parent opens");
+		const box = await cue.boundingBox();
+		await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+		await page.mouse.down();
+		await page.mouse.move(box.x + box.width / 2 + 100, box.y + box.height / 2, { steps: 10 });
+		const geometry = await page.evaluate(() => {
+			const cell = document.querySelector('[data-occurrence="mode/nav/parent"]').getBoundingClientRect();
+			const handle = document.querySelector('.supermax-fold-cue[data-fold-occurrence="mode/nav/parent"]').getBoundingClientRect();
+			return { cellLeft: cell.left, cellRight: cell.right, handleLeft: handle.left, progress: window.middle.folds.drag.progress };
+		});
+		assert.ok(Math.abs(geometry.cellLeft - 260) < 1, `Parent keeps its left edge beside Nav: ${JSON.stringify(geometry)}`);
+		assert.ok(geometry.cellRight > 340, `Parent grows to the right with the pointer: ${JSON.stringify(geometry)}`);
+		assert.ok(Math.abs(geometry.handleLeft - geometry.cellRight) < 1.5, `the handle stays on the moving gutter: ${JSON.stringify(geometry)}`);
+		assert.ok(geometry.progress > 0.25, `dragging toward the yielding neighbour opens the fold: ${JSON.stringify(geometry)}`);
+		await page.mouse.up();
+	} finally {
+		await browser.close();
+		await server.close();
+	}
+});
+
 test("a completed fold drag carries its handle into the next fold", async () => {
 	const server = await serveDocs();
 	const browser = await chromium.launch({ channel: "chrome", headless: true });

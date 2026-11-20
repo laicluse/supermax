@@ -603,7 +603,7 @@ export class Workspace extends EventTarget {
 			variantChanged: this.cells.get(cell.occurrence)?.variantState && (this.cells.get(cell.occurrence).variantState.variant !== (cell.variant ?? null) || this.cells.get(cell.occurrence).variantState.rowVariant !== (cell.rowVariant ?? null)),
 			follow: cell.rows ? () => this.reachOfRows(this.cells.get(cell.occurrence) ?? this.leavingCells.get(cell.occurrence)) : undefined,
 		}));
-		for (const cell of chain.cells) this.folds.apply(this.cells.get(cell.occurrence), cell.folded, cell.foldDirection);
+		for (const cell of chain.cells) this.folds.apply(this.cells.get(cell.occurrence), cell.folded, cell.foldOpening);
 		const participants = chain.cells.map((cell) => this.variantParticipant(cell)).filter(Boolean);
 		entry.strip.update(entries, { participants, animate: animating, interactive: !!this.folds.drag?.rendering, arrive: created && this.wasRendered && animating });
 		entry.strip.strip.style.marginLeft = `${Math.round(chain.spare * ALIGN[this.navigator.spareSpace])}px`;
@@ -735,7 +735,7 @@ export class Workspace extends EventTarget {
 				this.folds.mount(entry, occurrence, "vertical");
 			}
 			const exchangingFold = entry.element.classList.contains("is-folded") !== row.folded;
-			this.folds.apply(entry, row.folded, row.foldDirection);
+			this.folds.apply(entry, row.folded, row.foldOpening);
 			entry.element.classList.toggle("is-unreserved", row.folded && row.height === 0);
 			const leading = row === firstVisible || row === firstFull;
 			entry.leading = leading;
