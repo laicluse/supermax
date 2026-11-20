@@ -58,7 +58,10 @@ export class ContentSlot {
 		this.handle = handle;
 		this.element.classList.remove("is-loading", "is-error");
 		this.body.replaceChildren(...(handle.element ? [handle.element] : []));
-		if (handle.header && this.header) this.header.append(handle.header);
+		if (handle.header) {
+			if (this.header) this.header.append(handle.header);
+			else this.body.prepend(handle.header);
+		}
 		handle.update?.(this.id ? this.workspace.navigator.get(this.id) : null, this.workspace);
 		this.onSettled?.();
 		this.workspace.dispatchEvent(new CustomEvent("content", { detail: { occurrence: this.id, state: "loaded" } }));

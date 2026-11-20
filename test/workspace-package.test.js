@@ -44,19 +44,27 @@ after(async () => {
 
 test("the package stylesheet alone renders the chrome at the sizes the model computes with", async () => {
 	const measured = await page.evaluate(() => {
-		const navbar = document.querySelector(".supermax-navbar").getBoundingClientRect().height;
+		const bars = document.querySelectorAll(".supermax-navbar").length;
 		window.workspace.navigate("gallery", { from: "root" });
 		document.getElementById("host").style.height = "300px";
 		return new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => {
 			document.getAnimations().forEach((animation) => animation.finish());
-			resolve({ navbar, ...measureRows() });
+			resolve({ bars, ...measureRows() });
 		})));
 		function measureRows() {
 		return { rows: [...document.querySelectorAll(".supermax-row")].map((row) => row.getBoundingClientRect().height) };
 		}
 	});
-	assert.equal(measured.navbar, 40);
-	assert.deepEqual(measured.rows, [0, 116, 116], "a row that does not fit takes no height at all, and the rows share what the navbar and the split's own title bar leave");
+	assert.equal(measured.bars, 0, "the workspace draws no bar of its own above the cells");
+	assert.deepEqual(measured.rows, [0, 136, 136], "a row that does not fit takes no height at all, and the rows share what the split's own title bar leaves");
+});
+
+test("a split owns the title bar even when a cell in its row declares one", async () => {
+	const titles = await page.evaluate(() => ({
+		split: document.querySelector('[data-occurrence="root/gallery"] > .supermax-cell-title')?.textContent,
+		row: document.querySelector('[data-occurrence="root/gallery/grid"] > .supermax-cell-title')?.textContent ?? null,
+	}));
+	assert.deepEqual(titles, { split: "Gallery", row: null });
 });
 
 test("the workspace composes its overlays behind one surface", async () => {
@@ -84,10 +92,10 @@ test("library text is opt-in: defaults stay English, a host replaces what it nam
 		frame.style.cssText = "contain:layout";
 		frame.append(host);
 		document.body.append(frame);
-		const dutch = new Workspace(host, { navigator, content: () => ({ element: document.createElement("div") }), overlayRoot: frame, strings: { navigation: () => "Werkruimtenavigatie", notices: () => "Meldingen" } });
+		const dutch = new Workspace(host, { navigator, content: () => ({ element: document.createElement("div") }), overlayRoot: frame, strings: { up: (title) => `Toon ${title}`, notices: () => "Meldingen" } });
 		const labels = {
-			defaults: [window.workspace.element.querySelector(".supermax-navbar").getAttribute("aria-label"), window.workspace.notices.region.getAttribute("aria-label")],
-			replaced: [host.querySelector(".supermax-navbar").getAttribute("aria-label"), dutch.notices.region.getAttribute("aria-label")],
+			defaults: [window.workspace.strings.up("List"), window.workspace.notices.region.getAttribute("aria-label")],
+			replaced: [dutch.strings.up("Lijst"), dutch.notices.region.getAttribute("aria-label")],
 			untouched: dutch.strings.retry(),
 			table: Object.isFrozen(DEFAULT_STRINGS),
 		};
@@ -99,8 +107,8 @@ test("library text is opt-in: defaults stay English, a host replaces what it nam
 		frame.remove();
 		return { ...labels, failures };
 	});
-	assert.deepEqual(result.defaults, ["Workspace navigation", "Notices"], "a host that passes nothing gets the English defaults");
-	assert.deepEqual(result.replaced, ["Werkruimtenavigatie", "Meldingen"], "a host replaces exactly the strings it names");
+	assert.deepEqual(result.defaults, ["Show List", "Notices"], "a host that passes nothing gets the English defaults");
+	assert.deepEqual(result.replaced, ["Toon Lijst", "Meldingen"], "a host replaces exactly the strings it names");
 	assert.equal(result.untouched, "Retry", "every other string keeps its default");
 	assert.equal(result.table, true);
 	assert.deepEqual(result.failures, ['TypeError: Unknown Supermax string "navigaton"', 'TypeError: Supermax string "retry" must be a function that returns text']);

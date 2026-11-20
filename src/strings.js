@@ -1,6 +1,6 @@
 export const DEFAULT_STRINGS = Object.freeze({
-	navigation: () => "Workspace navigation",
 	up: (title) => `Show ${title}`,
+	back: () => "Back",
 	loading: (title) => `Loading ${title}`,
 	loadFailed: (title) => `${title} could not load.`,
 	retry: () => "Retry",

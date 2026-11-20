@@ -80,9 +80,9 @@ export function heightBounds(row) {
 
 export function validateSplit(model, definitionId, parentOccurrence) {
 	const definition = model.definitionOf(definitionId);
-	const { navbar, maxRows } = model.chrome;
+	const { maxRows } = model.chrome;
 	const rows = definition.rows;
-	const chrome = navbar + headerOf(model, definition);
+	const chrome = headerOf(model, definition);
 	const base = { ok: false, rows: [], chrome: null, supported: model.minViewportHeight };
 	if (parentOccurrence && chainRootOf(model, parentOccurrence).parent) return { ...base, reason: "nested-split" };
 	if (parentOccurrence) {
@@ -248,8 +248,7 @@ export function chainWidth(model, chainRoot) {
 }
 
 export function layoutWorkspace(model) {
-	const { navbar } = model.chrome;
-	const height = Math.max(0, model.size.height - navbar);
+	const height = Math.max(0, model.size.height);
 	const chain = layoutChain(model, model.root, model.size.width, height, true);
 	const index = { cells: new Map(), rows: new Map(), chains: new Map() };
 	indexChain(chain, index);

@@ -106,7 +106,6 @@ export function destinations(context = "ana") {
 			result[key.row(row.key)] = {
 				title: row.title,
 				...(row.key === "map" ? widths.map : widths.selector),
-				...(row.key === "people" ? { header: "title" } : {}),
 				defaultChild: album.photos.length ? key.photo(album.photos[0]) : null,
 				data: { kind: "selector", album, row },
 			};

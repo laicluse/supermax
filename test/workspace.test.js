@@ -182,19 +182,41 @@ test("a long name in the Show control gives way to the title on a phone", async 
 		const { workspace } = window.supermaxDemo.frames[1];
 		for (const id of workspace.navigator.state().occurrences) workspace.setTitle(id, `A very long name for ${id.split("/").pop()} that does not fit on a phone at all`);
 	});
-	const measured = await page.locator(inFrame("b", ".supermax-navbar")).evaluate((navbar) => ({
-		navbar: navbar.getBoundingClientRect().width,
-		up: navbar.querySelector(".supermax-up").getBoundingClientRect().width,
-		title: navbar.querySelector(".supermax-title-text").getBoundingClientRect().width,
-		overflow: navbar.scrollWidth > navbar.clientWidth,
-		text: navbar.querySelector(".supermax-up").textContent,
-		hidden: navbar.querySelector(".supermax-up").hidden,
-	}));
+	const measured = await page.locator(inFrame("b", ".supermax-up")).evaluate((up) => {
+		const rail = up.closest(".supermax-compact");
+		const cell = up.closest(".supermax-cell");
+		return {
+			rail: rail?.getBoundingClientRect().width ?? null,
+			up: up.getBoundingClientRect().width,
+			nameShown: getComputedStyle(up.querySelector(".supermax-up-target")).display !== "none",
+			label: up.getAttribute("aria-label"),
+			hidden: up.hidden,
+			albums: cell.dataset.occurrence === "albums",
+		};
+	});
 	assert.equal(measured.hidden, false, "the Show control is there");
-	assert.match(measured.text, /A very long name for depth:18/, "and names the hidden parent by its new title");
-	assert.equal(measured.overflow, false, "the navigation bar never overflows");
-	assert.ok(measured.up <= measured.navbar * 0.5, `the Show control takes at most half the bar: ${Math.round(measured.up)} of ${Math.round(measured.navbar)}px`);
-	assert.ok(measured.title >= measured.navbar * 0.3, `the title keeps room to be read: ${Math.round(measured.title)}px`);
+	assert.equal(measured.albums, true, "in the first cell in view, the kept albums menu, although it is a rail");
+	assert.ok(measured.rail && measured.up <= measured.rail, `inside the rail, where it fits: ${Math.round(measured.up)} of ${Math.round(measured.rail)}px`);
+	assert.equal(measured.nameShown, false, "with only its arrow, since the name has no room there");
+	assert.match(measured.label, /A very long name for depth:18/, "while its accessible name still names the hidden parent by its new title");
+	await openDemo(THREE_ROWS);
+	await resize([[960, 370], [420, 640]]);
+	const wide = await page.locator(inFrame("a", ".supermax-up")).evaluate((up) => ({ hidden: up.hidden, inBar: !!up.closest(".supermax-cell-title-leading"), nameShown: getComputedStyle(up.querySelector(".supermax-up-target")).display !== "none" && up.querySelector(".supermax-up-target").getBoundingClientRect().width > 20, first: up.closest(".supermax-cell").dataset.occurrence }));
+	assert.deepEqual(wide, { hidden: false, inBar: true, nameShown: true, first: "albums" }, "in a bar with room it shows its name, in the leading part of the first cell in view, also when what hides is a row of the split beside it");
+});
+
+test("the Show control says Back when the name of what it brings back is long or repeats its own bar", async () => {
+	await openDemo(TWENTY_DEEP);
+	await resize([[960, 640], [420, 640]]);
+	const control = () => page.locator(inFrame("a", ".supermax-up")).evaluate((up) => ({ text: up.textContent, label: up.getAttribute("aria-label") }));
+	assert.deepEqual(await control(), { text: "‹Depth 15", label: "Show Depth 15" }, "a short name that differs from the bar names the cell");
+	await page.evaluate(() => window.supermaxDemo.frames[0].workspace.setTitle(window.supermaxDemo.frames[0].workspace.upDestination.id, "Your order at the corner shop has been delivered"));
+	assert.deepEqual(await control(), { text: "‹Back", label: "Show Your order at the corner shop has been delivered" }, "a long name becomes Back, while the accessible name still names the cell");
+	await page.evaluate(() => {
+		const workspace = window.supermaxDemo.frames[0].workspace;
+		workspace.setTitle(workspace.upDestination.id, "Albums");
+	});
+	assert.deepEqual(await control(), { text: "‹Back", label: "Show Albums" }, "and so does a name that repeats the title of the bar it stands in");
 });
 
 test("the up control names the nearest hidden parent, closes what falls off the end to show it, and browser back undoes that", async () => {
@@ -208,8 +230,7 @@ test("the up control names the nearest hidden parent, closes what falls off the 
 	assert.equal(page.url(), before.url, "the shared log does not change");
 	assert.deepEqual([await backButton("b"), await groups("b")], [before.b, before.bGroups], "the other frame keeps its window and its cells");
 	assert.equal((await backButton("a")).label, "Show Depth 14");
-	assert.equal(await page.locator(inFrame("a", ".supermax-title-text")).textContent(), "Depth 19", "the title names the deepest cell still open");
-	assert.equal(await page.locator(inFrame("a", ".supermax-navbar .supermax-title")).evaluate((title) => title.innerText.trim()), "Depth 19", "the title says only what is in view, with no trail of where it came from");
+	assert.equal(await page.evaluate(() => window.supermaxDemo.frames[0].workspace.navigator.locationInfo().title), "Depth 19", "the location names the deepest cell still open, for a host that shows it");
 	const edges = await page.evaluate((id) => {
 		const frame = document.querySelector('.frame[data-frame="a"]');
 		return { menu: frame.querySelector('[data-occurrence="albums"]').getBoundingClientRect().right, revealed: frame.querySelector(`[data-occurrence="${id}"]`).getBoundingClientRect().left };
@@ -220,7 +241,6 @@ test("the up control names the nearest hidden parent, closes what falls off the 
 	await page.waitForFunction(() => window.supermaxDemo.frames[0].workspace.navigator.state().groups.length === 20);
 	await settle();
 	assert.deepEqual(await groups("a"), before.a, "browser back returns to the moment before, with Depth 20 open again");
-	assert.equal(await page.locator(inFrame("a", ".supermax-title-text")).textContent(), "Depth 20");
 });
 
 test("Back climbs the newest branch first, then the branch opened before it in another row", async () => {
@@ -1019,20 +1039,20 @@ test("content hears when its cell starts to leave, and again when it comes back 
 	assert.deepEqual(gone.slice(gone.lastIndexOf("leave")), ["leave", "dispose"], "and once it has folded away it is disposed");
 });
 
-test("content can place its own controls in the cell header, which keeps them visible and cuts the title short", async () => {
-	await openDemo([open("album:coast", "albums"), open("coast:history:a", coast.metadata("thumbnails", "a"))]);
-	const photo = coast.history("thumbnails", "a");
-	const result = await page.evaluate(async (photo) => {
+test("a root cell places content controls in its title bar, which keeps them visible and cuts the title short", async () => {
+	await openDemo([open(depthId(1), "albums")]);
+	const depth = `albums/${depthId(1)}`;
+	const result = await page.evaluate(async (id) => {
 		const workspace = window.supermaxDemo.frames[0].workspace;
 		const original = workspace.content;
 		workspace.content = (occurrence, definition, host) => {
 			const handle = original(occurrence, definition, host);
-			if (occurrence.id !== photo) return handle;
+			if (occurrence.id !== id) return handle;
 			const button = Object.assign(document.createElement("button"), { className: "host-search", textContent: "Search" });
 			return typeof handle?.then === "function" ? handle.then((inner) => ({ ...inner, header: button })) : { ...handle, header: button };
 		};
-		workspace.reload((occurrence) => occurrence.id === photo);
-		const cell = document.querySelector(`.frame[data-frame="a"] [data-occurrence="${photo}"]`);
+		workspace.reload((occurrence) => occurrence.id === id);
+		const cell = document.querySelector(`.frame[data-frame="a"] [data-occurrence="${id}"]`);
 		await new Promise((resolve) => setTimeout(resolve, 50));
 		const header = cell.querySelector(":scope > .supermax-cell-title");
 		const title = header.querySelector(".supermax-cell-title-text");
@@ -1045,7 +1065,7 @@ test("content can place its own controls in the cell header, which keeps them vi
 		const inModal = !!document.querySelector('.frame[data-frame="a"] .supermax-modal-header .host-zoom');
 		workspace.closeModal("close");
 		return { placed, cut, inModal };
-	}, photo);
+	}, depth);
 	assert.deepEqual(result, { placed: true, cut: "ellipsis", inModal: true });
 	await closeNewest("a");
 	await page.evaluate(() => document.getAnimations().forEach((animation) => animation.finish()));
@@ -1053,7 +1073,27 @@ test("content can place its own controls in the cell header, which keeps them vi
 	assert.equal(await page.locator(inFrame("a", ".host-search")).count(), 0, "and the controls leave with their content");
 });
 
-test("a cell's title can change after it opened, in its header, its name, the rail and the navbar", async () => {
+test("a cell inside a split row keeps content controls in its body", async () => {
+	await openDemo([open("album:coast", "albums"), open("coast:history:a", coast.metadata("thumbnails", "a"))]);
+	const history = coast.history("thumbnails", "a");
+	const placement = await page.evaluate(async (id) => {
+		const workspace = window.supermaxDemo.frames[0].workspace;
+		const original = workspace.content;
+		workspace.content = (occurrence, definition, host) => {
+			const handle = original(occurrence, definition, host);
+			if (occurrence.id !== id) return handle;
+			const button = Object.assign(document.createElement("button"), { className: "host-search", textContent: "Search" });
+			return typeof handle?.then === "function" ? handle.then((inner) => ({ ...inner, header: button })) : { ...handle, header: button };
+		};
+		workspace.reload((occurrence) => occurrence.id === id);
+		await new Promise((resolve) => setTimeout(resolve, 50));
+		const cell = document.querySelector(`.frame[data-frame="a"] [data-occurrence="${id}"]`);
+		return { bar: !!cell.querySelector(":scope > .supermax-cell-title"), body: !!cell.querySelector(".supermax-cell-body .host-search") };
+	}, history);
+	assert.deepEqual(placement, { bar: false, body: true });
+});
+
+test("a cell's title can change after it opened, in its bar, accessible name and location", async () => {
 	await openDemo([open("album:coast", "albums")]);
 	const renamed = await page.evaluate(() => {
 		const workspace = window.supermaxDemo.frames[0].workspace;
@@ -1061,9 +1101,9 @@ test("a cell's title can change after it opened, in its header, its name, the ra
 		const ok = workspace.setTitle(album.id, "Coast, renamed");
 		const cell = document.querySelector(`.frame[data-frame="a"] [data-occurrence="${album.id}"]`);
 		const rail = workspace.setTitle("albums", "All albums") && document.querySelector('.frame[data-frame="a"] [data-occurrence="albums"] .supermax-cell-title-text').textContent;
-		return { ok, label: cell.getAttribute("aria-label"), navbar: document.querySelector('.frame[data-frame="a"] .supermax-title-text').textContent, rail, unknown: workspace.setTitle("nowhere", "x") };
+		return { ok, label: cell.getAttribute("aria-label"), location: workspace.navigator.locationInfo().title, rail, unknown: workspace.setTitle("nowhere", "x") };
 	});
-	assert.deepEqual(renamed, { ok: true, label: "Coast, renamed", navbar: "Coast, renamed", rail: "All albums", unknown: false });
+	assert.deepEqual(renamed, { ok: true, label: "Coast, renamed", location: "Coast, renamed", rail: "All albums", unknown: false });
 });
 
 test("Show asks first, so a host can keep it from closing a cell, and names the destinations it closed", async () => {
@@ -1111,8 +1151,8 @@ test("zooming a cell hides the cells before it, keeps what follows, and Show zoo
 	assert.deepEqual(events, ["coast:photo:c"], "the header's zoom control zooms Photo C");
 	const zoomed = await shown();
 	assert.deepEqual(zoomed.slice(0, 2), ["coast:photo:c", "coast:metadata:c"], `Thumbnails hides, and Photo C keeps what follows it: ${zoomed}`);
-	const navbar = await page.locator(inFrame("a", ".supermax-up")).evaluate((button) => ({ hidden: button.hidden, text: button.textContent }));
-	assert.deepEqual(navbar, { hidden: false, text: "‹Thumbnails" }, "the Show control offers the way back to the zoomed cell's hidden parent");
+	const show = await page.locator(inFrame("a", ".supermax-up")).evaluate((button) => ({ hidden: button.hidden, text: button.textContent }));
+	assert.deepEqual(show, { hidden: false, text: "‹Thumbnails" }, "the Show control offers the way back to the zoomed cell's hidden parent");
 	await page.click(inFrame("a", ".supermax-up"));
 	await settle();
 	await page.evaluate(() => document.getAnimations().forEach((animation) => animation.finish()));
@@ -1405,8 +1445,7 @@ test("rows span the split and no cell crosses a row", async () => {
 	for (const cell of (await boxes(inFrame("a", ".supermax-row .supermax-cell"))).filter((candidate) => candidate.visible)) {
 		assert.ok(rows.some((current) => cell.top >= current.top - 0.5 && cell.top + cell.height <= current.top + current.height + 0.5), `cell ${cell.id} stays inside one row`);
 	}
-	const navbar = await page.locator(inFrame("a", ".supermax-navbar")).evaluate((element) => element.getBoundingClientRect().height);
-	assert.equal(navbar, 44, "the rendered navbar matches the chrome the model computes with");
+	assert.equal(await page.locator(inFrame("a", ".supermax-body")).evaluate((body) => Math.round(body.getBoundingClientRect().top - body.parentElement.getBoundingClientRect().top)), 0, "the cells start at the top of the workspace, with no bar of the shell's above them");
 });
 
 test("hiding rows and cells keeps navigation, draft and scroll, and the content cell scrolls by wheel", async () => {
@@ -1420,7 +1459,7 @@ test("hiding rows and cells keeps navigation, draft and scroll, and the content 
 	await page.waitForFunction((selector) => document.querySelector(selector).scrollTop > 0, metadataBody);
 	const scrolled = await page.locator(metadataBody).evaluate((body) => body.scrollTop);
 	const before = await state("a");
-	await resize([[420, 400], [420, 640]]);
+	await resize([[420, 370], [420, 640]]);
 	const after = await state("a");
 	assert.deepEqual({ occurrences: after.occurrences, groups: after.groups }, { occurrences: before.occurrences, groups: before.groups }, "hiding rewrites no navigation state");
 	assert.deepEqual(await hiddenRows("a"), [true, true, false], "top rows hide entirely");
@@ -1929,11 +1968,19 @@ test("a split draws its own title above its rows, which stays while the rows cha
 		};
 	});
 	assert.equal(measured.title, "Coast", "the split's bar carries the split's title");
+	const seam = await page.locator(inFrame("a", ".supermax-workspace")).evaluate((workspace) => {
+		workspace.style.setProperty("--supermax-canvas", "rgb(10, 20, 30)");
+		const colour = getComputedStyle(workspace.querySelector('[data-occurrence="albums/album:coast"] > .supermax-cell-title')).borderBottomColor;
+		workspace.style.removeProperty("--supermax-canvas");
+		return colour;
+	});
+	assert.equal(seam, "rgb(10, 20, 30)", "the seam under the bar takes the canvas colour the host sets on its workspace");
 	assert.equal(measured.barHeight, 28, "at the height the model counts as chrome");
-	assert.equal(measured.barWidth, measured.cellWidth, "across the whole split");
+	assert.equal(measured.barWidth, measured.cellWidth - 1, "across the whole split, leaving the gutter beside it free as its rows do");
 	assert.equal(measured.firstRowTop, 28, "the rows start below it");
 	assert.equal(measured.rowsHeight, measured.cellHeight - 28, "and share the height that is left");
-	assert.deepEqual(measured.rowBars, [false, false, true], "the row cells draw no bar unless they declare header: \"title\", as People does, since four lettered circles name nothing by themselves");
+	assert.deepEqual(measured.rowBars, [false, false, false], "the split owns the title bar above all its rows");
+	assert.equal(await page.locator(inFrame("a", `[data-occurrence="${coast.row("people")}"] .selector-label`)).textContent(), "People", "the lettered avatars are named in their content");
 	await page.click(inFrame("a", `[data-occurrence="${coast.row("thumbnails")}"] .thumb[data-destination="coast:photo:d"]`));
 	await settle();
 	assert.equal(await page.locator(album + " > .supermax-cell-title .supermax-cell-title-text").textContent(), "Coast", "the bar stays while a row opens another cell");
@@ -2145,7 +2192,7 @@ test("history restore names where the application now is", async () => {
 	await page.waitForFunction(() => location.hash.includes("photo:b"));
 	await page.goBack();
 	await page.waitForFunction(() => !location.hash.includes("photo:b"));
-	assert.equal(await page.locator(inFrame("b", ".supermax-title-text")).textContent(), "Coast", "the title names where the application now is, the album");
+	assert.equal(await page.evaluate(() => window.supermaxDemo.frames[1].workspace.navigator.locationInfo().title), "Coast", "the location names where the application now is, the album");
 });
 
 test("cells inside a hidden row are not painted and Back brings the row back", async () => {
@@ -2159,7 +2206,7 @@ test("cells inside a hidden row are not painted and Back brings the row back", a
 		await settle();
 	}
 	assert.deepEqual(await hiddenRows("b"), [true, false, true], "Back reaches the row of the branch opened before, once nothing above the focus is hidden");
-	assert.equal(await page.locator(inFrame("b", ".supermax-title-text")).textContent(), "Photo B", "Photo C closed to show People, so the title names the newest navigation still in view");
+	assert.equal(await page.evaluate(() => window.supermaxDemo.frames[1].workspace.navigator.locationInfo().title), "Photo B", "Photo C closed to show People, so the location names the newest navigation still in view");
 });
 
 test("motion: an opening animates, an immediate close leaves nothing behind, reduced motion animates nothing", async () => {
@@ -2212,7 +2259,7 @@ test("destroy removes the shell, its listener and its properties", async () => {
 		const workspace = window.supermaxDemo.frames[0].workspace;
 		const element = workspace.element;
 		workspace.destroy();
-		return { children: element.childElementCount, classes: element.className, cells: workspace.cells.size, navbarProperty: element.style.getPropertyValue("--supermax-navbar") };
+		return { children: element.childElementCount, classes: element.className, cells: workspace.cells.size };
 	});
-	assert.deepEqual(result, { children: 0, classes: "frame-workspace", cells: 0, navbarProperty: "" });
+	assert.deepEqual(result, { children: 0, classes: "frame-workspace", cells: 0 });
 });

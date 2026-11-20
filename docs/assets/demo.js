@@ -264,6 +264,7 @@ function renderSelector(occurrence, data, workspace) {
 		container.append(button);
 		return button;
 	});
+	if (row.key === "people") host.append(element("span", "selector-label", "People"));
 	host.append(container);
 	return {
 		element: host,

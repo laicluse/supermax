@@ -7,6 +7,7 @@ Start with [Migrating from v1 to v2](docs/migrating-to-v2.md). A dependency vers
 ### Breaking changes
 
 - The package no longer assigns `globalThis.Supermax`; use named ESM imports.
+- The workspace draws no navigation bar. The Show control lives in the title bar of the cell highest in the hierarchy that hides what it brings back, or at that cell's top left corner; `chrome.navbar`, `strings.navigation` and the `--supermax-navbar` property are gone, and the group's title is the host's to show from `locationInfo`. The Show control spells out what it brings back only for a title of at most 20 characters that differs from its bar's, and says Back (`strings.back`) otherwise. The title bar carries no typography of its own and has three parts, leading for the Show control, the title, and trailing for the content's controls; the application styles it.
 - `CellCollection.distribute()` no longer returns `spareColumns`. Compute the remainder from the returned widths, or observe `layout.chains.get(root).spare` when using Workspace.
 - Under a budget smaller than the surviving cell's minimum, the allocator preserves that minimum rather than shrinking the cell to fit; a zero budget therefore no longer hides the surviving cell.
 - A split declares no `min`, `max` or `preferred` of its own; `register()` and the navigator refuse one that does (`split-with-width`). Its width follows its widest row, so a cell that opens in a row widens the split. The layout declaration schema is 2 (`LAYOUT_SCHEMA`); a server that declares splits drops their widths and sends `v=2`.

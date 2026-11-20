@@ -4,7 +4,7 @@
 import { ELASTIC, breakoutOf, chainCells, chainFits, chainRootOf, chainWidth, isFull, isSplit, layoutWorkspace, rowSplitOf, validateSplit } from "./layout.js";
 import { sameLayout, validateDeclarationSet } from "./layout-declaration.js";
 
-const DEFAULT_CHROME = { navbar: 44, header: 28, maxRows: 4 };
+const DEFAULT_CHROME = { header: 28, maxRows: 4 };
 
 export class SupermaxConfigurationError extends Error {
 	constructor(problems) {

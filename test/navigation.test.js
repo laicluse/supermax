@@ -122,7 +122,7 @@ scenario("rejections leave the model untouched and name their reason", () => {
 scenario("an impossible split is a configuration error for the developer before anything opens", () => {
 	assert.equal(validateDestinations(destinations, { minViewportHeight, chrome }).ok, true, "the fixture is a possible configuration");
 	const instance = model(1000, 300);
-	assert.equal(validateSplit(instance, "fit", instance.root).ok, true, "40 of navbar, 28 of the split's title bar and 232 of row = 300 passes");
+	assert.equal(validateSplit(instance, "fit", instance.root).ok, true, "28 of the split's title bar and 272 of row = 300 passes");
 	const report = validateDestinations({ ...destinations, ...invalidSplits }, { minViewportHeight, chrome });
 	const verdict = Object.fromEntries(report.problems.map((problem) => [problem.destination, problem.validation]));
 	assert.deepEqual(Object.keys(verdict).sort(), ["conflict", "crowd", "doubled", "empty", "outer", "over", "rigid", "twins", "unpreferred"]);
@@ -133,7 +133,7 @@ scenario("an impossible split is a configuration error for the developer before 
 	assert.deepEqual(cellProblems({ loose: { title: "Loose", min: 100, max: "*" } }), [["loose", "elastic-without-preferred"]], "an elastic cell declares its preferred width");
 	assert.deepEqual(validateDestinations({ root: { title: "Root", min: 100, max: 200 } }, { minViewportHeight, chrome }).problems.map((problem) => problem.reason), ["no-elastic-destination"], "a configuration without any elastic cell is refused");
 	const failing = verdict.over.rows.find((candidate) => !candidate.ok);
-	assert.deepEqual({ title: failing.title, required: failing.required, chrome: failing.chrome, supported: failing.supported }, { title: "List", required: 301, chrome: 68, supported: 300 }, "one pixel over fails: the navbar and the split's title bar count as chrome");
+	assert.deepEqual({ title: failing.title, required: failing.required, chrome: failing.chrome, supported: failing.supported }, { title: "List", required: 301, chrome: 28, supported: 300 }, "one pixel over fails: the split's title bar counts as chrome");
 	assert.deepEqual(verdict.conflict.rows[0].problems, ["row-min-exceeds-max", "cell-min-exceeds-max"]);
 	assert.equal(verdict.empty.reason, "no-rows");
 	assert.deepEqual(verdict.crowd.rows, [], "a split beyond maxRows reports an empty row list");
@@ -160,16 +160,16 @@ scenario("rows hide from the top, a window start keeps an earlier row, and the l
 	openGallery(instance);
 	const rows = () => instance.layout().chain.cells[1].rows.rows;
 	assert.deepEqual(rows().map((candidate) => candidate.visible), [true, true, true]);
-	assert.equal(rows().reduce((sum, candidate) => sum + candidate.height, 0), 500 - chrome.navbar - instance.chrome.header, "the rows share what is left below the navbar and the split's own title bar");
+	assert.equal(rows().reduce((sum, candidate) => sum + candidate.height, 0), 500 - instance.chrome.header, "the rows share what is left below the split's own title bar");
 	assert.ok(rows().every((candidate) => candidate.chain.width === instance.layout().chain.cells[1].width), "rows span the split width");
 
 	instance.resize({ width: 1000, height: 300 });
 	const before = instance.state();
-	assert.deepEqual(rows().map((candidate) => [candidate.visible, candidate.height]), [[false, 0], [true, 116], [true, 116]], "the top row hides entirely, no tab is left");
+	assert.deepEqual(rows().map((candidate) => [candidate.visible, candidate.height]), [[false, 0], [true, 136], [true, 136]], "the top row hides entirely, no tab is left");
 	assert.deepEqual(instance.state(), before, "resize rewrites nothing");
 
 	instance.startRows(GALLERY, row("list"));
-	assert.deepEqual(rows().map((candidate) => [candidate.visible, candidate.height]), [[true, 116], [true, 116], [false, 0]], "a window start shows the earlier row and the last one gives way");
+	assert.deepEqual(rows().map((candidate) => [candidate.visible, candidate.height]), [[true, 136], [true, 136], [false, 0]], "a window start shows the earlier row and the last one gives way");
 	instance.resize({ width: 1000, height: 500 });
 	assert.deepEqual(rows().map((candidate) => candidate.visible), [true, true, true], "with room again the window fills toward the end");
 
@@ -762,7 +762,6 @@ scenario("sync follows the root chain past a split: a split opens from ifRoom wi
 		},
 		root: "modes",
 		minViewportHeight: 320,
-		chrome: { navbar: 36 },
 	});
 	chain.resize({ width: 1920, height: 900 });
 	const result = chain.sync(["modes", "list"], { ifRoom: [["metadata:1", "conversation:1"]] });
@@ -818,7 +817,6 @@ scenario("sync names a path into a row: the next id after a split is one of its 
 		},
 		root: "modes",
 		minViewportHeight: 320,
-		chrome: { navbar: 36 },
 	});
 	chain.resize({ width: 1200, height: 900 });
 	const visible = () => chain.layout().chain.cells.map((cell) => [cell.title, cell.visible]);
@@ -844,7 +842,7 @@ scenario("sync names a path into a row: the next id after a split is one of its 
 	assert.equal(chain.sync([...root, "attachments", "attachment"]).ok, true);
 	assert.equal(chain.sync(root).ok, true);
 	assert.equal(chain.get(`${split.id}/attachments/attachment`), null, "a sync that ends at the split closes the breakout");
-	const fresh = new Navigator({ destinations: chain.destinations, root: "modes", minViewportHeight: 320, chrome: { navbar: 36 } });
+	const fresh = new Navigator({ destinations: chain.destinations, root: "modes", minViewportHeight: 320 });
 	fresh.resize({ width: 1200, height: 900 });
 	const whole = fresh.sync([...root, "metadata", "messages"]);
 	assert.equal(whole.ok, true, "a path into a row opens the split and steps into its row in one sync");
@@ -869,7 +867,7 @@ scenario("room gives way in reading order through a split: the cells before it f
 		attachment: { title: "Attachment", min: 320, max: E, preferred: 960, height: "full" },
 	};
 	const at = (width) => {
-		const chain = new Navigator({ destinations, root: "modes", minViewportHeight: 320, chrome: { navbar: 36 } });
+		const chain = new Navigator({ destinations, root: "modes", minViewportHeight: 320 });
 		chain.resize({ width, height: 900 });
 		return chain;
 	};
@@ -920,8 +918,7 @@ scenario("ifRoom may name a path into a row, and opens it whole or not at all", 
 			},
 			root: "modes",
 			minViewportHeight: 320,
-			chrome: { navbar: 36 },
-		});
+			});
 		chain.resize({ width, height: 900 });
 		return chain;
 	};

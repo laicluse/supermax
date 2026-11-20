@@ -28,6 +28,9 @@ const warned = new Set();
 const ALIGN = Object.freeze({ start: 0, center: 0.5, end: 1 });
 const JUSTIFY = Object.freeze({ start: "flex-start", center: "center", end: "flex-end" });
 
+// allow-comment: the longest title the Show control spells out; a longer one would crowd the bar it stands in.
+const UP_NAME_LIMIT = 20;
+
 export class Workspace extends EventTarget {
 	constructor(element, { navigator, content, compactContent = null, onIntent = null, presentation = ORIGAMI_PRESENTATION, strings = {}, origin = frustumOrigin, overlayRoot = element.ownerDocument.body, noticePlacement = "source", noticeIcon = defaultNoticeIcon, time = new TimeScale() }) {
 		super();
@@ -76,11 +79,7 @@ export class Workspace extends EventTarget {
 	}
 
 	buildChrome() {
-		const { navbar } = this.navigator.chrome;
 		this.element.classList.add("supermax-workspace");
-		this.element.style.setProperty("--supermax-navbar", `${navbar}px`);
-		this.navbar = this.create("nav", "supermax-navbar");
-		this.navbar.setAttribute("aria-label", this.strings.navigation());
 		this.upButton = this.create("button", "supermax-up");
 		this.upButton.type = "button";
 		this.upLabel = this.create("span", "supermax-up-label");
@@ -89,14 +88,8 @@ export class Workspace extends EventTarget {
 		this.upName = this.create("span", "supermax-up-target");
 		this.upButton.append(this.upLabel, this.upName);
 		this.upButton.addEventListener("click", () => this.requestUp());
-		this.navbarLeft = this.create("div", "supermax-navbar-left");
-		this.navbarLeft.append(this.upButton);
-		this.titleBox = this.create("div", "supermax-title");
-		this.titleText = this.create("strong", "supermax-title-text");
-		this.titleBox.append(this.titleText);
-		this.navbar.append(this.navbarLeft, this.titleBox);
 		this.body = this.create("div", "supermax-body");
-		this.element.replaceChildren(this.navbar, this.body);
+		this.element.replaceChildren(this.body);
 		this.noticeOrigin = this.origin ? this.originLayer("supermax-origin is-notices") : null;
 		if (this.noticeOrigin) this.overlayRoot.append(this.noticeOrigin);
 		this.onViewportChange = () => {
@@ -256,13 +249,13 @@ export class Workspace extends EventTarget {
 	openModal(definition, options = {}) {
 		if (options.from === undefined) this.warn("openModal()", "got no source, so no frustum shows where the modal comes from. Pass the occurrence it belongs to as { from }, or from: null for a modal that belongs to no cell.");
 		const modal = this.modalHost.open(definition, options);
-		this.renderNavbar();
+		this.renderUp();
 		return modal;
 	}
 
 	closeModal(reason = "close") {
 		this.modalHost.close(reason);
-		this.renderNavbar();
+		this.renderUp();
 	}
 
 	closePeek() {
@@ -338,7 +331,7 @@ export class Workspace extends EventTarget {
 				entry.rail.setAttribute("aria-label", this.strings.peek(title));
 			}
 		}
-		this.renderNavbar();
+		this.renderUp();
 		this.modalHost.render();
 		this.notices.render();
 		return true;
@@ -444,7 +437,7 @@ export class Workspace extends EventTarget {
 		this.element.classList.toggle("is-below-minimum", layout.belowMinimum);
 		this.pruneClosed();
 		this.refreshContent();
-		this.renderNavbar();
+		this.renderUp();
 		this.modalHost.render();
 		this.notices.render();
 		this.announce(new CustomEvent("render", { detail: { layout } }));
@@ -521,14 +514,25 @@ export class Workspace extends EventTarget {
 		this.notices.veil();
 	}
 
-	renderNavbar() {
+	// allow-comment: the Show control lives in the cell highest in the hierarchy that is in view, the first cell of the root chain in view: in the leading part of its title bar, at the top of its rail when it is compact, at its top left corner when it has no bar.
+	renderUp() {
 		const next = this.upDestination && this.navigator.get(this.upDestination.id);
 		this.upButton.hidden = !next;
-		this.upName.textContent = next ? next.title : "";
 		if (next) this.upButton.setAttribute("aria-label", this.strings.up(next.title));
 		else this.upButton.removeAttribute("aria-label");
-		const info = this.navigator.locationInfo(this.layout ?? undefined);
-		this.titleText.textContent = info.title;
+		const first = this.layout?.chain.cells.find((cell) => cell.inView);
+		const entry = first ? this.cells.get(first.occurrence) : null;
+		// allow-comment: the visible name says what comes back only when that adds something: a short title that differs from the bar it stands in; otherwise the control says Back, and its accessible name still names the cell.
+		const own = first ? this.navigator.get(first.occurrence)?.title : null;
+		const named = next && next.title.length <= UP_NAME_LIMIT && next.title !== own;
+		this.upName.textContent = next ? (named ? next.title : this.strings.back()) : "";
+		if (!entry) {
+			this.upButton.remove();
+			return;
+		}
+		const home = first.compact && entry.rail ? entry.rail.parentElement : entry.leading ?? entry.element;
+		this.upButton.classList.toggle("is-floating", home === entry.element);
+		if (home.firstChild !== this.upButton) home.prepend(this.upButton);
 	}
 
 	renderChain(chain, host, animating, { inRow = false, row = 0 } = {}) {
@@ -543,7 +547,7 @@ export class Workspace extends EventTarget {
 		}
 		const entries = chain.cells.map((cell, index) => ({
 			id: cell.occurrence,
-			element: this.mountCell(cell.occurrence),
+			element: this.mountCell(cell.occurrence, inRow),
 			width: cell.width,
 			visible: cell.visible,
 			axis: inRow && index === 0 ? "row" : "chain",
@@ -589,7 +593,7 @@ export class Workspace extends EventTarget {
 		return items;
 	}
 
-	mountCell(occurrenceId) {
+	mountCell(occurrenceId, inRow = false) {
 		let entry = this.cells.get(occurrenceId);
 		if (entry) return entry.element;
 		entry = this.leavingCells.get(occurrenceId);
@@ -605,20 +609,25 @@ export class Workspace extends EventTarget {
 		element.setAttribute("aria-label", occurrence.title);
 		const body = this.create("div", "supermax-cell-body");
 		let header = null;
+		let leading = null;
 		let titleNode = null;
+		let trailing = null;
 		if (isSplit(definition)) {
 			element.classList.add("is-split");
 			body.append(this.create("div", "supermax-rows"));
 		}
-		if (definition.header !== "title") element.classList.add("is-headless");
+		// allow-comment: a title bar has three parts in a fixed order: leading holds the Show control, the centre the title, trailing the content's own controls; each is there even when empty, so an application styles the bar once.
+		if (inRow || definition.header !== "title") element.classList.add("is-headless");
 		else {
 			header = this.create("header", "supermax-cell-title");
+			leading = this.create("div", "supermax-cell-title-leading");
 			titleNode = this.create("span", "supermax-cell-title-text", occurrence.title);
-			header.append(titleNode);
+			trailing = this.create("div", "supermax-cell-title-trailing");
+			header.append(leading, titleNode, trailing);
 			element.append(header);
 		}
 		element.append(body);
-		entry = { element, body, header, titleNode, slot: new ContentSlot(this, { element, body, header, id: occurrenceId }), parent: occurrence.parent, rail: null };
+		entry = { element, body, header, leading, titleNode, trailing, slot: new ContentSlot(this, { element, body, header: trailing, id: occurrenceId }), parent: occurrence.parent, rail: null };
 		if (!isSplit(definition) && definition.keep && definition.compact) this.peeks.mount(entry, occurrence, definition);
 		this.cells.set(occurrenceId, entry);
 		if (!isSplit(definition)) this.mountContent(entry, occurrence);
@@ -804,6 +813,5 @@ export class Workspace extends EventTarget {
 		this.rows.clear();
 		this.element.replaceChildren();
 		this.element.classList.remove("supermax-workspace", `supermax-presentation-${this.presentation.name}`);
-		this.element.style.removeProperty("--supermax-navbar");
 	}
 }

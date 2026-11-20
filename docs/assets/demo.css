@@ -159,6 +159,7 @@ body {
 .edit h4, .edit p { margin: 0; }
 
 .selector { padding: 10px; }
+.selector-label { display: block; margin-bottom: 8px; color: var(--muted); font-size: 12px; }
 .empty-state { margin: 0; color: var(--muted); font-size: 14px; }
 .thumb-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(64px, 1fr)); gap: 8px; }
 .thumb {
@@ -201,6 +202,7 @@ body {
 .photo-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: flex-start; }
 .photo-full { display: flex; flex-direction: column; height: 100%; }
 .picture-full { flex: 1 1 auto; min-height: 0; max-height: none; aspect-ratio: auto; }
+.supermax-cell-title { font-size: 12px; font-weight: 600; color: var(--muted); }
 .picture { position: relative; }
 .picture .zoom-toggle { position: absolute; top: 6px; right: 6px; }
 .photo-note { margin: 10px 0 0; color: var(--muted); font-size: 13px; }

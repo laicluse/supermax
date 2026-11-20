@@ -1,6 +1,6 @@
 export const minViewportHeight = 300;
 
-export const chrome = { navbar: 40, maxRows: 4 };
+export const chrome = { maxRows: 4 };
 
 export const destinations = {
 	root: { title: "Root", min: 100, max: 100 },
@@ -15,7 +15,7 @@ export const destinations = {
 		],
 	},
 	list: { title: "List", min: 100, max: 150, defaultChild: "item:a" },
-	grid: { title: "Grid", min: 100, max: 150, defaultChild: "item:a" },
+	grid: { title: "Grid", header: "title", min: 100, max: 150, defaultChild: "item:a" },
 	tags: { title: "Tags", min: 100, max: 150, defaultChild: "item:a" },
 	"item:a": { title: "Item A", min: 100, max: 200, defaultChild: "detail:a" },
 	"item:b": { title: "Item B", min: 100, max: 200, defaultChild: "detail:b" },
@@ -24,14 +24,14 @@ export const destinations = {
 	"detail:b": { title: "Detail B", min: 150, max: 200 },
 	"detail:c": { title: "Detail C", min: 150, max: 200 },
 	"notes:a": { title: "Notes A", min: 100, max: 200 },
-	fit: { title: "Fit", header: "title", rows: [{ destination: "list", minHeight: 232, maxHeight: "*", preferredHeight: 300 }, { destination: "grid", minHeight: 100, maxHeight: 200 }] },
+	fit: { title: "Fit", header: "title", rows: [{ destination: "list", minHeight: 272, maxHeight: "*", preferredHeight: 300 }, { destination: "grid", minHeight: 100, maxHeight: 200 }] },
 	upside: { title: "Upside", min: 300, max: 200 },
 	"item:nested": { title: "Nested item", min: 100, max: 200, defaultChild: "inner" },
 	inner: { title: "Inner", rows: [{ destination: "list", minHeight: 100, maxHeight: "*", preferredHeight: 300 }, { destination: "grid", minHeight: 100, maxHeight: 200 }] },
 };
 
 export const invalidSplits = {
-	over: { title: "Over", header: "title", rows: [{ destination: "list", minHeight: 233, maxHeight: "*", preferredHeight: 300 }, { destination: "grid", minHeight: 100, maxHeight: 200 }] },
+	over: { title: "Over", header: "title", rows: [{ destination: "list", minHeight: 273, maxHeight: "*", preferredHeight: 300 }, { destination: "grid", minHeight: 100, maxHeight: 200 }] },
 	empty: { title: "Empty", rows: [] },
 	twins: { title: "Twins", rows: [{ destination: "list", minHeight: 100, maxHeight: "*", preferredHeight: 200 }, { destination: "list", minHeight: 100, maxHeight: 200 }] },
 	crowd: { title: "Crowd", rows: ["list", "grid", "tags", "item:a", "item:b"].map((destination) => ({ destination, minHeight: 50, maxHeight: 100 })) },
