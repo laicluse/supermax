@@ -46,6 +46,10 @@ const scenarios = [
 		actions: [open("album:coast", "albums"), open("coast:history:a", coast.metadata("thumbnails", "a")), open("coast:edit:a:2", coast.history("thumbnails", "a"))],
 		local: (frame) => [coast.photo("thumbnails", "a"), coast.history("thumbnails", "a")].forEach((id) => frame.workspace.navigator.collapse(id, true)),
 	},
+	{
+		label: "Preferred sizes: photo wide, metadata narrow",
+		actions: [open("album:coast", "albums"), open("coast:photo:b", coast.row("map"))],
+	},
 	{ label: "Empty album", actions: [open(ids(albums[1]).album, "albums")] },
 	{ label: "Lab: exact fit", actions: [open(ids(albums[2]).album, "albums")] },
 	{ label: "Lab: one pixel over", actions: [open(ids(albums[3]).album, "albums")] },

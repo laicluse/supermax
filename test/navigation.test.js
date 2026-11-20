@@ -242,6 +242,32 @@ scenario("cells with a compact form go compact from the left before anything hid
 	assert.equal(instance.collapsed.size, 0, "closing removes the collapse state of closed cells");
 });
 
+scenario("a dragged size is a session preference inside min and max, and rows follow the same rule", () => {
+	const instance = model(1000, 500);
+	openGallery(instance);
+	const chain = () => instance.layout().chain.cells[1].rows.rows[0].chain;
+	instance.setSize(item("list", "a"), 180);
+	assert.equal(Math.round(chain().cells[1].width), 180, "the item keeps its session size");
+	assert.equal(chain().cells[1].sized, true);
+	instance.setSize(item("list", "a"), 999);
+	assert.equal(Math.round(chain().cells[1].width), 200, "a session size is clamped to the maximum");
+	instance.setSize(item("list", "a"), 1);
+	assert.equal(Math.round(chain().cells[1].width), 100, "and to the minimum");
+	instance.setSize(item("list", "a"), null);
+	assert.equal(chain().cells[1].sized, false, "a reset returns to the app preference");
+	instance.setSize(row("list"), 150);
+	assert.equal(instance.layout().chain.cells[1].rows.rows[0].height, 150, "a row keeps its session height");
+	const snapshot = instance.snapshot();
+	instance.setSize(row("list"), null);
+	instance.restore(snapshot);
+	assert.equal(instance.layout().chain.cells[1].rows.rows[0].height, 150, "session sizes are part of the snapshot");
+	instance.open("item:b", { from: row("list") });
+	instance.setSize(item("list", "b"), 190);
+	instance.back();
+	assert.equal(instance.sizes.has(item("list", "b")), false, "closing drops the size of a closed cell");
+	assert.deepEqual(instance.layout(), instance.layout(), "the layout stays a pure function with sizes applied");
+});
+
 scenario("the focus title carries its ancestors as context", () => {
 	const wide = model(1000);
 	openGallery(wide);

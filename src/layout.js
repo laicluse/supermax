@@ -81,8 +81,9 @@ export function allocateChain(model, cells, width) {
 	}
 	const configs = cells.map((occurrence) => {
 		const definition = model.destination(occurrence.destination);
-		const size = compact.has(occurrence.id) ? compactWidth(definition) : null;
-		return { id: occurrence.id, title: occurrence.title, min: size ?? definition.min, max: size ?? definition.max };
+		const session = model.sizes.has(occurrence.id) ? Math.min(definition.max, Math.max(definition.min, model.sizes.get(occurrence.id))) : null;
+		const size = compact.has(occurrence.id) ? compactWidth(definition) : session;
+		return { id: occurrence.id, title: occurrence.title, min: size ?? definition.min, max: size ?? definition.max, preferred: size === null ? definition.preferred ?? null : null };
 	});
 	const allocation = new CellCollection(configs).distribute(width);
 	return { allocation, compact };
@@ -123,7 +124,7 @@ function layoutChain(model, chainRoot, width, height) {
 		const allocated = allocation.cells[index];
 		const visible = allocated ? allocated.visible : false;
 		const cellWidth = visible ? allocated.actual : definition.min;
-		const cell = { occurrence: occurrence.id, title: occurrence.title, width: cellWidth, visible, compact: visible && compact.has(occurrence.id), collapsible: compactWidth(definition) !== null && occurrence !== cells[cells.length - 1] };
+		const cell = { occurrence: occurrence.id, title: occurrence.title, width: cellWidth, visible, compact: visible && compact.has(occurrence.id), collapsible: compactWidth(definition) !== null && occurrence !== cells[cells.length - 1], sized: model.sizes.has(occurrence.id), min: definition.min, max: definition.max };
 		if (isSplit(definition)) {
 			cell.rows = layoutRows(model, occurrence, cellWidth, height);
 			overflow = overflow || cell.rows.overflow;
@@ -152,9 +153,10 @@ function layoutRows(model, split, width, height) {
 	let hidden = 0;
 	let allocation;
 	for (let attempt = 0; attempt <= roots.length; attempt += 1) {
-		const collection = new CellCollection(roots.map((root, index) => ({
-			id: root.id, title: root.title, min: definition[index].minHeight, max: definition[index].maxHeight,
-		})));
+		const collection = new CellCollection(roots.map((root, index) => {
+			const session = model.sizes.has(root.id) ? Math.min(definition[index].maxHeight, Math.max(definition[index].minHeight, model.sizes.get(root.id))) : null;
+			return { id: root.id, title: root.title, min: session ?? definition[index].minHeight, max: session ?? definition[index].maxHeight, preferred: session === null ? definition[index].preferredHeight ?? null : null };
+		}));
 		allocation = collection.distribute(Math.max(0, height - hidden * rowTab), null, { pinnedId });
 		if (allocation.hiddenCount === hidden) break;
 		hidden = allocation.hiddenCount;
@@ -175,6 +177,9 @@ function layoutRows(model, split, width, height) {
 			height: collapsed ? rowTab : rowHeight,
 			collapsed,
 			focused: pinned,
+			sized: model.sizes.has(root.id),
+			minHeight: definition[index].minHeight,
+			maxHeight: definition[index].maxHeight,
 			chain: collapsed ? null : layoutChain(model, root, width, rowHeight),
 		};
 	});

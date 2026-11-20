@@ -159,7 +159,7 @@
 .supermax-peek > .supermax-cell-body { flex: 1; min-height: 0; overflow: auto; width: auto !important; }
 .supermax-cell.is-split > .supermax-cell-body { overflow: hidden; }
 
-.supermax-rows { display: flex; flex-direction: column; height: 100%; }
+.supermax-rows { position: relative; display: flex; flex-direction: column; height: 100%; }
 .supermax-row { position: relative; overflow: hidden; border-bottom: 1px solid var(--supermax-line, #d6dde5); flex: none; }
 .supermax-row-tab {
 	position: absolute;
@@ -181,6 +181,46 @@
 .supermax-row-tab::before { content: "▸ "; color: var(--supermax-muted, #5c6b7a); }
 .supermax-row-tab:hover, .supermax-row-tab:focus-visible { color: var(--supermax-accent, #0b6bcb); outline: 2px solid var(--supermax-accent, #0b6bcb); outline-offset: -2px; }
 .supermax-row-chain { position: absolute; inset: 0 0 auto 0; }
+
+.supermax-divider { position: absolute; z-index: 4; }
+.supermax-divider.is-vertical { width: 8px; cursor: col-resize; }
+.supermax-divider.is-horizontal { height: 8px; cursor: row-resize; }
+.supermax-divider-handle {
+	position: absolute;
+	inset: 0;
+	padding: 0;
+	border: 0;
+	background: transparent;
+	cursor: inherit;
+	touch-action: none;
+}
+.supermax-divider-handle::before {
+	content: "";
+	position: absolute;
+	background: var(--supermax-line, #d6dde5);
+	transition: background 120ms;
+}
+.supermax-divider.is-vertical .supermax-divider-handle::before { left: 3px; top: 0; bottom: 0; width: 2px; }
+.supermax-divider.is-horizontal .supermax-divider-handle::before { top: 3px; left: 0; right: 0; height: 2px; }
+.supermax-divider:hover .supermax-divider-handle::before, .supermax-divider-handle:focus-visible::before, .supermax-divider.is-sized .supermax-divider-handle::before { background: var(--supermax-accent, #0b6bcb); }
+.supermax-divider-handle:focus-visible { outline: none; }
+.supermax-divider-reset {
+	position: absolute;
+	width: 22px;
+	height: 22px;
+	border: 1px solid var(--supermax-accent, #0b6bcb);
+	border-radius: 999px;
+	background: var(--supermax-surface, #ffffff);
+	color: var(--supermax-accent, #0b6bcb);
+	font: inherit;
+	font-size: 13px;
+	cursor: pointer;
+	opacity: 0;
+}
+.supermax-divider.is-vertical .supermax-divider-reset { left: -7px; top: 6px; }
+.supermax-divider.is-horizontal .supermax-divider-reset { top: -7px; right: 6px; }
+.supermax-divider:hover .supermax-divider-reset, .supermax-divider:focus-within .supermax-divider-reset { opacity: 1; }
+.supermax-divider-reset:focus-visible { outline: 2px solid var(--supermax-accent, #0b6bcb); outline-offset: 2px; }
 
 .supermax-reveal {
 	flex: 0 1 auto;

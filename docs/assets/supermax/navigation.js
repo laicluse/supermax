@@ -22,6 +22,7 @@ export class Navigator {
 		this.groupSequence = 0;
 		this.revealOffsets = new Map();
 		this.collapsed = new Set();
+		this.sizes = new Map();
 		this.root = this.createOccurrence(this.rootDestination, null, 0, null);
 		this.focused = this.root.id;
 	}
@@ -161,6 +162,7 @@ export class Navigator {
 		this.occurrences.delete(occurrence.id);
 		this.revealOffsets.delete(occurrence.id);
 		this.collapsed.delete(occurrence.id);
+		this.sizes.delete(occurrence.id);
 		if (this.focused === occurrence.id) this.focused = parent ? parent.id : this.root.id;
 		closed.unshift({ id: occurrence.id, title: occurrence.title });
 		return closed;
@@ -196,6 +198,12 @@ export class Navigator {
 			this.revealOffsets.delete(chainRootOf(this, current).id);
 			current = current.parent ? this.get(current.parent) : null;
 		}
+	}
+
+	setSize(occurrenceId, size) {
+		if (!this.get(occurrenceId)) return;
+		if (size === null) this.sizes.delete(occurrenceId);
+		else this.sizes.set(occurrenceId, size);
 	}
 
 	collapse(occurrenceId, collapsed = true) {
@@ -237,6 +245,7 @@ export class Navigator {
 			focused: this.focused,
 			revealOffsets: [...this.revealOffsets],
 			collapsed: [...this.collapsed],
+			sizes: [...this.sizes],
 		};
 	}
 
@@ -248,6 +257,7 @@ export class Navigator {
 		this.focused = snapshot.focused;
 		this.revealOffsets = new Map(snapshot.revealOffsets);
 		this.collapsed = new Set(snapshot.collapsed ?? []);
+		this.sizes = new Map(snapshot.sizes ?? []);
 		this.root = this.get(this.rootDestination);
 		return true;
 	}

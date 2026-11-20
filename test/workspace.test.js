@@ -317,6 +317,56 @@ test("a peek shows a compact cell's own content without touching history", async
 	assert.deepEqual(await groups("b"), ["Coast", "Photo D"], "the other frame receives the same action");
 });
 
+test("dividers resize cells and rows within their bounds by pointer and keyboard, and reset to the app preference", async () => {
+	await openDemo([open("album:coast", "albums")]);
+	const photo = inFrame("a", `[data-occurrence="${coast.photo("thumbnails", "a")}"]`);
+	const divider = inFrame("a", `.supermax-row[data-row="${coast.row("thumbnails")}"] .supermax-divider-handle[aria-label="Resize Photo A"]`);
+	const widthOf = (selector) => page.locator(selector).evaluate((element) => Math.round(element.getBoundingClientRect().width));
+	const before = await widthOf(photo);
+	const box = await page.locator(divider).boundingBox();
+	await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+	await page.mouse.down();
+	await page.mouse.move(box.x + box.width / 2 + 60, box.y + box.height / 2, { steps: 6 });
+	await page.mouse.up();
+	assert.equal(await widthOf(photo), before + 60, "dragging the divider widens the photo by the drag distance");
+	assert.equal(await page.locator(divider).getAttribute("aria-valuenow"), String(before + 60));
+	assert.equal(await page.locator(inFrame("a", ".supermax-divider.is-sized .supermax-divider-reset")).count(), 1, "a divider with a session size shows its reset control");
+	await page.focus(divider);
+	await page.keyboard.press("ArrowLeft");
+	assert.equal(await widthOf(photo), before + 44, "an arrow key moves the divider by 16px");
+	await page.keyboard.press("End");
+	const max = Number(await page.locator(divider).getAttribute("aria-valuemax"));
+	assert.equal(await widthOf(photo), max, "End reaches the bound and stops there");
+	await page.keyboard.press("ArrowRight");
+	assert.equal(await widthOf(photo), max, "beyond the bound nothing moves and nothing complains");
+	assert.ok(max <= 520, "the bound respects the cell's maximum");
+	await resize([[900, 640], [420, 640]]);
+	assert.equal(await page.locator(photo).evaluate((element) => element.closest(".supermax-chain").querySelector(".supermax-divider.is-sized") !== null), true, "the session size survives a frame resize");
+	await page.evaluate((from) => window.supermaxDemo.frames[0].workspace.navigate("coast:photo:d", { from }), coast.row("thumbnails"));
+	await settle();
+	assert.equal(await page.locator(inFrame("a", ".supermax-divider.is-sized")).count(), 0, "a replaced cell takes its session size with it");
+	await page.evaluate((from) => window.supermaxDemo.frames[0].workspace.navigate("coast:photo:a", { from }), coast.row("thumbnails"));
+	await settle();
+	const rowDivider = inFrame("a", '.supermax-divider.is-horizontal .supermax-divider-handle[aria-label="Resize Thumbnails"]');
+	const rowOf = () => page.locator(inFrame("a", `.supermax-row[data-row="${coast.row("thumbnails")}"]`)).evaluate((element) => Math.round(element.getBoundingClientRect().height));
+	const rowBefore = await rowOf();
+	await page.focus(rowDivider);
+	await page.keyboard.press("ArrowDown");
+	assert.equal(await rowOf(), rowBefore + 16, "a row divider grows its row by keyboard");
+	const rowBox = await page.locator(rowDivider).boundingBox();
+	await page.mouse.move(rowBox.x + 50, rowBox.y + rowBox.height / 2);
+	await page.mouse.down();
+	await page.mouse.move(rowBox.x + 50, rowBox.y + rowBox.height / 2 - 30, { steps: 4 });
+	await page.mouse.up();
+	assert.equal(await rowOf(), rowBefore + 16 - 30, "and by pointer");
+	await page.focus(rowDivider);
+	await page.keyboard.press("Backspace");
+	assert.equal(await rowOf(), rowBefore, "Backspace on the divider restores the app preference");
+	assert.equal(await page.locator(inFrame("a", ".supermax-divider.is-sized")).count(), 0);
+	const frameHandle = await page.locator(frame("a")).evaluate((element) => getComputedStyle(element).resize);
+	assert.equal(frameHandle, "both", "the frame handle is the browser's own resize control, not a divider");
+});
+
 test("reset restores both frames and clears the URL", async () => {
 	await openDemo(THREE_ROWS);
 	await page.click("[data-reset]");
@@ -344,7 +394,7 @@ test("empty and rejected albums are told apart and keep the workspace usable", a
 test("hostile deeplinks are rejected without breaking the page", async () => {
 	await openDemo([open("album:coast", "albums"), open("coast:thumbnails", coast.album), { type: "back" }, open("constructor", "albums")]);
 	assert.deepEqual(await groups("a"), [], "the row root could not be promoted, so Back closed the album");
-	assert.equal(await page.locator("[data-scenarios] .scenario").count(), 10, "the page finished loading");
+	assert.equal(await page.locator("[data-scenarios] .scenario").count(), 11, "the page finished loading");
 	assert.equal(await page.locator(readout("a", "rejection")).textContent(), "Rejected: constructor is not a destination.");
 	assert.equal(page.url().split("#")[1], "o:album:coast@albums;b", "only applied actions survive in the URL");
 });

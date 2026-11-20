@@ -5,8 +5,8 @@ const widths = {
 	album: { min: 320, max: 1600 },
 	selector: { min: 200, max: 360, compact: { min: 40 } },
 	map: { min: 220, max: 480, compact: { min: 40 } },
-	photo: { min: 240, max: 520, compact: { min: 40 } },
-	metadata: { min: 200, max: 320, compact: { min: 40 } },
+	photo: { min: 240, max: 520, preferred: 360, compact: { min: 40 } },
+	metadata: { min: 200, max: 320, preferred: 220, compact: { min: 40 } },
 	history: { min: 200, max: 320, compact: { min: 40 } },
 	edit: { min: 200, max: 320 },
 };
@@ -22,9 +22,9 @@ export const albums = [
 		id: "coast",
 		title: "Coast",
 		rows: [
-			{ key: "thumbnails", title: "Thumbnails", minHeight: 180, maxHeight: 520 },
-			{ key: "map", title: "Map", minHeight: 180, maxHeight: 520 },
-			{ key: "people", title: "People", minHeight: 180, maxHeight: 520 },
+			{ key: "thumbnails", title: "Thumbnails", minHeight: 180, maxHeight: 520, preferredHeight: 240 },
+			{ key: "map", title: "Map", minHeight: 180, maxHeight: 520, preferredHeight: 200 },
+			{ key: "people", title: "People", minHeight: 180, maxHeight: 520, preferredHeight: 200 },
 		],
 		photos: [
 			{ id: "a", title: "Photo A", date: "Apr 12, 2023", place: "Big Sur, CA", tags: "landscape, coast, cliffs", hue: 205 },

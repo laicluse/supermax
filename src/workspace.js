@@ -16,6 +16,8 @@ export class Workspace extends EventTarget {
 		this.pendingFocus = null;
 		this.peek = null;
 		this.peekTimer = null;
+		this.dividers = new Map();
+		this.drag = null;
 		this.reducedMotion = this.document.defaultView.matchMedia("(prefers-reduced-motion: reduce)");
 		this.onFocusIn = (event) => this.followFocus(event.target);
 		this.buildChrome();
@@ -83,6 +85,12 @@ export class Workspace extends EventTarget {
 		this.navigator.collapse(occurrenceId, collapsed);
 		this.render({ animate: true });
 		this.focusCell(occurrenceId);
+	}
+
+	setSize(occurrenceId, size) {
+		this.navigator.setSize(occurrenceId, size);
+		this.render({ animate: false });
+		this.dispatchEvent(new CustomEvent("size", { detail: { occurrence: occurrenceId, size } }));
 	}
 
 	openPeek(occurrenceId) {
@@ -348,7 +356,128 @@ export class Workspace extends EventTarget {
 		const visible = chain.cells.filter((cell) => cell.visible);
 		this.placeReveal(entry.left, chain.hiddenLeft, visible[0], "prepend");
 		this.placeReveal(entry.right, chain.hiddenRight, visible[visible.length - 1], "append");
+		this.renderDividers(entry.viewport, chain, visible);
 		return entry.viewport;
+	}
+
+	renderDividers(viewport, chain, visible) {
+		const wanted = new Set();
+		let offset = 0;
+		visible.forEach((cell, index) => {
+			offset += cell.width;
+			const next = visible[index + 1];
+			if (!next || cell.compact || next.compact) return;
+			const key = `w:${cell.occurrence}`;
+			wanted.add(key);
+			const divider = this.divider(key, viewport, "vertical", cell.occurrence, cell.title);
+			divider.element.style.left = `${offset - 4}px`;
+			divider.element.style.top = "0";
+			divider.element.style.height = "100%";
+			this.updateDivider(divider, cell.width, cell.min, this.widthBound(chain, visible, cell), cell.sized);
+		});
+		for (const [key, divider] of this.dividers) {
+			if (divider.host === viewport && !wanted.has(key)) {
+				divider.element.remove();
+				this.dividers.delete(key);
+			}
+		}
+	}
+
+	widthBound(chain, visible, cell) {
+		const others = visible.filter((candidate) => candidate !== cell).reduce((sum, candidate) => sum + (candidate.compact ? candidate.width : candidate.min), 0);
+		return Math.max(cell.min, Math.min(cell.max, chain.width - others));
+	}
+
+	renderRowDividers(host, rows, cell) {
+		const wanted = new Set();
+		let offset = 0;
+		rows.forEach((row, index) => {
+			offset += row.height;
+			const next = rows[index + 1];
+			if (!next || row.collapsed || next.collapsed) return;
+			const key = `h:${row.occurrence}`;
+			wanted.add(key);
+			const divider = this.divider(key, host, "horizontal", row.occurrence, row.title);
+			divider.element.style.top = `${offset - 4}px`;
+			divider.element.style.left = "0";
+			divider.element.style.width = "100%";
+			const others = rows.filter((candidate) => candidate !== row).reduce((sum, candidate) => sum + (candidate.collapsed ? candidate.height : candidate.minHeight), 0);
+			this.updateDivider(divider, row.height, row.minHeight, Math.max(row.minHeight, Math.min(row.maxHeight, cell.rows.contentHeight - others)), row.sized);
+		});
+		for (const [key, divider] of this.dividers) {
+			if (divider.host === host && !wanted.has(key)) {
+				divider.element.remove();
+				this.dividers.delete(key);
+			}
+		}
+	}
+
+	divider(key, host, orientation, occurrenceId, title) {
+		let divider = this.dividers.get(key);
+		if (divider) return divider;
+		const element = this.create("div", `supermax-divider is-${orientation}`);
+		const handle = this.create("button", "supermax-divider-handle");
+		handle.type = "button";
+		handle.setAttribute("role", "separator");
+		handle.setAttribute("aria-orientation", orientation);
+		handle.setAttribute("aria-label", `Resize ${title}`);
+		const reset = this.create("button", "supermax-divider-reset");
+		reset.type = "button";
+		reset.setAttribute("aria-label", `Reset size of ${title}`);
+		reset.textContent = "⟲";
+		reset.hidden = true;
+		reset.addEventListener("click", () => { this.setSize(occurrenceId, null); handle.focus(); });
+		element.append(handle, reset);
+		host.append(element);
+		divider = { element, handle, reset, host, occurrenceId, orientation, size: 0, min: 0, max: 0 };
+		handle.addEventListener("pointerdown", (event) => this.startDrag(divider, event));
+		handle.addEventListener("keydown", (event) => this.keyResize(divider, event));
+		this.dividers.set(key, divider);
+		return divider;
+	}
+
+	updateDivider(divider, size, min, max, sized) {
+		Object.assign(divider, { size, min, max });
+		divider.handle.setAttribute("aria-valuemin", String(Math.round(min)));
+		divider.handle.setAttribute("aria-valuemax", String(Math.round(max)));
+		divider.handle.setAttribute("aria-valuenow", String(Math.round(size)));
+		divider.element.classList.toggle("is-sized", sized);
+		divider.reset.hidden = !sized;
+	}
+
+	startDrag(divider, event) {
+		if (event.button !== 0) return;
+		event.preventDefault();
+		divider.handle.setPointerCapture(event.pointerId);
+		this.drag = { divider, pointerId: event.pointerId, origin: divider.orientation === "vertical" ? event.clientX : event.clientY, start: divider.size };
+		const move = (moveEvent) => {
+			if (!this.drag || moveEvent.pointerId !== this.drag.pointerId) return;
+			const delta = (divider.orientation === "vertical" ? moveEvent.clientX : moveEvent.clientY) - this.drag.origin;
+			this.setSize(divider.occurrenceId, Math.min(divider.max, Math.max(divider.min, Math.round(this.drag.start + delta))));
+		};
+		const stop = (upEvent) => {
+			if (upEvent.pointerId !== this.drag?.pointerId) return;
+			divider.handle.removeEventListener("pointermove", move);
+			divider.handle.removeEventListener("pointerup", stop);
+			divider.handle.removeEventListener("pointercancel", stop);
+			this.drag = null;
+		};
+		divider.handle.addEventListener("pointermove", move);
+		divider.handle.addEventListener("pointerup", stop);
+		divider.handle.addEventListener("pointercancel", stop);
+	}
+
+	keyResize(divider, event) {
+		const vertical = divider.orientation === "vertical";
+		const steps = { [vertical ? "ArrowLeft" : "ArrowUp"]: -16, [vertical ? "ArrowRight" : "ArrowDown"]: 16, Home: -Infinity, End: Infinity };
+		if (event.key === "Backspace" || event.key === "Delete") {
+			event.preventDefault();
+			this.setSize(divider.occurrenceId, null);
+			return;
+		}
+		if (!(event.key in steps)) return;
+		event.preventDefault();
+		this.setSize(divider.occurrenceId, Math.min(divider.max, Math.max(divider.min, Math.round(divider.size + steps[event.key]))));
 	}
 
 	applyCompact(cell) {
@@ -486,6 +615,7 @@ export class Workspace extends EventTarget {
 				this.renderChain(row.chain, entry.chain, animating);
 			}
 		}
+		this.renderRowDividers(host, cell.rows.rows, cell);
 	}
 
 	setRowHeight(entry, height, animating) {
@@ -519,6 +649,9 @@ export class Workspace extends EventTarget {
 			this.chains.delete(chainRootId);
 			entry.left.remove();
 			entry.right.remove();
+			for (const [key, divider] of this.dividers) {
+				if (divider.host === entry.viewport) { divider.element.remove(); this.dividers.delete(key); }
+			}
 			this.afterExit(entry.viewport, () => {
 				entry.strip.destroy();
 				entry.viewport.remove();

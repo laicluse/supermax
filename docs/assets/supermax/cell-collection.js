@@ -13,6 +13,7 @@ export class CellProxy {
 	get title() { return this.config.title; }
 	get min() { return this.config.min; }
 	get max() { return this.config.max; }
+	get preferred() { return this.config.preferred ?? null; }
 	get zoomable() { return !!this.config.zoomable; }
 	get visible() { return this.actual > 0; }
 }
@@ -66,7 +67,26 @@ export class CellCollection {
 			visible.forEach((proxy) => { proxy.actual = proxy.max; });
 			return;
 		}
+		if (visible.some((proxy) => proxy.preferred !== null)) {
+			this.fillTowardPreferred(visible, maxColumns);
+			return;
+		}
 		this.waterFillByWeight(visible, maxColumns);
+	}
+
+	fillTowardPreferred(visible, maxColumns) {
+		const preferredOf = (proxy) => Math.min(proxy.max, Math.max(proxy.min, proxy.preferred ?? proxy.max));
+		const sumOfPreferred = visible.reduce((sum, proxy) => sum + preferredOf(proxy), 0);
+		if (maxColumns <= sumOfPreferred) {
+			const sumOfMins = visible.reduce((sum, proxy) => sum + proxy.min, 0);
+			const room = visible.reduce((sum, proxy) => sum + preferredOf(proxy) - proxy.min, 0);
+			const budget = maxColumns - sumOfMins;
+			visible.forEach((proxy) => { proxy.actual = proxy.min + (room > 0 ? budget * (preferredOf(proxy) - proxy.min) / room : 0); });
+			return;
+		}
+		const room = visible.reduce((sum, proxy) => sum + proxy.max - preferredOf(proxy), 0);
+		const surplus = maxColumns - sumOfPreferred;
+		visible.forEach((proxy) => { proxy.actual = preferredOf(proxy) + (room > 0 ? surplus * (proxy.max - preferredOf(proxy)) / room : 0); });
 	}
 
 	waterFillByWeight(visible, maxColumns) {
