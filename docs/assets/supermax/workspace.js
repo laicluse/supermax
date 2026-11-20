@@ -296,9 +296,13 @@ export class Workspace extends EventTarget {
 	}
 
 	setSize(occurrenceId, size, axis = "width") {
-		this.navigator.setSize(occurrenceId, size, axis);
+		this.setSizes(new Map([[occurrenceId, size]]), axis);
+	}
+
+	setSizes(sizes, axis = "width") {
+		for (const [occurrenceId, size] of sizes) this.navigator.setSize(occurrenceId, size, axis);
 		this.render({ animate: false });
-		this.dispatchEvent(new CustomEvent("size", { detail: { occurrence: occurrenceId, size, axis } }));
+		for (const [occurrenceId, size] of sizes) this.dispatchEvent(new CustomEvent("size", { detail: { occurrence: occurrenceId, size, axis } }));
 	}
 
 	run(action) {
@@ -570,26 +574,26 @@ export class Workspace extends EventTarget {
 
 	widthDividers(chain, visible) {
 		const items = [];
+		const parts = visible.map((cell) => ({ id: cell.occurrence, size: cell.width, min: cell.compact ? cell.width : cell.min, max: cell.compact ? cell.width : cell.max }));
 		let offset = 0;
 		visible.forEach((cell, index) => {
 			offset += cell.width;
 			const next = visible[index + 1];
 			if (!next || cell.compact || next.compact) return;
-			const others = visible.filter((candidate) => candidate !== cell).reduce((sum, candidate) => sum + (candidate.compact || candidate.sized ? candidate.width : candidate.min), 0);
-			items.push({ id: cell.occurrence, title: cell.title, offset, size: cell.width, min: cell.min, max: Math.max(cell.min, Math.min(cell.max, chain.width - others)), sized: cell.sized });
+			items.push({ id: cell.occurrence, title: cell.title, offset, size: cell.width, sized: cell.sized, parts, edge: index, room: chain.width });
 		});
 		return items;
 	}
 
 	heightDividers(rows, budget) {
 		const items = [];
+		const parts = rows.map((row) => ({ id: row.occurrence, size: row.height, min: row.visible ? row.minHeight : row.height, max: row.visible ? row.maxHeight : row.height }));
 		let offset = 0;
 		rows.forEach((row, index) => {
 			offset += row.height;
 			const next = rows[index + 1];
 			if (!next || !row.visible || !next.visible) return;
-			const others = rows.filter((candidate) => candidate !== row).reduce((sum, candidate) => sum + (!candidate.visible || candidate.sized ? candidate.height : candidate.minHeight), 0);
-			items.push({ id: row.occurrence, title: row.title, offset, size: row.height, min: row.minHeight, max: Math.max(row.minHeight, Math.min(row.maxHeight, budget - others)), sized: row.sized });
+			items.push({ id: row.occurrence, title: row.title, offset, size: row.height, sized: row.sized, parts, edge: index, room: budget });
 		});
 		return items;
 	}

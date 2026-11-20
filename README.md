@@ -121,7 +121,7 @@ The workspace element needs a height of its own; the workspace fills it, observe
 - `zoom(occurrence, { animate })` zooms a cell whose destination declares `zoomable: true`, hiding the cells before it; `zoom(null)` zooms out. It emits `zoom`.
 - `goTo(occurrence)` brings an open occurrence into view, or opens the peek of a compact one.
 - `setTitle(occurrence, title)` renames an open cell in its header, accessible name, rail, Back group, navbar and snapshots.
-- `setSize(occurrence, size, axis)` sets a cell's width or a row's height (`axis` `"width"` or `"height"`), `null` back to the preference; it emits `size`.
+- `setSize(occurrence, size, axis)` sets a cell's width or a row's height (`axis` `"width"` or `"height"`), `null` back to the preference; it emits `size`. `setSizes(sizes, axis)` takes a `Map` of occurrence to size or `null`, renders once and emits `size` for each; a divider drag uses it for every cell it moves.
 - `openModal(definition, { from })` opens the one modal: `definition` is `{ title, content, min, max, preferred, minHeight, maxHeight, preferredHeight }`, `from` the occurrence it comes from, `from: null` for a modal that belongs to no cell. `closeModal(reason)` closes it; `modal` is the open one.
 - `notify({ id, scope, source, sourceTitle, kind, message, action, duration })` shows a notice (`scope` `"cell"` or `"workspace"`, `kind` `"success"`, `"error"` or `"action"`, `action` `{ label, run(workspace) }`, `duration` in milliseconds, default `TIMING.noticeLife` for success) and returns its id; `dismiss(id, state)` and `dismissAll(state)` remove notices.
 - `closePeek()` closes the peek; `peek` is the open one.
