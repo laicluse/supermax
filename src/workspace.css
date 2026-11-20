@@ -63,7 +63,7 @@
 .supermax-up-target { font-weight: 600; flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .supermax-cell-title-leading { align-self: stretch; margin-left: -10px; }
 .supermax-cell-title-leading > .supermax-up { flex: 0 1 auto; max-width: 100%; }
-.supermax-up.is-floating { position: absolute; top: 6px; left: 6px; z-index: 11; }
+.supermax-up.is-floating { position: absolute; top: 6px; left: 6px; height: auto; min-height: 28px; z-index: 11; }
 
 
 .supermax-body { flex: 1; min-height: 0; overflow: hidden; }

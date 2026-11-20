@@ -556,3 +556,41 @@ test("a sync that carries the zoom replaces a zoomed cell in one render, without
 	assert.deepEqual(result.renders, [false], "one render, in which the list stays hidden behind the zoom");
 	assert.equal(result.zoomed, "menu/list/messages:2");
 });
+
+
+test("floating navigation stays at the top of a headless cell without intercepting its actions", async () => {
+	await page.evaluate(async () => {
+		const { Navigator, Workspace } = await import("/src/index.js");
+		const host = document.createElement("div");
+		host.id = "headless-navigation";
+		host.style.cssText = "position:fixed;inset:0;width:390px;height:900px;background:white;z-index:1000";
+		document.body.append(host);
+		const navigator = new Navigator({ destinations: {
+			feed: { title: "Feed", min: 200, max: 200, fold: false },
+			episode: { title: "Episode", min: 390, max: "*", preferred: 390 },
+		}, root: "feed", minViewportHeight: 300, chrome: { maxRows: 4 } });
+		window.headlessWorkspace = new Workspace(host, { navigator, content: () => {
+			const element = document.createElement("div");
+			const action = document.createElement("button");
+			action.textContent = "Not interested";
+			action.style.cssText = "position:absolute;top:430px;left:6px;height:40px";
+			action.onclick = () => { action.textContent = "Dismissed"; };
+			element.append(action);
+			return { element };
+		} });
+		window.headlessWorkspace.sync(["feed", "episode"], { animate: false, origin: null });
+	});
+	try {
+		const control = page.locator("#headless-navigation .supermax-up.is-floating");
+		await control.waitFor({ state: "visible" });
+		const bounds = await control.boundingBox();
+		assert.equal(bounds.y, 6);
+		assert.ok(bounds.height >= 28 && bounds.height <= 44, `floating control height is ${bounds.height}`);
+		await page.locator('#headless-navigation [data-occurrence="feed/episode"] button', { hasText: "Not interested" }).click({ timeout: 1000 });
+		assert.equal(await page.getByRole("button", { name: "Dismissed", exact: true }).count(), 1);
+		await control.click();
+		assert.equal(await page.locator('#headless-navigation [data-occurrence="feed"]').isVisible(), true);
+	} finally {
+		await page.evaluate(() => { window.headlessWorkspace.destroy(); document.getElementById("headless-navigation").remove(); });
+	}
+});
