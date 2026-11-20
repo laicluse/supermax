@@ -115,14 +115,13 @@
 	background-clip: padding-box;
 	outline: none;
 }
-@property --supermax-shade { syntax: "<number>"; inherits: true; initial-value: 0; }
 .supermax-cell::after {
 	content: "";
 	position: absolute;
 	inset: 0;
 	z-index: 10;
 	background: var(--supermax-canvas);
-	opacity: var(--supermax-shade);
+	opacity: 0;
 	pointer-events: none;
 }
 .supermax-cell.is-leading, .supermax-cell.is-split { border-left-width: 0; }

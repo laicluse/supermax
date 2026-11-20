@@ -32,7 +32,8 @@
     "test:browser": "node test/cell-strip.test.js && node test/serve-demo.test.js && node --test --test-concurrency=1 test/workspace.test.js test/workspace-package.test.js",
     "test:browser:fold": "SUPERMAX_PRESENTATION=fold node --test --test-concurrency=1 test/workspace.test.js",
     "test": "npm run check:docs && npm run test:node && npm run test:browser",
-    "check": "npm run test && npm run test:bun"
+    "check": "npm run test && npm run test:bun",
+    "bench:transitions": "node bench/transitions.mjs"
   },
   "engines": {
     "node": ">=22"

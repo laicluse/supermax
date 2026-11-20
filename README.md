@@ -141,6 +141,9 @@ corepack pnpm run serve
 corepack pnpm run build:docs
 corepack pnpm run check
 corepack pnpm run test:browser:fold
+corepack pnpm run bench:transitions -- --runs 5 --trees ../supermax-base,.
 ```
+
+`bench:transitions` measures how much rendering the demo's transitions cost: it plays back, open, replace and close in a 1440px frame at a 4x CPU throttle, traces each step, and reports the median time the renderer's main thread spends on style, layout, prepaint, paint and layerize, with the frames that took more than 25ms. With `--trees` it measures several checkouts in alternating order, so a change is judged against its base on the same machine at the same moment, and `--content heavy` fills every cell with a long styled list, closer to what a real app paints than the demo's light content.
 
 `serve` builds the docs and serves the demo at `http://127.0.0.1:8260` (`PORT` overrides it) with `Cache-Control: no-store` and every build's modules under a path of their own (`/__build/<revision>/assets/`), so a reload always runs the current build, also in a browser that cached modules from an earlier server; a plain static server lets the browser keep the previous modules. The last line runs the browser suite under the fold presentation; `check` runs it under the default presentation only.

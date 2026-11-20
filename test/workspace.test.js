@@ -1049,7 +1049,7 @@ test("origami folds a cell open from its parent's edge and back onto it when it 
 			const animations = document.getAnimations().filter((animation) => animation.effect?.target === cell);
 			const fold = animations.find((animation) => animation.effect.getKeyframes().some((frame) => frame.transform?.includes("rotate")));
 			if (!fold) return null;
-			const fade = animations.find((animation) => animation.effect.getKeyframes().some((frame) => frame["--supermax-shade"] !== undefined));
+			const fade = animations.find((animation) => animation.effect.pseudoElement === "::after" && animation.effect.getKeyframes().some((frame) => frame.opacity !== undefined));
 			const edge = (frames, folded) => frames.filter(folded).map((frame) => frame.computedOffset);
 			return {
 				cell: cell.dataset.occurrence.split("/").pop(),
@@ -1061,9 +1061,9 @@ test("origami folds a cell open from its parent's edge and back onto it when it 
 				end: fold.effect.getComputedTiming().endTime,
 				transforms: fold.effect.getKeyframes().map((frame) => frame.transform),
 				onEdge: edge(fold.effect.getKeyframes(), (frame) => frame.transform !== "none"),
-				transparent: fade ? edge(fade.effect.getKeyframes(), (frame) => Number(frame["--supermax-shade"]) === 1) : null,
+				transparent: fade ? edge(fade.effect.getKeyframes(), (frame) => Number(frame.opacity) === 1) : null,
 				opaque: getComputedStyle(cell).opacity,
-				overlay: [Number(getComputedStyle(cell, "::after").opacity).toFixed(3), Number(getComputedStyle(cell).getPropertyValue("--supermax-shade")).toFixed(3)],
+				shadeOnCompositor: !!fade && !fade.effect.getKeyframes().some((frame) => Object.keys(frame).some((key) => key.startsWith("--"))),
 				fadeTiming: fade ? [fade.effect.getTiming().easing, fade.effect.getTiming().delay, fade.effect.getComputedTiming().endTime] : null,
 				innerFades: document.getAnimations().filter((animation) => cell.contains(animation.effect?.target) && animation.effect.target !== cell && animation.effect.getKeyframes().some((frame) => frame.opacity !== undefined)).length,
 			};
@@ -1073,7 +1073,7 @@ test("origami folds a cell open from its parent's edge and back onto it when it 
 		assert.equal(animation.easing, easing, `${label} has ${easing}`);
 		assert.deepEqual(animation.transparent, animation.onEdge, `${label} is fully shaded to the canvas exactly while it stands on edge`);
 		assert.equal(animation.opaque, "1", `${label} stays opaque, so overlapping cells never show through each other`);
-		assert.equal(animation.overlay[0], animation.overlay[1], `${label} shows its shade on the canvas-coloured overlay`);
+		assert.equal(animation.shadeOnCompositor, true, `${label} shades through the opacity of its canvas-coloured overlay, never through a property its content would recalculate`);
 		assert.deepEqual(animation.fadeTiming, [animation.easing, animation.delay, animation.end], `${label} fades on the fold's timeline`);
 		assert.equal(animation.innerFades, 0, `${label} fades as one, not element by element`);
 	};

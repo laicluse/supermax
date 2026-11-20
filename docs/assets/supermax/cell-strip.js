@@ -43,7 +43,19 @@ function absolute(element, transform, origin) {
 
 function currentPose(element) {
 	const style = getComputedStyle(element);
-	return { matrix: absolute(element, style.transform, style.transformOrigin), shade: parseFloat(style.getPropertyValue("--supermax-shade")) || 0 };
+	return { matrix: absolute(element, style.transform, style.transformOrigin), shade: parseFloat(getComputedStyle(element, "::after").opacity) || 0 };
+}
+
+// allow-comment: the shade runs on the ::after's own opacity, which the compositor animates, instead of a custom property every descendant would recalculate each frame.
+function fold(element, frames, timing) {
+	const animation = element.animate(frames.map(({ transform }) => ({ transform })), timing);
+	animation.shade = element.animate(frames.map(({ shade }) => ({ opacity: shade })), { ...timing, pseudoElement: "::after" });
+	return animation;
+}
+
+function stop(animation) {
+	animation?.cancel();
+	animation?.shade?.cancel();
 }
 
 function poseMatrix(element, pose) {
@@ -338,20 +350,21 @@ export class CellStrip {
 	foldOpen(entry, delay, follows) {
 		const pose = this.motion.open(entry.element, this.axisOf(entry));
 		entry.element.style.transformOrigin = pose.origin;
-		const animation = entry.element.animate([{ transform: pose.transform, "--supermax-shade": pose.shade ?? 1 }, { transform: "none", "--supermax-shade": 0 }], { duration: this.duration, delay, easing: APPEAR.easing, fill: "both" });
+		const animation = fold(entry.element, [{ transform: pose.transform, shade: pose.shade ?? 1 }, { transform: "none", shade: 0 }], { duration: this.duration, delay, easing: APPEAR.easing, fill: "both" });
 		this.track(entry, "enter", animation, follows, true);
 	}
 
 	foldIn(entry) {
 		const pose = this.motion.open(entry.element, this.axisOf(entry));
 		entry.element.style.transformOrigin = pose.origin;
-		const animation = entry.element.animate([{ transform: pose.transform, "--supermax-shade": pose.shade ?? 1 }, { transform: "none", "--supermax-shade": 0 }], { duration: this.duration, easing: APPEAR.easing, fill: "both", direction: "reverse" });
+		const animation = fold(entry.element, [{ transform: pose.transform, shade: pose.shade ?? 1 }, { transform: "none", shade: 0 }], { duration: this.duration, easing: APPEAR.easing, fill: "both", direction: "reverse" });
 		this.track(entry, "leave", animation, true, true);
 	}
 
 	reverse(entry, kind) {
 		const motion = this.motions.get(entry.id);
 		motion.animation.reverse();
+		motion.animation.shade?.reverse();
 		motion.kind = kind;
 		motion.follows = true;
 		motion.reversible = true;
@@ -360,7 +373,7 @@ export class CellStrip {
 	foldAway(entry) {
 		const pose = this.motion.close(entry.element, this.axisOf(entry));
 		entry.element.style.transformOrigin = pose.origin;
-		const animation = entry.element.animate([{ transform: "none", "--supermax-shade": 0 }, { transform: pose.transform, "--supermax-shade": pose.shade ?? 1 }], { duration: this.duration, easing: DISAPPEAR.easing, fill: "forwards" });
+		const animation = fold(entry.element, [{ transform: "none", shade: 0 }, { transform: pose.transform, shade: pose.shade ?? 1 }], { duration: this.duration, easing: DISAPPEAR.easing, fill: "forwards" });
 		this.track(entry, "leave", animation, !entry.overlay);
 	}
 
@@ -368,17 +381,17 @@ export class CellStrip {
 		const from = currentPose(entry.element);
 		const pose = this.motion.close(entry.element, this.axisOf(entry));
 		const to = poseMatrix(entry.element, pose);
-		this.motions.get(entry.id)?.animation.cancel();
+		stop(this.motions.get(entry.id)?.animation);
 		entry.element.style.transformOrigin = "0 0";
-		const animation = entry.element.animate([{ transform: from.matrix.toString(), "--supermax-shade": from.shade }, { transform: to.toString(), "--supermax-shade": pose.shade ?? 1 }], { duration: this.duration, easing: DISAPPEAR.easing, fill: "forwards" });
+		const animation = fold(entry.element, [{ transform: from.matrix.toString(), shade: from.shade }, { transform: to.toString(), shade: pose.shade ?? 1 }], { duration: this.duration, easing: DISAPPEAR.easing, fill: "forwards" });
 		this.track(entry, "tear", animation);
 	}
 
 	foldBack(entry) {
 		const from = currentPose(entry.element);
-		this.motions.get(entry.id)?.animation.cancel();
+		stop(this.motions.get(entry.id)?.animation);
 		entry.element.style.transformOrigin = "0 0";
-		const animation = entry.element.animate([{ transform: from.matrix.toString(), "--supermax-shade": from.shade }, { transform: new DOMMatrix().toString(), "--supermax-shade": 0 }], { duration: this.duration, easing: APPEAR.easing, fill: "both" });
+		const animation = fold(entry.element, [{ transform: from.matrix.toString(), shade: from.shade }, { transform: new DOMMatrix().toString(), shade: 0 }], { duration: this.duration, easing: APPEAR.easing, fill: "both" });
 		this.track(entry, "return", animation, true);
 	}
 
@@ -391,7 +404,7 @@ export class CellStrip {
 			const current = this.entries.find((candidate) => candidate.id === entry.id);
 			if (current?.departing) this.drop(current);
 			else {
-				animation.cancel();
+				stop(animation);
 				entry.element.style.removeProperty("transform-origin");
 			}
 		}, () => {});
@@ -458,7 +471,7 @@ export class CellStrip {
 		for (const entry of this.entries) entry.element.style.removeProperty("margin-left");
 		this.driven = new Set();
 		this.step();
-		for (const motion of this.motions.values()) motion.animation.cancel();
+		for (const motion of this.motions.values()) stop(motion.animation);
 		this.motions = new Map();
 		for (const entry of this.entries) {
 			if (!entries.some((candidate) => candidate.element === entry.element)) this.drop(entry);
