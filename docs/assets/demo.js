@@ -181,7 +181,7 @@ function updateSpecs(root, layout) {
 
 function prefetchOnHover(button, id) {
 	let timer = null;
-	button.addEventListener("pointerenter", () => { timer = setTimeout(() => session.fetchManifest(id), 100); });
+	button.addEventListener("pointerenter", () => { timer = setTimeout(() => { if (!session.failed.has(id)) session.fetchManifest(id); }, 100); });
 	button.addEventListener("pointerleave", () => clearTimeout(timer));
 }
 
@@ -594,6 +594,7 @@ class Session {
 
 	dispatch(action, origin) {
 		this.replaying = null;
+		if (action.type === "open") this.failed.delete(action.destination);
 		const originResult = origin.apply(action, { focus: true });
 		const results = [originResult, ...this.frames.filter((frame) => frame.workspace !== origin).map((frame) => this.follow(frame.workspace, action, origin, originResult))];
 		if (results.some((result) => result.ok && !result.noop)) {

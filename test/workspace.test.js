@@ -891,6 +891,19 @@ test("a twenty-cell chain stays navigable in both presentations", async () => {
 	assert.equal(await page.locator(inFrame("a", ".supermax-cell")).count(), 1, "only the root remains");
 });
 
+test("opening a cell whose layout definition failed before fetches it again, also without a pointer", async () => {
+	await openDemo([open("album:coast", "albums")]);
+	await resize([[1100, 640], [360, 640]]);
+	await page.selectOption("[data-fail]", "manifest");
+	await page.click(inFrame("a", `[data-occurrence="${coast.row("people")}"] [data-destination="coast:photo:b"]`));
+	await settle();
+	await page.selectOption("[data-fail]", "");
+	await page.focus(inFrame("a", `[data-occurrence="${coast.photo("people", "b")}"] .metadata-link:not(.caption-edit):not(.caption-save)`));
+	await page.keyboard.press("Enter");
+	await settle();
+	assert.equal(await page.locator(inFrame("a", `[data-occurrence="${coast.metadata("people", "b")}"] .viewer-line`)).textContent(), "Viewing as Ana");
+});
+
 test("a layout definition that fails shows its error with Retry, and a prefetch never opens a cell", async () => {
 	await openDemo([open("album:coast", "albums")]);
 	await resize([[1100, 640], [360, 640]]);
