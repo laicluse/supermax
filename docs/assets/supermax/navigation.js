@@ -42,7 +42,8 @@ export function validateDestinations(destinations, { minViewportHeight, chrome =
 		if (Object.hasOwn(definition, "height")) problems.push({ destination: id, reason: "unsupported-height" });
 		for (const reason of aspectProblems(definition)) problems.push({ destination: id, reason });
 		if (destinations[id].placement != null && (!isBesideSplit(destinations[id]) || isSplit(destinations[id]))) problems.push({ destination: id, reason: "invalid-placement" });
-		if (isSplit(destinations[id]) && ["min", "max", "preferred"].some((key) => destinations[id][key] != null)) problems.push({ destination: id, reason: "split-with-width" });
+		if (isSplit(destinations[id]) && ["min", "max", "preferred", "growOnFocus"].some((key) => destinations[id][key] != null)) problems.push({ destination: id, reason: "split-with-width" });
+		if (definition.growOnFocus != null && typeof definition.growOnFocus !== "boolean") problems.push({ destination: id, reason: "invalid-grow-on-focus" });
 		if (destinations[id].header != null && destinations[id].header !== "title") problems.push({ destination: id, reason: "invalid-header" });
 		if (destinations[id].menu != null && destinations[id].menu !== true && destinations[id].menu !== "exact") problems.push({ destination: id, reason: "invalid-menu" });
 		for (const reason of overflowProblems(definition, definition.min)) problems.push({ destination: id, reason });

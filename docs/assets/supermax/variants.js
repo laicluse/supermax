@@ -212,3 +212,61 @@ export function selectVariants(model, allocate) {
 	visit(0);
 	return best;
 }
+
+// allow-comment: growth keeps the forms the ordinary layout chose: it pins them and gives way in a neighbour only down to the size at which its form still holds.
+export function pinVariants(model, layout) {
+	const candidate = Object.create(model);
+	candidate.variantDefinitions = new Map();
+	candidate.variantRows = new Map();
+	candidate.variantFloors = { width: new Map(), height: new Map() };
+	candidate.canonicalVariants = true;
+	let pinned = false;
+	for (const [id, cell] of layout.cells) {
+		const occurrence = cell.variant ? model.get(id) : null;
+		const owner = occurrence && model.definitionOf(occurrence.destination);
+		const variant = owner?.variants?.find((form) => form.id === cell.variant);
+		if (!variant) continue;
+		candidate.variantDefinitions.set(id, formOf(owner, variant, "width"));
+		if (variant.when?.minWidth) candidate.variantFloors.width.set(id, variant.when.minWidth);
+		pinned = true;
+	}
+	for (const [id, row] of layout.rows) {
+		const root = row.variant ? model.get(id) : null;
+		const split = root?.parent ? model.get(root.parent) : null;
+		const index = split ? split.children.indexOf(id) : -1;
+		const owner = index >= 0 ? model.definitionOf(split.destination).rows[index] : null;
+		const variant = owner?.variants?.find((form) => form.id === row.variant);
+		if (!variant) continue;
+		const rows = [...(candidate.variantRows.get(split.id) ?? model.definitionOf(split.destination).rows)];
+		rows[index] = formOf(owner, variant, "height");
+		candidate.variantRows.set(split.id, rows);
+		if (variant.when?.minHeight) candidate.variantFloors.height.set(id, variant.when.minHeight);
+		pinned = true;
+	}
+	return pinned ? candidate : model;
+}
+
+export function keepsVariants(model, layout, from) {
+	for (const [id, before] of from.cells) {
+		const cell = layout.cells.get(id);
+		if (!cell || cell.visible !== before.visible || cell.folded !== before.folded) return false;
+		if (before.variant) {
+			const variant = model.definitionOf(model.get(id).destination).variants.find((form) => form.id === before.variant);
+			if (cell.full && !matches(variant, cell.width, cell.height)) return false;
+			cell.variant = before.variant;
+		}
+		if (before.rowVariant) cell.rowVariant = before.rowVariant;
+	}
+	for (const [id, before] of from.rows) {
+		const row = layout.rows.get(id);
+		if (!row || row.visible !== before.visible || row.folded !== before.folded) return false;
+		if (before.variant) {
+			const root = model.get(id);
+			const split = model.get(root.parent);
+			const variant = model.definitionOf(split.destination).rows[split.children.indexOf(id)].variants.find((form) => form.id === before.variant);
+			if (row.inView && !row.folded && !matches(variant, row.width, row.height)) return false;
+			row.variant = before.variant;
+		}
+	}
+	return true;
+}
