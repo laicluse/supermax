@@ -2,6 +2,34 @@ import { CellCollection } from "./cell-collection.js";
 
 export const ELASTIC = "*";
 const TRANSIENT_FOLD = { horizontal: 0, vertical: 0 };
+const foldAllocations = new WeakMap();
+
+export function retainFoldAllocation(model, focus, chain) {
+	foldAllocations.set(focus, {
+		size: { ...model.size },
+		occurrences: [...model.occurrences.values()],
+		sizes: new Map(model.sizes.width),
+		cells: chain.cells.map(({ occurrence, width, visible, folded }) => ({ occurrence, width, visible, folded })),
+	});
+}
+
+function preserveFoldAllocation(model, cells, bounds, sharing, fold) {
+	if (cells[0].parent || model.zoomed) return;
+	const saved = foldAllocations.get(model.foldFocuses.at(-1));
+	if (!saved || saved.size.width !== model.size.width || saved.size.height !== model.size.height) return;
+	if (saved.cells.reduce((sum, cell) => sum + (cell.visible ? cell.width : 0), 0) > model.size.width) return;
+	if (saved.occurrences.length !== model.occurrences.size || saved.occurrences.some((occurrence) => model.get(occurrence.id) !== occurrence)) return;
+	if (saved.sizes.size !== model.sizes.width.size || [...saved.sizes].some(([id, size]) => model.sizeOf(id) !== size)) return;
+	if (saved.cells.length !== cells.length || saved.cells.some((cell, index) => cell.occurrence !== cells[index].id || cell.folded !== fold.has(cell.occurrence))) return;
+	const previous = new Map(saved.cells.map((cell) => [cell.occurrence, cell]));
+	if (sharing.cells.some((cell, index) => {
+		const before = previous.get(cell.config.id);
+		const maximum = bounds[index].session === null ? bounds[index].reach ?? bounds[index].max : Math.max(cell.config.max, cell.actual);
+		return before.visible !== (cell.visible || fold.has(cell.config.id)) || before.visible && (before.width + .5 < cell.config.min || before.width - .5 > maximum);
+	})) return;
+	if (saved.cells.some((cell) => cell.visible && !sharing.cells.some((member) => member.config.id === cell.occurrence))) return;
+	for (const cell of sharing.cells) cell.actual = previous.get(cell.config.id).visible ? previous.get(cell.config.id).width : 0;
+}
 
 export function isSplit(definition) {
 	return Array.isArray(definition?.rows);
@@ -280,6 +308,7 @@ function allocateChain(model, cells, width) {
 		return unit.occurrence.id === anchor ? { ...config, zoomable: true, elastic: true } : config;
 	});
 	const sharing = snapAllocation(new CellCollection(configs).distribute(width, anchor));
+	preserveFoldAllocation(model, cells, bounds, sharing, fold);
 	const byId = new Map(sharing.cells.map((cell) => [cell.config.id, cell]));
 	const allocation = { ...sharing, cells: cells.map((occurrence) => byId.get(occurrence.id) ?? { config: { id: occurrence.id, title: occurrence.title }, actual: 0, visible: false }) };
 	return { allocation, fold };

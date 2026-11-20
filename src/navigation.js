@@ -1,4 +1,4 @@
-import { ELASTIC, breakoutOf, chainCells, chainFits, chainRootOf, chainWidth, isFull, isSplit, layoutWorkspace, rowSplitOf, validateSplit } from "./layout.js";
+import { ELASTIC, breakoutOf, chainCells, chainFits, chainRootOf, chainWidth, isFull, isSplit, layoutWorkspace, retainFoldAllocation, rowSplitOf, validateSplit } from "./layout.js";
 import { sameLayout, validateDeclarationSet } from "./layout-declaration.js";
 
 const DEFAULT_CHROME = { header: 28, maxRows: 4 };
@@ -74,8 +74,11 @@ export class Navigator {
 	focusFold(occurrenceId, axis) {
 		const occurrence = this.get(occurrenceId);
 		const scope = axis === "horizontal" ? chainRootOf(this, occurrence).id : occurrence.parent;
+		const before = scope !== this.root.id && !this.zoomed ? this.layout().chain : null;
 		this.zoomed = null;
-		this.foldFocuses = [...this.foldFocuses.filter((focus) => focus.axis !== axis || focus.scope !== scope), { occurrence: occurrenceId, axis, scope }];
+		const focus = { occurrence: occurrenceId, axis, scope };
+		this.foldFocuses = [...this.foldFocuses.filter((focus) => focus.axis !== axis || focus.scope !== scope), focus];
+		if (before) retainFoldAllocation(this, focus, before);
 	}
 
 	resize(size) {

@@ -20,6 +20,8 @@ Start with [Migrating from v1 to v2](docs/migrating-to-v2.md). A dependency vers
 
 - Fold handles display available titles in bundled Tiny5 Regular, with a 96px length cap and ellipsis. Missing titles retain hatching. Font copyright and OFL license are included; only the static Regular weight is shipped.
 
+- Local folds retain feasible surrounding widths. Surviving cards no longer shift sideways and return during small width reductions, including interrupted transitions. Genuine minimum-space changes and viewport resizing still redistribute space.
+
 - Every layout carries an access route for every open cell. Back preserves previously hidden branches; zoom always retains its exit. Fold page selection comes from the layout, and a drag keeps its initial handles while one gutter follows each moving row boundary.
 - Open cells and rows after the active surface retain a fold handle or a scroll route when space runs out. Show continues to reach earlier hidden content. Notices use the canvas hairline and fold-handle corner radius by default.
 - Navigator and Workspace provide a branching cell shell, layout declarations, Show, dividers, loading content, overlays, presentations and a shared time scale.

@@ -1,0 +1,320 @@
+{
+  "display": [
+    {
+      "variant": "baseline",
+      "frames": 153,
+      "meanFps": 60.00235272383048,
+      "medianFrameMs": 16.699999999999818,
+      "p95FrameMs": 16.700000000000273
+    },
+    {
+      "variant": "combined",
+      "frames": 153,
+      "meanFps": 60.00391604504715,
+      "medianFrameMs": 16.699999999999818,
+      "p95FrameMs": 16.799999999999727
+    }
+  ],
+  "encoded": {
+    "programs": [],
+    "stream_groups": [],
+    "streams": [
+      {
+        "codec_name": "h264",
+        "width": 920,
+        "height": 790,
+        "pix_fmt": "yuv420p",
+        "r_frame_rate": "25/1"
+      }
+    ],
+    "format": {
+      "duration": "2.760000"
+    }
+  },
+  "variants": [
+    {
+      "variant": "baseline",
+      "results": [
+        {
+          "presentation": "veil",
+          "width": 420,
+          "height": 640,
+          "action": "rapid clicks",
+          "variant": "baseline",
+          "menuX": 0,
+          "menuWidth": 0,
+          "buttonX": 0,
+          "targetWidth": 0
+        },
+        {
+          "presentation": "veil",
+          "width": 960,
+          "height": 640,
+          "action": "rapid clicks",
+          "variant": "baseline",
+          "menuX": 0,
+          "menuWidth": 0,
+          "buttonX": 0,
+          "targetWidth": 0
+        },
+        {
+          "presentation": "origami",
+          "width": 420,
+          "height": 640,
+          "action": "rapid clicks",
+          "variant": "baseline",
+          "menuX": 0.921875,
+          "menuWidth": 0,
+          "buttonX": 0.921875,
+          "targetWidth": 5
+        },
+        {
+          "presentation": "origami",
+          "width": 960,
+          "height": 640,
+          "action": "rapid clicks",
+          "variant": "baseline",
+          "menuX": 0,
+          "menuWidth": 0,
+          "buttonX": 0,
+          "targetWidth": 0
+        },
+        {
+          "presentation": "fold",
+          "width": 420,
+          "height": 640,
+          "action": "rapid clicks",
+          "variant": "baseline",
+          "menuX": 0.921875,
+          "menuWidth": 0,
+          "buttonX": 0.921875,
+          "targetWidth": 5
+        },
+        {
+          "presentation": "fold",
+          "width": 960,
+          "height": 640,
+          "action": "rapid clicks",
+          "variant": "baseline",
+          "menuX": 0,
+          "menuWidth": 0,
+          "buttonX": 0,
+          "targetWidth": 0
+        }
+      ]
+    },
+    {
+      "variant": "anchor",
+      "results": [
+        {
+          "presentation": "veil",
+          "width": 420,
+          "height": 640,
+          "action": "rapid clicks",
+          "variant": "anchor",
+          "menuX": 0,
+          "menuWidth": 0,
+          "buttonX": 0,
+          "targetWidth": 0
+        },
+        {
+          "presentation": "veil",
+          "width": 960,
+          "height": 640,
+          "action": "rapid clicks",
+          "variant": "anchor",
+          "menuX": 0,
+          "menuWidth": 0,
+          "buttonX": 0,
+          "targetWidth": 0
+        },
+        {
+          "presentation": "origami",
+          "width": 420,
+          "height": 640,
+          "action": "rapid clicks",
+          "variant": "anchor",
+          "menuX": 0,
+          "menuWidth": 0,
+          "buttonX": 0,
+          "targetWidth": 5
+        },
+        {
+          "presentation": "origami",
+          "width": 960,
+          "height": 640,
+          "action": "rapid clicks",
+          "variant": "anchor",
+          "menuX": 0,
+          "menuWidth": 0,
+          "buttonX": 0,
+          "targetWidth": 0
+        },
+        {
+          "presentation": "fold",
+          "width": 420,
+          "height": 640,
+          "action": "rapid clicks",
+          "variant": "anchor",
+          "menuX": 0,
+          "menuWidth": 0,
+          "buttonX": 0,
+          "targetWidth": 5
+        },
+        {
+          "presentation": "fold",
+          "width": 960,
+          "height": 640,
+          "action": "rapid clicks",
+          "variant": "anchor",
+          "menuX": 0,
+          "menuWidth": 0,
+          "buttonX": 0,
+          "targetWidth": 0
+        }
+      ]
+    },
+    {
+      "variant": "allocation",
+      "results": [
+        {
+          "presentation": "veil",
+          "width": 420,
+          "height": 640,
+          "action": "rapid clicks",
+          "variant": "allocation",
+          "menuX": 0,
+          "menuWidth": 0,
+          "buttonX": 0,
+          "targetWidth": 0
+        },
+        {
+          "presentation": "veil",
+          "width": 960,
+          "height": 640,
+          "action": "rapid clicks",
+          "variant": "allocation",
+          "menuX": 0,
+          "menuWidth": 0,
+          "buttonX": 0,
+          "targetWidth": 0
+        },
+        {
+          "presentation": "origami",
+          "width": 420,
+          "height": 640,
+          "action": "rapid clicks",
+          "variant": "allocation",
+          "menuX": 0,
+          "menuWidth": 0,
+          "buttonX": 0,
+          "targetWidth": 0
+        },
+        {
+          "presentation": "origami",
+          "width": 960,
+          "height": 640,
+          "action": "rapid clicks",
+          "variant": "allocation",
+          "menuX": 0,
+          "menuWidth": 0,
+          "buttonX": 0,
+          "targetWidth": 0
+        },
+        {
+          "presentation": "fold",
+          "width": 420,
+          "height": 640,
+          "action": "rapid clicks",
+          "variant": "allocation",
+          "menuX": 0,
+          "menuWidth": 0,
+          "buttonX": 0,
+          "targetWidth": 0
+        },
+        {
+          "presentation": "fold",
+          "width": 960,
+          "height": 640,
+          "action": "rapid clicks",
+          "variant": "allocation",
+          "menuX": 0,
+          "menuWidth": 0,
+          "buttonX": 0,
+          "targetWidth": 0
+        }
+      ]
+    },
+    {
+      "variant": "combined",
+      "results": [
+        {
+          "presentation": "veil",
+          "width": 420,
+          "height": 640,
+          "action": "rapid clicks",
+          "variant": "combined",
+          "menuX": 0,
+          "menuWidth": 0,
+          "buttonX": 0,
+          "targetWidth": 0
+        },
+        {
+          "presentation": "veil",
+          "width": 960,
+          "height": 640,
+          "action": "rapid clicks",
+          "variant": "combined",
+          "menuX": 0,
+          "menuWidth": 0,
+          "buttonX": 0,
+          "targetWidth": 0
+        },
+        {
+          "presentation": "origami",
+          "width": 420,
+          "height": 640,
+          "action": "rapid clicks",
+          "variant": "combined",
+          "menuX": 0,
+          "menuWidth": 0,
+          "buttonX": 0,
+          "targetWidth": 0
+        },
+        {
+          "presentation": "origami",
+          "width": 960,
+          "height": 640,
+          "action": "rapid clicks",
+          "variant": "combined",
+          "menuX": 0,
+          "menuWidth": 0,
+          "buttonX": 0,
+          "targetWidth": 0
+        },
+        {
+          "presentation": "fold",
+          "width": 420,
+          "height": 640,
+          "action": "rapid clicks",
+          "variant": "combined",
+          "menuX": 0,
+          "menuWidth": 0,
+          "buttonX": 0,
+          "targetWidth": 0
+        },
+        {
+          "presentation": "fold",
+          "width": 960,
+          "height": 640,
+          "action": "rapid clicks",
+          "variant": "combined",
+          "menuX": 0,
+          "menuWidth": 0,
+          "buttonX": 0,
+          "targetWidth": 0
+        }
+      ]
+    }
+  ]
+}

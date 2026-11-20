@@ -271,7 +271,9 @@ export class CellStrip {
 					const card = parseFloat(box.style.width) || 0;
 					const left = origin + (entry.position ?? 0);
 					const revealed = !old && !this.follows();
-					const anchoredLeft = revealed || (to > from && old && !old.overlay && Math.abs(left - old.currentRect) + STILL < Math.abs(left + to - old.currentRect - from));
+					const neighbourOpens = arriving.includes(next[next.indexOf(entry) + 1]);
+					const surviving = entry.visible && !entry.folded && !entry.departing && !neighbourOpens;
+					const anchoredLeft = revealed || ((to > from || surviving) && old && !old.overlay && Math.abs(left - old.currentRect) + STILL < Math.abs(left + to - old.currentRect - from));
 					if (anchoredLeft || entry.follows) this.geometry.push(box.animate([{ width: `${from}px`, marginRight: "0px" }, { width: `${to}px`, marginRight: "0px" }], delay));
 					else this.geometry.push(box.animate([{ marginRight: `${from - card}px` }, { marginRight: `${to - card}px` }], delay));
 					if (entry.follows) this.geometry.push(entry.element.animate([{ width: `${from}px` }, { width: `${to}px` }], delay));

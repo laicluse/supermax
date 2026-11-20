@@ -49,6 +49,8 @@ One row is a chain: the inbox stays on the left, the message opens beside it, it
 
 [Folding](docs/folding.md) names the states and shows the horizontal and vertical layout at different viewport sizes. Choose **Folding: cells and rows** in the [interactive demo](docs/index.html) to trade space in both directions and compare the Motion styles.
 
+Local fold trades retain the surrounding chain's widths while they remain valid. New minimums, viewport changes and explicit divider sizes may require redistribution; width-only changes keep a surviving card's stationary leading edge anchored.
+
 ## Allocating one chain
 
 ```js
