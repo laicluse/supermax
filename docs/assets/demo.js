@@ -380,6 +380,7 @@ class Session {
 		this.controls.context.addEventListener("change", () => this.setContext(this.controls.context.value));
 		this.controls.presentation.addEventListener("change", () => this.setPresentation(this.controls.presentation.value));
 		this.frames = frames.map((frame) => this.buildFrame(frame));
+		this.presentations = presentations;
 		const requested = new URLSearchParams(location.search).get("presentation");
 		if (requested && presentations[requested]) this.setPresentation(requested);
 		window.addEventListener("popstate", (event) => this.arrive(event.state));
@@ -489,13 +490,19 @@ class Session {
 		const remote = new Set();
 		for (const frame of this.frames) {
 			const workspace = frame.workspace;
+			const model = workspace.navigator;
+			const open = new Set([...model.occurrences.values()].map((occurrence) => occurrence.destination));
+			for (const [id, definition] of Object.entries(model.destinations)) {
+				if (remoteKinds.has(definition.data?.kind) && !open.has(id)) delete model.destinations[id];
+			}
 			for (const [occurrenceId, entry] of workspace.cells) {
-				const occurrence = workspace.navigator.get(occurrenceId);
-				const definition = occurrence && workspace.navigator.destination(occurrence.destination);
+				const occurrence = model.get(occurrenceId);
+				const definition = occurrence && model.destination(occurrence.destination);
 				if (!definition || !remoteKinds.has(definition.data?.kind)) continue;
 				remote.add(occurrence.destination);
 				workspace.mountContent(entry, occurrence);
 			}
+			workspace.modal?.retry();
 		}
 		for (const id of remote) {
 			this.request("manifest", id).then((manifest) => { for (const frame of this.frames) frame.workspace.define(id, manifest); }, () => null);
@@ -541,6 +548,7 @@ class Session {
 	}
 
 	dispatch(action, origin) {
+		this.replaying = null;
 		const results = this.frames.map((frame) => frame.workspace.apply(action, { focus: frame.workspace === origin }));
 		const originResult = results[this.frames.findIndex((frame) => frame.workspace === origin)];
 		if (results.some((result) => result.ok && !result.noop)) {
@@ -552,6 +560,7 @@ class Session {
 	}
 
 	record(mode) {
+		if (this.replaying) return;
 		const state = { log: this.log, snapshots: this.frames.map((frame) => frame.workspace.navigator.snapshot()) };
 		const url = this.log.length ? `#${encodeLog(this.log)}` : location.pathname + location.search;
 		history[`${mode}State`](state, "", url);
@@ -559,6 +568,7 @@ class Session {
 
 	arrive(state) {
 		if (state?.snapshots && this.frames.every((frame, index) => frame.workspace.restore(state.snapshots[index]))) {
+			this.replaying = null;
 			this.log = state.log;
 			return;
 		}

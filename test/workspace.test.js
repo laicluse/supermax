@@ -298,9 +298,19 @@ test("a peek shows a compact cell's own content without touching history", async
 	await page.fill(inFrame("a", ".supermax-peek .caption"), "Peeked draft");
 	assert.deepEqual(await groups("a"), ["Coast", "History A", "Crop 3:2 (A)"]);
 	assert.equal(page.url(), urlBefore, "a peek writes no history");
+	await page.keyboard.press("Escape");
+	await page.waitForSelector(inFrame("a", ".supermax-peek"), { state: "detached" });
+	await page.waitForTimeout(250);
+	assert.equal(await page.locator(inFrame("a", ".supermax-peek")).count(), 0, "Escape from inside the peek closes it and the rail's focus does not reopen it");
+	assert.equal(await page.evaluate(() => document.activeElement?.className), "supermax-rail", "focus returns to the rail");
+	await page.mouse.move(5, 5);
+	await page.waitForTimeout(100);
+	await page.hover(rail);
+	await page.waitForSelector(inFrame("a", ".supermax-peek"));
 	await page.mouse.move(5, 5);
 	await page.waitForSelector(inFrame("a", ".supermax-peek"), { state: "detached" });
 	assert.equal(await page.locator(inFrame("a", `[data-occurrence="${coast.photo("thumbnails", "a")}"] .caption`)).inputValue(), "Peeked draft", "the draft typed in the peek lives in the cell");
+	await page.focus(inFrame("a", ".supermax-back"));
 	await page.focus(rail);
 	await page.waitForSelector(inFrame("a", ".supermax-peek"));
 	await page.keyboard.press("Escape");
@@ -372,6 +382,10 @@ test("dividers resize cells and rows within their bounds by pointer and keyboard
 	assert.equal(await page.locator(inFrame("a", ".supermax-divider.is-sized")).count(), 0);
 	const frameHandle = await page.locator(frame("a")).evaluate((element) => getComputedStyle(element).resize);
 	assert.equal(frameHandle, "both", "the frame handle is the browser's own resize control, not a divider");
+	while ((await groups("a")).length > 0) { await page.click(inFrame("a", ".supermax-back")); await settle(); }
+	await page.click(inFrame("a", '.album-item[data-destination="album:coast"]'));
+	await settle();
+	assert.ok((await page.locator(inFrame("a", ".supermax-divider.is-horizontal")).count()) >= 2, "reopening the same split brings its row dividers back");
 });
 
 test("remote cells open from hints, complete when their layout metadata arrives, and recover from failures", async () => {
@@ -437,6 +451,13 @@ test("remote cells open from hints, complete when their layout metadata arrives,
 	await settle();
 	assert.equal(await page.evaluate(() => window.supermaxDemo.requests.at(-1).id), "coast:edit:a:1", "hovering an item prefetches its layout metadata");
 	assert.equal(await page.locator(inFrame("a", `[data-occurrence="${coast.edit("thumbnails", "a", 1)}"]`)).count(), 0, "without opening anything");
+	await page.selectOption("[data-context]", "ben");
+	await settle();
+	while ((await groups("a")).length > 0) { await page.click(inFrame("a", ".supermax-back")); await settle(); }
+	await page.click(inFrame("a", '.album-item[data-destination="album:coast"]'));
+	await settle();
+	assert.ok((await state("a")).occurrences.includes(coast.metadata("thumbnails", "a")), "reopening as Ben still shows metadata");
+	assert.ok(!(await state("a")).occurrences.includes(coast.history("thumbnails", "a")), "and does not reuse the layout metadata that Ana loaded earlier");
 	const first = await fetch(`${server.url}/api/manifest/coast:metadata:a?context=ana`);
 	const etag = first.headers.get("etag");
 	const second = await fetch(`${server.url}/api/manifest/coast:metadata:a?context=ana`, { headers: { "If-None-Match": etag } });
@@ -594,11 +615,20 @@ test("notices stay with their cell, move to the workspace when the source is out
 	assert.equal(await page.evaluate(() => document.activeElement?.closest(".supermax-modal") !== null), true, "the modal keeps focus");
 	for (let step = 0; step < 8 && !(await page.evaluate(() => document.activeElement?.closest(".supermax-notice") !== null)); step += 1) await page.keyboard.press("Tab");
 	assert.equal(await page.evaluate(() => document.activeElement?.closest(".supermax-notice") !== null), true, "Tab reaches the notice from the modal");
+	for (let step = 0; step < 3 && !(await page.evaluate(() => document.activeElement?.closest(".supermax-modal") !== null)); step += 1) await page.keyboard.press("Tab");
+	assert.equal(await page.evaluate(() => document.activeElement?.closest(".supermax-modal") !== null), true, "Tab past the last notice control returns into the modal, never behind it");
+	for (let step = 0; step < 8 && !(await page.evaluate(() => document.activeElement?.closest(".supermax-notice") !== null)); step += 1) await page.keyboard.press("Shift+Tab");
+	assert.equal(await page.evaluate(() => document.activeElement?.closest(".supermax-notice") !== null), true, "Shift+Tab reaches the notice the other way round");
+	await page.focus(`${exportNotice} .supermax-notice-dismiss`);
 	await page.keyboard.press("Escape");
 	assert.equal(await page.locator(exportNotice).count(), 0, "Escape on a notice dismisses that notice");
 	assert.equal(await page.locator(inFrame("a", ".supermax-modal")).count(), 1, "and leaves the modal open");
 	assert.equal(await page.evaluate(() => document.activeElement?.closest(".supermax-modal") !== null), true, "with focus back inside it");
+	await page.evaluate((source) => window.supermaxDemo.frames[0].workspace.notify({ id: "under-modal", scope: "cell", source, kind: "error", message: "Still here" }), coast.photo("thumbnails", "a"));
+	assert.equal(await page.locator(inFrame("a", '.supermax-notices [data-notice="under-modal"]')).count(), 1, "a cell notice raised while a modal is open lands in the workspace region, where it is reachable");
 	await page.keyboard.press("Escape");
+	assert.equal(await page.locator(`${photoA} .supermax-cell-notices [data-notice="under-modal"]`).count(), 1, "closing the modal returns the cell notice to its cell");
+	await page.click(`${photoA} [data-notice="under-modal"] .supermax-notice-dismiss`);
 	await page.click(inFrame("a", `[data-occurrence="${coast.metadata("thumbnails", "a")}"] .album-export`));
 	await page.click(`${exportNotice} .supermax-notice-action`);
 	assert.equal(await page.locator(inFrame("a", ".supermax-notices .supermax-notice.is-success .supermax-notice-text")).last().textContent(), "Downloaded Coast.zip", "an action notice runs its action and retires");
@@ -613,7 +643,11 @@ test("a second presentation replaces motion and surface while behaviour, interru
 	assert.deepEqual(await workspaceClass(), [`supermax-presentation-${PRESENTATION}`], "the page starts in the requested presentation, slide by default");
 	await page.selectOption("[data-presentation]", "slide");
 	await settle();
+	await page.focus(inFrame("a", `[data-occurrence="${coast.photo("map", "b")}"] .caption`));
+	const focusedBefore = await activeOccurrence();
 	const before = { state: await state("a"), layout: await page.evaluate(() => JSON.stringify(window.supermaxDemo.frames[0].workspace.layout)) };
+	await page.evaluate(() => window.supermaxDemo.frames[0].workspace.setPresentation(window.supermaxDemo.presentations.fold));
+	assert.equal(await activeOccurrence(), focusedBefore, "switching keeps keyboard focus on the same cell");
 	await page.selectOption("[data-presentation]", "fold");
 	await settle();
 	assert.deepEqual(await workspaceClass(), ["supermax-presentation-fold"], "switching marks the workspace for the override's surface");

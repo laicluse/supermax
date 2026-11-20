@@ -109,6 +109,7 @@ export class Workspace extends EventTarget {
 	setPresentation(presentation) {
 		const next = normalizePresentation(presentation);
 		if (next === this.presentation) return;
+		const focused = this.document.activeElement?.closest?.(".supermax-cell")?.dataset.occurrence ?? null;
 		this.closePeek();
 		this.element.classList.remove(`supermax-presentation-${this.presentation.name}`);
 		this.presentation = next;
@@ -123,6 +124,7 @@ export class Workspace extends EventTarget {
 		for (const divider of this.dividers.values()) divider.element.remove();
 		this.dividers.clear();
 		if (this.rendered) this.render({ animate: false });
+		if (focused) this.focusCell(focused);
 		this.dispatchEvent(new CustomEvent("presentation", { detail: { name: next.name } }));
 	}
 
@@ -163,7 +165,7 @@ export class Workspace extends EventTarget {
 	}
 
 	noticeHostFor(notice) {
-		if (notice.scope !== "cell" || !notice.source) return this.noticeRegion;
+		if (notice.scope !== "cell" || !notice.source || this.modal) return this.noticeRegion;
 		const entry = this.cells.get(notice.source);
 		const cell = this.findCell(notice.source);
 		if (!entry || !cell?.visible || cell.compact || this.inCollapsedRow(notice.source)) return this.noticeRegion;
@@ -214,10 +216,12 @@ export class Workspace extends EventTarget {
 		controls.append(close);
 		element.append(text, controls);
 		element.addEventListener("keydown", (event) => { if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); this.dismiss(notice.id); } });
-		element.addEventListener("pointerenter", () => this.pauseNotice(notice));
-		element.addEventListener("pointerleave", () => this.resumeNotice(notice));
-		element.addEventListener("focusin", () => this.pauseNotice(notice));
-		element.addEventListener("focusout", (event) => { if (!element.contains(event.relatedTarget)) this.resumeNotice(notice); });
+		notice.hovered = false;
+		notice.focused = false;
+		element.addEventListener("pointerenter", () => this.holdNotice(notice, "hovered", true));
+		element.addEventListener("pointerleave", () => this.holdNotice(notice, "hovered", false));
+		element.addEventListener("focusin", () => this.holdNotice(notice, "focused", true));
+		element.addEventListener("focusout", (event) => { if (!element.contains(event.relatedTarget)) this.holdNotice(notice, "focused", false); });
 		if (sourceOccurrence) notice.sourceTitle = sourceOccurrence.title;
 		notice.element = element;
 		notice.host = host;
@@ -250,6 +254,12 @@ export class Workspace extends EventTarget {
 			this.reveal(chainRoot.id, index - firstVisible);
 		}
 		this.focusCell(occurrenceId);
+	}
+
+	holdNotice(notice, key, held) {
+		notice[key] = held;
+		if (notice.hovered || notice.focused) this.pauseNotice(notice);
+		else this.resumeNotice(notice);
 	}
 
 	pauseNotice(notice) {
@@ -294,12 +304,14 @@ export class Workspace extends EventTarget {
 		dialog.append(header, body);
 		element.append(dialog);
 		element.addEventListener("pointerdown", (event) => { if (event.target === element) this.closeModal("backdrop"); });
-		dialog.addEventListener("keydown", (event) => this.modalKeydown(event));
+		this.onModalKeydown = (event) => this.modalKeydown(event);
+		this.element.addEventListener("keydown", this.onModalKeydown, true);
 		const returnFocus = this.document.activeElement;
 		this.modal = { element, dialog, body, title: definition.title, source: source?.id ?? null, returnFocus, handle: {}, generation: 0, id: null, retry: null };
 		this.modal.retry = () => this.mountInto(this.modal, definition.title, () => definition.content(this.modal, this), () => this.modal === modalEntry);
 		const modalEntry = this.modal;
 		this.body.inert = true;
+		this.renderNotices();
 		this.element.append(element);
 		this.element.classList.add("has-modal");
 		this.placeModal();
@@ -316,6 +328,12 @@ export class Workspace extends EventTarget {
 		context.textContent = this.modal.source ? (source ? `From ${source.title}` : "Its source has closed") : "";
 		this.modal.dialog.classList.toggle("is-orphaned", !!this.modal.source && !source);
 		this.placeModal();
+	}
+
+	focusRail(entry) {
+		this.programmaticFocus = true;
+		entry.rail.focus({ preventScroll: true });
+		this.programmaticFocus = false;
 	}
 
 	placeModal() {
@@ -349,13 +367,16 @@ export class Workspace extends EventTarget {
 	}
 
 	modalKeydown(event) {
-		if (event.key === "Escape") {
+		if (!this.modal) return;
+		const inDialog = this.modal.dialog.contains(event.target);
+		const inNotices = this.noticeRegion.contains(event.target);
+		if (event.key === "Escape" && inDialog) {
 			event.preventDefault();
 			event.stopPropagation();
 			this.closeModal("escape");
 			return;
 		}
-		if (event.key !== "Tab") return;
+		if (event.key !== "Tab" || !(inDialog || inNotices)) return;
 		const items = [...this.focusables(this.modal.dialog), ...this.focusables(this.noticeRegion)];
 		if (items.length === 0) { event.preventDefault(); this.modal.dialog.focus(); return; }
 		const index = items.indexOf(this.document.activeElement);
@@ -372,6 +393,9 @@ export class Workspace extends EventTarget {
 		modal.handle.dispose?.();
 		modal.element.remove();
 		this.body.inert = false;
+		this.element.removeEventListener("keydown", this.onModalKeydown, true);
+		this.onModalKeydown = null;
+		this.renderNotices();
 		this.element.classList.remove("has-modal");
 		this.returnFromModal(modal);
 		this.dispatchEvent(new CustomEvent("modal", { detail: { state: "closed", reason, title: modal.title, source: modal.source } }));
@@ -410,10 +434,10 @@ export class Workspace extends EventTarget {
 		this.focusCell(occurrenceId);
 	}
 
-	setSize(occurrenceId, size) {
-		this.navigator.setSize(occurrenceId, size);
+	setSize(occurrenceId, size, axis = "width") {
+		this.navigator.setSize(occurrenceId, size, axis);
 		this.render({ animate: false });
-		this.dispatchEvent(new CustomEvent("size", { detail: { occurrence: occurrenceId, size } }));
+		this.dispatchEvent(new CustomEvent("size", { detail: { occurrence: occurrenceId, size, axis } }));
 	}
 
 	openPeek(occurrenceId) {
@@ -433,7 +457,7 @@ export class Workspace extends EventTarget {
 		close.type = "button";
 		close.setAttribute("aria-label", "Close peek");
 		close.textContent = "×";
-		close.addEventListener("click", () => { this.closePeek(); entry.rail.focus(); });
+		close.addEventListener("click", () => { this.closePeek(); this.focusRail(entry); });
 		header.append(close);
 		overlay.append(header, entry.body);
 		const host = this.element.getBoundingClientRect();
@@ -450,7 +474,7 @@ export class Workspace extends EventTarget {
 			if (event.key !== "Escape") return;
 			event.stopPropagation();
 			this.closePeek();
-			entry.rail.focus();
+			this.focusRail(entry);
 		});
 		overlay.addEventListener("focusout", (event) => {
 			if (!event.relatedTarget || overlay.contains(event.relatedTarget) || event.relatedTarget === entry.rail) return;
@@ -493,15 +517,40 @@ export class Workspace extends EventTarget {
 
 	define(id, definition) {
 		const result = this.navigator.define(id, definition);
+		const completed = this.navigator.destination(id);
 		for (const [occurrenceId, entry] of this.cells) {
 			const occurrence = this.navigator.get(occurrenceId);
 			if (occurrence?.destination !== id) continue;
 			if (entry.header) entry.header.firstChild.textContent = occurrence.title;
 			entry.element.setAttribute("aria-label", occurrence.title);
-			if (entry.provisional) this.mountContent(entry, occurrence);
+			if (!entry.provisional) continue;
+			if (isSplit(completed)) {
+				this.becomeSplit(entry);
+				continue;
+			}
+			if (completed.compact && !entry.rail) this.mountCompact(entry, occurrence, completed);
+			this.mountContent(entry, occurrence);
+		}
+		for (const rejection of result.rejected) {
+			this.dispatchEvent(new CustomEvent("rejected", { detail: { action: { type: "define", destination: id, occurrence: rejection.occurrence }, result: rejection.result } }));
 		}
 		this.render({ animate: true });
 		return result;
+	}
+
+	becomeSplit(entry) {
+		entry.generation += 1;
+		entry.handle.dispose?.();
+		entry.handle = {};
+		entry.provisional = false;
+		entry.header?.remove();
+		entry.header = null;
+		entry.element.querySelector(":scope > .supermax-compact")?.remove();
+		entry.rail = null;
+		entry.collapseButton = null;
+		entry.element.classList.remove("is-provisional", "is-loading", "is-error", "is-compact");
+		entry.element.classList.add("is-split");
+		entry.body.replaceChildren(this.create("div", "supermax-rows"));
 	}
 
 	mountContent(entry, occurrence) {
@@ -539,7 +588,10 @@ export class Workspace extends EventTarget {
 		}
 		this.showLoading(entry, title);
 		pending.then(
-			(handle) => { if (entry.generation === generation && isCurrent()) this.settleContent(entry, handle ?? {}); },
+			(handle) => {
+				if (entry.generation === generation && isCurrent()) this.settleContent(entry, handle ?? {});
+				else handle?.dispose?.();
+			},
 			(error) => { if (entry.generation === generation && isCurrent()) this.showError(entry, title, error); },
 		);
 	}
@@ -635,7 +687,7 @@ export class Workspace extends EventTarget {
 		const target = this.visibleCellFor(occurrenceId);
 		const entry = target ? this.cells.get(target) : null;
 		if (!entry) return;
-		const focusable = this.findCell(target)?.compact ? entry.rail : entry.element;
+		const focusable = (this.findCell(target)?.compact ? entry.rail : null) ?? entry.element;
 		this.programmaticFocus = true;
 		focusable.focus({ preventScroll: true });
 		this.programmaticFocus = false;
@@ -799,7 +851,7 @@ export class Workspace extends EventTarget {
 	}
 
 	widthBound(chain, visible, cell) {
-		const others = visible.filter((candidate) => candidate !== cell).reduce((sum, candidate) => sum + (candidate.compact ? candidate.width : candidate.min), 0);
+		const others = visible.filter((candidate) => candidate !== cell).reduce((sum, candidate) => sum + (candidate.compact || candidate.sized ? candidate.width : candidate.min), 0);
 		return Math.max(cell.min, Math.min(cell.max, chain.width - others));
 	}
 
@@ -816,7 +868,7 @@ export class Workspace extends EventTarget {
 			divider.element.style.top = `${offset - 4}px`;
 			divider.element.style.left = "0";
 			divider.element.style.width = "100%";
-			const others = rows.filter((candidate) => candidate !== row).reduce((sum, candidate) => sum + (candidate.collapsed ? candidate.height : candidate.minHeight), 0);
+			const others = rows.filter((candidate) => candidate !== row).reduce((sum, candidate) => sum + (candidate.collapsed || candidate.sized ? candidate.height : candidate.minHeight), 0);
 			this.updateDivider(divider, row.height, row.minHeight, Math.max(row.minHeight, Math.min(row.maxHeight, cell.rows.contentHeight - others)), row.sized);
 		});
 		for (const [key, divider] of this.dividers) {
@@ -829,7 +881,11 @@ export class Workspace extends EventTarget {
 
 	divider(key, host, orientation, occurrenceId, title) {
 		let divider = this.dividers.get(key);
-		if (divider) return divider;
+		if (divider && divider.host === host && divider.element.isConnected) return divider;
+		if (divider) {
+			divider.element.remove();
+			this.dividers.delete(key);
+		}
 		const element = this.create("div", `supermax-divider is-${orientation}`);
 		const handle = this.create("button", "supermax-divider-handle");
 		handle.type = "button";
@@ -841,10 +897,11 @@ export class Workspace extends EventTarget {
 		reset.setAttribute("aria-label", `Reset size of ${title}`);
 		reset.textContent = "⟲";
 		reset.hidden = true;
-		reset.addEventListener("click", () => { this.setSize(occurrenceId, null); handle.focus(); });
+		const axis = orientation === "vertical" ? "width" : "height";
+		reset.addEventListener("click", () => { this.setSize(occurrenceId, null, axis); handle.focus(); });
 		element.append(handle, reset);
 		host.append(element);
-		divider = { element, handle, reset, host, occurrenceId, orientation, size: 0, min: 0, max: 0 };
+		divider = { element, handle, reset, host, occurrenceId, orientation, axis, size: 0, min: 0, max: 0 };
 		handle.addEventListener("pointerdown", (event) => this.startDrag(divider, event));
 		handle.addEventListener("keydown", (event) => this.keyResize(divider, event));
 		this.dividers.set(key, divider);
@@ -868,7 +925,7 @@ export class Workspace extends EventTarget {
 		const move = (moveEvent) => {
 			if (!this.drag || moveEvent.pointerId !== this.drag.pointerId) return;
 			const delta = (divider.orientation === "vertical" ? moveEvent.clientX : moveEvent.clientY) - this.drag.origin;
-			this.setSize(divider.occurrenceId, Math.min(divider.max, Math.max(divider.min, Math.round(this.drag.start + delta))));
+			this.setSize(divider.occurrenceId, Math.min(divider.max, Math.max(divider.min, Math.round(this.drag.start + delta))), divider.axis);
 		};
 		const stop = (upEvent) => {
 			if (upEvent.pointerId !== this.drag?.pointerId) return;
@@ -887,12 +944,12 @@ export class Workspace extends EventTarget {
 		const steps = { [vertical ? "ArrowLeft" : "ArrowUp"]: -16, [vertical ? "ArrowRight" : "ArrowDown"]: 16, Home: -Infinity, End: Infinity };
 		if (event.key === "Backspace" || event.key === "Delete") {
 			event.preventDefault();
-			this.setSize(divider.occurrenceId, null);
+			this.setSize(divider.occurrenceId, null, divider.axis);
 			return;
 		}
 		if (!(event.key in steps)) return;
 		event.preventDefault();
-		this.setSize(divider.occurrenceId, Math.min(divider.max, Math.max(divider.min, Math.round(divider.size + steps[event.key]))));
+		this.setSize(divider.occurrenceId, Math.min(divider.max, Math.max(divider.min, Math.round(divider.size + steps[event.key]))), divider.axis);
 	}
 
 	applyCompact(cell) {
@@ -1096,7 +1153,7 @@ export class Workspace extends EventTarget {
 
 	destroy() {
 		this.closePeek();
-		if (this.modal) { this.modal.handle.dispose?.(); this.modal.element.remove(); this.modal = null; }
+		if (this.modal) { this.modal.handle.dispose?.(); this.modal.element.remove(); this.modal = null; this.element.removeEventListener("keydown", this.onModalKeydown, true); }
 		for (const notice of this.notices.values()) this.pauseNotice(notice);
 		this.notices.clear();
 		this.observer.disconnect();

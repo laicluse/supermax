@@ -73,9 +73,14 @@ export function allocateChain(model, cells, width) {
 		if (compact.size >= model.chrome.maxCompact) break;
 		if (occurrence !== last && model.collapsed.has(occurrence.id) && compactWidth(model.destination(occurrence.destination)) !== null) compact.add(occurrence.id);
 	}
+	const sessionOf = (occurrence) => {
+		const definition = model.destination(occurrence.destination);
+		const session = model.sizeOf(occurrence.id, "width");
+		return session === null ? null : Math.min(definition.max, Math.max(definition.min, session));
+	};
 	const sumOfMins = () => cells.reduce((sum, occurrence) => {
 		const definition = model.destination(occurrence.destination);
-		return sum + (compact.has(occurrence.id) ? compactWidth(definition) : definition.min);
+		return sum + (compact.has(occurrence.id) ? compactWidth(definition) : sessionOf(occurrence) ?? definition.min);
 	}, 0);
 	for (const occurrence of cells) {
 		if (sumOfMins() <= width || compact.size >= model.chrome.maxCompact) break;
@@ -84,7 +89,7 @@ export function allocateChain(model, cells, width) {
 	}
 	const configs = cells.map((occurrence) => {
 		const definition = model.destination(occurrence.destination);
-		const session = model.sizes.has(occurrence.id) ? Math.min(definition.max, Math.max(definition.min, model.sizes.get(occurrence.id))) : null;
+		const session = sessionOf(occurrence);
 		const size = compact.has(occurrence.id) ? compactWidth(definition) : session;
 		return { id: occurrence.id, title: occurrence.title, min: size ?? definition.min, max: size ?? definition.max, preferred: size === null ? definition.preferred ?? null : null };
 	});
@@ -127,7 +132,7 @@ function layoutChain(model, chainRoot, width, height) {
 		const allocated = allocation.cells[index];
 		const visible = allocated ? allocated.visible : false;
 		const cellWidth = visible ? allocated.actual : definition.min;
-		const cell = { occurrence: occurrence.id, title: occurrence.title, width: cellWidth, visible, compact: visible && compact.has(occurrence.id), collapsible: compactWidth(definition) !== null && occurrence !== cells[cells.length - 1], sized: model.sizes.has(occurrence.id), min: definition.min, max: definition.max };
+		const cell = { occurrence: occurrence.id, title: occurrence.title, width: cellWidth, visible, compact: visible && compact.has(occurrence.id), collapsible: compactWidth(definition) !== null && occurrence !== cells[cells.length - 1], sized: model.sizeOf(occurrence.id, "width") !== null, min: definition.min, max: definition.max };
 		if (isSplit(definition)) {
 			cell.rows = layoutRows(model, occurrence, cellWidth, height);
 			overflow = overflow || cell.rows.overflow;
@@ -157,7 +162,8 @@ function layoutRows(model, split, width, height) {
 	let allocation;
 	for (let attempt = 0; attempt <= roots.length; attempt += 1) {
 		const collection = new CellCollection(roots.map((root, index) => {
-			const session = model.sizes.has(root.id) ? Math.min(definition[index].maxHeight, Math.max(definition[index].minHeight, model.sizes.get(root.id))) : null;
+			const stored = model.sizeOf(root.id, "height");
+			const session = stored === null ? null : Math.min(definition[index].maxHeight, Math.max(definition[index].minHeight, stored));
 			return { id: root.id, title: root.title, min: session ?? definition[index].minHeight, max: session ?? definition[index].maxHeight, preferred: session === null ? definition[index].preferredHeight ?? null : null };
 		}));
 		allocation = collection.distribute(Math.max(0, height - hidden * rowTab), null, { pinnedId });
@@ -180,7 +186,7 @@ function layoutRows(model, split, width, height) {
 			height: collapsed ? rowTab : rowHeight,
 			collapsed,
 			focused: pinned,
-			sized: model.sizes.has(root.id),
+			sized: model.sizeOf(root.id, "height") !== null,
 			minHeight: definition[index].minHeight,
 			maxHeight: definition[index].maxHeight,
 			chain: collapsed ? null : layoutChain(model, root, width, rowHeight),

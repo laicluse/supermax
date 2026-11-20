@@ -41,25 +41,37 @@ export class Navigator {
 		const previous = this.destination(id);
 		this.destinations[id] = { ...definition, provisional: false };
 		const completed = [];
-		for (const occurrence of this.occurrences.values()) {
+		const rejected = [];
+		for (const occurrence of [...this.occurrences.values()]) {
 			if (occurrence.destination !== id) continue;
 			occurrence.title = definition.title;
 			const group = this.groupOf(occurrence);
 			if (!previous?.provisional || !group) continue;
+			if (isSplit(definition)) {
+				const parent = occurrence.parent ? this.get(occurrence.parent) : null;
+				const validation = validateSplit(this, id, parent);
+				if (!validation.ok) {
+					this.closeSubtree(occurrence);
+					rejected.push({ occurrence: occurrence.id, result: validation });
+					continue;
+				}
+				for (const childId of [...occurrence.children]) this.removeSubtree(this.get(childId));
+				occurrence.children = [];
+				this.dropEmptyGroups();
+			}
 			if (group.root === occurrence.id) group.title = definition.title;
 			this.openDefaults(occurrence, group);
 			completed.push(occurrence.id);
 		}
 		for (const occurrence of [...this.occurrences.values()]) {
-			const parentDefinition = this.destination(occurrence.destination);
-			if (parentDefinition?.defaultChild !== id || parentDefinition.provisional || occurrence.children[0]) continue;
+			if (occurrence.awaiting !== id || occurrence.children[0]) continue;
 			const group = this.groupOf(occurrence);
 			if (!group) continue;
 			const before = occurrence.children.length;
 			this.openDefaults(occurrence, group);
 			if (occurrence.children.length > before) completed.push(occurrence.children[0]);
 		}
-		return { previous, completed };
+		return { previous, completed, rejected };
 	}
 
 	provisional(id, hint) {
@@ -105,7 +117,10 @@ export class Navigator {
 			group: group ? group.id : null,
 		};
 		this.occurrences.set(occurrence.id, occurrence);
-		if (parent) parent.children[row] = occurrence.id;
+		if (parent) {
+			parent.children[row] = occurrence.id;
+			parent.awaiting = null;
+		}
 		return occurrence;
 	}
 
@@ -171,7 +186,11 @@ export class Navigator {
 		}
 		if (definition.provisional || occurrence.children[0]) return;
 		const candidate = definition.defaultChild;
-		if (!candidate || !this.destination(candidate)) return;
+		if (!candidate) return;
+		if (!this.destination(candidate)) {
+			occurrence.awaiting = candidate;
+			return;
+		}
 		if (chainCells(this, chainRootOf(this, occurrence)).some((cell) => cell.destination === candidate)) return;
 		if (isSplit(this.destination(candidate)) && !validateSplit(this, candidate, occurrence).ok) return;
 		if (!this.fits(occurrence, candidate)) return;
@@ -203,7 +222,8 @@ export class Navigator {
 		this.occurrences.delete(occurrence.id);
 		this.revealOffsets.delete(occurrence.id);
 		this.collapsed.delete(occurrence.id);
-		this.sizes.delete(occurrence.id);
+		this.sizes.delete(`width:${occurrence.id}`);
+		this.sizes.delete(`height:${occurrence.id}`);
 		if (this.focused === occurrence.id) this.focused = parent ? parent.id : this.root.id;
 		closed.unshift({ id: occurrence.id, title: occurrence.title });
 		return closed;
@@ -241,10 +261,15 @@ export class Navigator {
 		}
 	}
 
-	setSize(occurrenceId, size) {
+	setSize(occurrenceId, size, axis = "width") {
 		if (!this.get(occurrenceId)) return;
-		if (size === null) this.sizes.delete(occurrenceId);
-		else this.sizes.set(occurrenceId, size);
+		if (axis !== "width" && axis !== "height") throw new TypeError("axis must be width or height");
+		if (size === null) this.sizes.delete(`${axis}:${occurrenceId}`);
+		else this.sizes.set(`${axis}:${occurrenceId}`, size);
+	}
+
+	sizeOf(occurrenceId, axis = "width") {
+		return this.sizes.get(`${axis}:${occurrenceId}`) ?? null;
 	}
 
 	collapse(occurrenceId, collapsed = true) {
