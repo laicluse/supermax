@@ -197,7 +197,7 @@ scenario("a split cannot open inside a row, and a row cannot be a split", () => 
 	assert.equal(instance.open("inner", { from: item("list", "nested") }).validation.reason, "nested-split", "the manual click gets the same verdict");
 });
 
-scenario("rows hide from the top, a window start keeps an earlier row, and the last row keeps its minimum below the supported height", () => {
+scenario("rows before the active row can hide, while later rows stay reachable through overflow", () => {
 	const instance = model(1000, 500);
 	openGallery(instance);
 	const rows = () => instance.layout().chain.cells[1].rows.rows;
@@ -211,19 +211,19 @@ scenario("rows hide from the top, a window start keeps an earlier row, and the l
 	assert.deepEqual(instance.state(), before, "resize rewrites nothing");
 
 	instance.startRows(GALLERY, row("list"));
-	assert.deepEqual(rows().map((candidate) => [candidate.visible, candidate.height]), [[true, 136], [true, 136], [false, 0]], "a window start shows the earlier row and the last one gives way");
+	assert.deepEqual(rows().map((candidate) => [candidate.visible, candidate.height]), [[true, 100], [true, 100], [true, 100]], "a window start cannot silently hide later nonfoldable rows");
+	assert.equal(instance.layout().overflow, true, "the later rows remain reachable by scrolling");
 	instance.resize({ width: 1000, height: 500 });
 	assert.deepEqual(rows().map((candidate) => candidate.visible), [true, true, true], "with room again the window fills toward the end");
 
 	instance.resize({ width: 1000, height: 100 });
 	const layout = instance.layout();
-	assert.equal(layout.belowMinimum, true);
 	assert.equal(layout.overflow, true);
-	assert.deepEqual(rows().map((candidate) => [candidate.visible, candidate.height]), [[true, 100], [false, 0], [false, 0]], "even at a short budget the window start keeps its declared minimum");
-	assert.equal(layout.contentHeight, 100 + instance.chrome.header, "the content height counts the split's title bar above its rows");
+	assert.deepEqual(rows().map((candidate) => [candidate.visible, candidate.height]), [[true, 100], [true, 100], [true, 100]], "even at a short budget later nonfoldable rows stay reachable");
+	assert.equal(layout.contentHeight, 300 + instance.chrome.header, "the content height counts all rows and the split's title bar");
 });
 
-scenario("a window start shifts the row window and never changes what is open", () => {
+scenario("a window start never strands later cells in a row", () => {
 	const narrow = model(110, 500);
 	openGallery(narrow);
 	narrow.open("item:a", { from: row("list") });
@@ -231,14 +231,29 @@ scenario("a window start shifts the row window and never changes what is open", 
 	assert.deepEqual(chain.cells.map((cell) => cell.visible), [false, true]);
 	narrow.startWindow(row("list"), row("list"));
 	chain = narrow.layout().chain.cells[1].rows.rows[0].chain;
-	assert.deepEqual(chain.cells.map((cell) => cell.visible), [true, false]);
+	assert.deepEqual(chain.cells.map((cell) => cell.visible), [true, true]);
 	assert.deepEqual(titles(narrow), ["Gallery", "Item A"]);
-	assert.equal(narrow.layout().chain.cells[1].rows.rows[0].chain.revealOffset, 1, "the window holds until something changes");
 	narrow.open("detail:a", { from: item("list", "a") });
-	assert.equal(narrow.layout().chain.cells[1].rows.rows[0].chain.revealOffset, 0, "an opening in the row resets the window");
+	assert.equal(narrow.windowStarts.has(row("list")), false, "an opening resets the window anchor");
 	narrow.startWindow(row("list"), row("list"));
 	narrow.closeNewestGroup();
-	assert.equal(narrow.layout().chain.cells[1].rows.rows[0].chain.revealOffset, 1, "closing a group keeps the window");
+	assert.equal(narrow.windowStarts.get(row("list")), row("list"), "closing a group keeps the window anchor");
+});
+
+scenario("a split exposes the full width of a protected nonfoldable row", () => {
+	const instance = new BaseNavigator({ root: "menu", minViewportHeight: 300, destinations: {
+		menu: { title: "Menu", min: 40, max: 40, keep: true },
+		split: { title: "Split", rows: [{ destination: "list", minHeight: 200, maxHeight: "*", preferredHeight: 250 }] },
+		list: { title: "List", min: 200, max: 200, fold: false },
+		item: { title: "Item", min: 200, max: "*", preferred: 200, fold: false },
+	} });
+	instance.resize({ width: 300, height: 300 });
+	instance.open("split", { from: "menu" });
+	instance.open("item", { from: "menu/split/list" });
+	instance.startWindow("menu/split/list", "menu/split/list");
+	const layout = instance.layout();
+	assert.deepEqual(layout.chains.get("menu/split/list").cells.map((cell) => cell.visible), [true, true]);
+	assert.ok(layout.chain.contentWidth >= 440, "the outer scroll range includes the complete nested row");
 });
 
 scenario("Up reaches every cell hidden above the window, newest branch first, never what lies after it", () => {
@@ -253,7 +268,7 @@ scenario("Up reaches every cell hidden above the window, newest branch first, ne
 	assert.equal(narrow.upTarget(), null, "the item now after the window is not a target");
 	narrow.open("item:b", { from: row("grid") });
 	narrow.bringIntoView(item("grid", "b"));
-	assert.deepEqual(narrow.upTarget(), { id: row("grid"), title: "Grid" }, "the newest branch climbs first");
+	assert.equal(narrow.upTarget(), null, "a row that stays fully visible needs no Back target");
 	assert.deepEqual(titles(narrow), ["Gallery", "Item A", "Item B"], "finding a target closes nothing");
 
 	const chain = new Navigator({ destinations: { elsewhere, menu: { title: "Menu", min: 100, max: 100, keep: true }, a: { title: "A", min: 100, max: 100, defaultChild: "b" }, b: { title: "B", min: 100, max: 100, defaultChild: "c" }, c: { title: "C", min: 100, max: 100 } }, root: "menu", minViewportHeight, chrome });
@@ -305,10 +320,10 @@ scenario("a revealed outer chain does not change which defaults open", () => {
 	const revealed = model(150, 500);
 	openGallery(revealed);
 	revealed.startWindow("root", "root");
-	assert.equal(revealed.layout().chain.cells[1].visible, false, "the gallery is hidden behind the revealed root");
+	assert.equal(revealed.layout().chain.cells[1].visible, true, "the gallery after the revealed root remains reachable");
 	assert.equal(revealed.open("item:b", { from: row("grid") }).ok, true);
 	assert.deepEqual(revealed.state().occurrences, plain.state().occurrences, "the row width ignores the reveal, so the same defaults open");
-	assert.equal(revealed.layout().chain.revealOffset, 0, "an opening resets the reveal of every chain above it");
+	assert.equal(revealed.windowStarts.has("root"), false, "an opening resets the reveal anchor of every chain above it");
 });
 
 scenario("a kept cell stays at its declared minimum while other cells give way", () => {
@@ -331,7 +346,7 @@ scenario("a kept cell stays at its declared minimum while other cells give way",
 	instance.resize({ width: 120, height: 500 });
 	assert.deepEqual(cells(), ["full", "gone", "gone", "full"], "the kept cell stays at its minimum even when the frame overflows");
 	instance.startWindow("menu", "menu/a");
-	assert.deepEqual(cells(), ["full", "full", "gone", "gone"], "a window start shows an earlier cell next to the kept one");
+	assert.deepEqual(cells(), ["full", "full", "full", "full"], "a window start keeps every later nonfoldable cell reachable through overflow");
 	instance.startWindow("menu", null);
 	instance.resize({ width: 110, height: 500 });
 	assert.deepEqual([instance.layout().overflowX, Math.round(instance.layout().chain.contentWidth)], [true, 200], "the kept cell and newest cell retain their minima when the frame cannot fit both");
@@ -1016,9 +1031,11 @@ scenario("Show traverses folded vertical rows toward earlier context without tog
 	assert.equal(model.upTarget().id, "home/split/summary");
 	assert.deepEqual(model.showByClosing(model.upTarget().id), []);
 	assert.equal(model.layout().rows.get("home/split/summary").folded, false);
+	assert.deepEqual(model.layout().chain.cells[1].rows.rows.map((row) => [row.visible, row.folded]), [[true, true], [true, false], [true, true]], "the later row remains accessible through its fold after Show");
 	assert.equal(model.upTarget().id, "home/split/first", "the next click continues above the revealed fold");
 	assert.deepEqual(model.showByClosing(model.upTarget().id), []);
 	assert.equal(model.layout().rows.get("home/split/first").folded, false);
+	assert.deepEqual(model.layout().chain.cells[1].rows.rows.map((row) => [row.visible, row.folded]), [[true, false], [true, true], [true, true]], "every later row remains accessible after Show reaches the first one");
 	assert.equal(model.upTarget(), null, "later rows are not back targets");
 	assert.equal(model.occurrences.size, 5, "rows remain owned by the split");
 });

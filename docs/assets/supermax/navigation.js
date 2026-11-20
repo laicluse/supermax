@@ -222,9 +222,10 @@ export class Navigator {
 		const shown = (layout) => new Set([...layout.cells.values()].filter((cell) => cell.full).map((cell) => cell.occurrence));
 		const before = shown(this.layout());
 		const child = this.createOccurrence(candidate, occurrence, 0, group);
-		const after = shown(this.layout());
+		const layout = this.layout();
+		const after = shown(layout);
 		// allow-comment: a default opens only when, with the room its chain then asks for, it shows in full without hiding any cell that showed in full before.
-		if (!after.has(child.id) || [...before].some((id) => !after.has(id))) {
+		if (layout.overflowX || layout.overflow || !after.has(child.id) || [...before].some((id) => !after.has(id))) {
 			this.removeSubtree(child);
 			return;
 		}
@@ -421,7 +422,7 @@ export class Navigator {
 				start = child;
 			}
 			const layout = this.layout();
-			const fits = !refused && added.every((id) => {
+			const fits = !refused && !layout.overflowX && !layout.overflow && added.every((id) => {
 				const cell = layout.cells.get(id);
 				return cell?.full;
 			}) && inView.every((occurrence) => {

@@ -129,11 +129,6 @@ export function destinations(context = "ana") {
 			}
 		}
 	}
-	for (const album of albums.filter((candidate) => candidate.id !== "folding")) {
-		const key = ids(album);
-		result[key.album].rows.forEach((row) => { row.fold ??= false; });
-		for (const id of Object.keys(result).filter((candidate) => candidate.startsWith(`${album.id}:`))) if (!result[id].rows) result[id].fold ??= false;
-	}
 	catalogs.set(context, result);
 	return result;
 }

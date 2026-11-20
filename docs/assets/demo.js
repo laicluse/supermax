@@ -31,7 +31,7 @@ const sizePresets = [
 	{ label: "Wide and narrow", sizes: [[960, 640], [420, 640]] },
 	{ label: "Both wide", sizes: [[960, 640], [960, 640]] },
 	{ label: "Short frame B", sizes: [[960, 640], [420, 400]] },
-	{ label: "Below minimum B", sizes: [[960, 640], [420, 300]] },
+	{ label: "Very short frame B", sizes: [[960, 640], [420, 300]] },
 ];
 
 const foldReservation = (size) => (frame) => {
@@ -598,11 +598,9 @@ class Session {
 		box.append(root);
 		const readout = element("div", "readout");
 		const size = element("span", "readout-size");
-		const limit = element("span", "readout-limit", `below the supported minimum of ${minViewportHeight}px`);
-		limit.hidden = true;
 		const rejection = element("span", "readout-rejection");
 		rejection.hidden = true;
-		readout.append(element("strong", null, frame.name), size, limit, rejection);
+		readout.append(element("strong", null, frame.name), size, rejection);
 		wrapper.append(box, readout);
 		document.querySelector("[data-frames]").append(wrapper);
 		const model = new Navigator({ destinations: this.embedded, root: "albums", minViewportHeight, spareSpace: this.controls.spare.value, context: this.context });
@@ -627,7 +625,6 @@ class Session {
 		workspace.addEventListener("render", (event) => {
 			const { layout } = event.detail;
 			size.textContent = `${layout.width} × ${layout.height} px`;
-			limit.hidden = !layout.belowMinimum;
 			updateSpecs(root, layout);
 		});
 		return { ...frame, box, workspace };

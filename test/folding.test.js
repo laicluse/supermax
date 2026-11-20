@@ -2,6 +2,174 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { chromium } from "playwright";
 import { serveDocs } from "./serve-docs.js";
+import { FoldController } from "../src/folding.js";
+
+test("opposing fold handles do not compete for a small touch target", () => {
+	for (const [axis, back, next] of [["horizontal", "right", "left"], ["vertical", "down", "up"]]) {
+		const group = {};
+		const earlier = { hidden: false, inert: false };
+		const later = { hidden: false, inert: false };
+		const rect = (coordinate) => axis === "horizontal" ? { left: coordinate, top: 0, width: 26, height: 44 } : { left: 0, top: coordinate, width: 44, height: 14 };
+		const visible = new Map([
+			[earlier, { group, axis, direction: back, order: 0, rect: rect(0) }],
+			[later, { group, axis, direction: next, order: 2, rect: rect(20) }],
+		]);
+		FoldController.prototype.showNearestPages.call({ drag: null }, visible);
+		assert.equal(earlier.hidden, true, `${axis}: the preceding page remains available through Back`);
+		assert.equal(later.hidden, false, `${axis}: the following page keeps its fold handle`);
+		assert.equal(visible.size, 1);
+		earlier.hidden = false;
+		const active = new Map([
+			[earlier, { group, axis, direction: back, order: 0, rect: rect(0) }],
+			[later, { group, axis, direction: next, order: 2, rect: rect(20) }],
+		]);
+		FoldController.prototype.showNearestPages.call({ drag: { cue: earlier } }, active);
+		assert.equal(active.has(earlier), true, `${axis}: an active drag keeps its page handle`);
+		assert.equal(active.has(later), false);
+	}
+});
+
+test("adjacent folded cells can be dragged open one page at a time", async () => {
+	const server = await serveDocs();
+	const browser = await chromium.launch({ channel: "chrome", headless: true });
+	try {
+		const page = await browser.newPage();
+		await page.goto(`${server.url}/blank`);
+		await page.addStyleTag({ url: `${server.url}/src/workspace.css` });
+		await page.evaluate(async () => {
+			const { Navigator, Workspace } = await import("/src/index.js");
+			const host = document.createElement("div");
+			host.style.cssText = "position:relative;width:300px;height:300px";
+			document.body.append(host);
+			const navigator = new Navigator({ root: "mode", minViewportHeight: 300, destinations: {
+				mode: { title: "Mode", min: 40, max: 40, keep: true },
+				a: { title: "A", min: 200, max: 200 },
+				b: { title: "B", min: 200, max: 200 },
+				c: { title: "C", min: 200, max: "*", preferred: 260 },
+			} });
+			navigator.resize({ width: 300, height: 300 });
+			navigator.open("a", { from: "mode" });
+			navigator.open("b", { from: "mode/a" });
+			navigator.open("c", { from: "mode/a/b" });
+			window.pages = new Workspace(host, { navigator, content: (occurrence) => {
+				const element = document.createElement("button");
+				element.textContent = occurrence.title;
+				return { element };
+			} });
+		});
+		const visible = () => page.locator(".supermax-fold-cue.is-horizontal:visible").evaluateAll((cues) => cues.map((cue) => cue.dataset.foldOccurrence));
+		assert.deepEqual(await visible(), ["mode/a/b"], "the closest folded cell presents the only handle at the shared seam");
+		for (const id of ["mode/a/b", "mode/a"]) {
+			const handle = page.locator(`.supermax-fold-cue[data-fold-occurrence="${id}"]`);
+			const box = await handle.boundingBox();
+			await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+			await page.mouse.down();
+			await page.mouse.move(box.x + box.width / 2 + 220, box.y + box.height / 2, { steps: 8 });
+			await page.mouse.up();
+			await page.waitForFunction((occurrence) => window.pages.findCell(occurrence)?.full && !window.pages.folds.drag, id);
+			if (id === "mode/a/b") assert.ok((await visible()).includes("mode/a"), "the next page gets a handle after the drag completes");
+		}
+		assert.equal(await page.evaluate(() => window.pages.navigator.groups.length), 3, "turning pages preserves navigation groups");
+	} finally {
+		await browser.close();
+		await server.close();
+	}
+});
+
+test("a reverse vertical page drag keeps a canvas gutter under its handle", async () => {
+	const server = await serveDocs();
+	const browser = await chromium.launch({ channel: "chrome", headless: true });
+	try {
+		const page = await browser.newPage({ viewport: { width: 1500, height: 900 } });
+		await page.goto(`${server.url}/?delay=0`);
+		await page.getByRole("button", { name: "Open the Coast album" }).click();
+		await page.waitForFunction(() => window.supermaxDemo.pending === 0);
+		await page.evaluate(() => window.supermaxDemo.resize([[700, 500], [329, 323]]));
+		await page.waitForFunction(() => window.supermaxDemo.frames[1].workspace.layout.height === 323);
+		const frame = '.frame[data-frame="b"]';
+		const titleSeam = await page.evaluate(() => {
+			const frame = document.querySelector('.frame[data-frame="b"]');
+			const cue = frame.querySelector('.supermax-fold-cue.is-vertical[data-direction="down"]:not([hidden])');
+			const row = frame.querySelector('.supermax-row[data-row="albums/album:coast/coast:map"]');
+			const title = row.closest('.supermax-cell').querySelector(':scope > .supermax-cell-title');
+			return { cue: cue?.querySelector('.supermax-fold-mark').getBoundingClientRect().top, title: title.getBoundingClientRect().bottom, row: row.getBoundingClientRect().top };
+		});
+		assert.ok(Math.abs(titleSeam.cue - titleSeam.title) < .5, `the first page handle outlines the title's canvas gutter: ${JSON.stringify(titleSeam)}`);
+		for (let step = 0; step < 2; step += 1) await page.locator(`${frame} .supermax-up`).click();
+		await page.waitForTimeout(400);
+		const handle = page.locator(`${frame} .supermax-fold-cue.is-vertical[data-fold-occurrence="albums/album:coast/coast:map"]`);
+		await handle.scrollIntoViewIfNeeded();
+		const box = await handle.boundingBox();
+		await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+		await page.mouse.down();
+		const pressed = await page.evaluate((selector) => {
+			const cue = document.querySelector(selector);
+			const rect = cue.getBoundingClientRect();
+			return { drag: !!window.supermaxDemo.frames[1].workspace.folds.drag, inert: cue.inert, hit: document.elementFromPoint(rect.left + rect.width / 2, rect.top + rect.height / 2)?.className, rect: [rect.x, rect.y, rect.width, rect.height] };
+		}, `${frame} .supermax-fold-cue.is-vertical[data-fold-occurrence="albums/album:coast/coast:map"]`);
+		assert.equal(pressed.drag, true, `pointer capture starts on the fold handle: ${JSON.stringify(pressed)}`);
+		await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2 - 100, { steps: 5 });
+		const seam = await page.evaluate((selector) => {
+			const cue = document.querySelector(selector);
+			const mark = cue.querySelector(".supermax-fold-mark");
+			const row = document.querySelector('.frame[data-frame="b"] .supermax-row[data-row="albums/album:coast/coast:thumbnails"]');
+			const next = document.querySelector('.frame[data-frame="b"] .supermax-row[data-row="albums/album:coast/coast:map"]');
+			return { mark: mark.getBoundingClientRect().bottom, row: row.getBoundingClientRect().bottom, gutter: next.getBoundingClientRect().top, stroke: getComputedStyle(next).borderTopWidth, rowClass: row.className, nextClass: next.className, dragging: row.closest(".supermax-workspace").className, direction: cue.dataset.direction, dragActive: !!window.supermaxDemo.frames[1].workspace.folds.drag?.active };
+		}, `${frame} .supermax-fold-cue.is-vertical[data-fold-occurrence="albums/album:coast/coast:map"]`);
+		await page.mouse.up();
+		assert.equal(seam.stroke, "1px", `the moving row boundary exposes the canvas gutter: ${JSON.stringify(seam)}`);
+		assert.ok(Math.abs(seam.mark - seam.gutter - 1) <= 1 && Math.abs(seam.row - seam.gutter) <= 1, `the handle stays attached to that boundary: ${JSON.stringify(seam)}`);
+	} finally {
+		await browser.close();
+		await server.close();
+	}
+});
+
+test("nonfoldable content after the active cell remains scrollable in a split", async () => {
+	const server = await serveDocs();
+	const browser = await chromium.launch({ channel: "chrome", headless: true });
+	try {
+		const page = await browser.newPage();
+		await page.goto(`${server.url}/blank`);
+		await page.addStyleTag({ url: `${server.url}/src/workspace.css` });
+		const result = await page.evaluate(async () => {
+			const { Navigator, Workspace } = await import("/src/index.js");
+			const host = document.createElement("div");
+			host.style.cssText = "position:relative;width:300px;height:300px";
+			document.body.append(host);
+			const navigator = new Navigator({ root: "menu", minViewportHeight: 300, destinations: {
+				menu: { title: "Menu", min: 40, max: 40, keep: true },
+				split: { title: "Split", rows: [{ destination: "list", minHeight: 200, maxHeight: "*", preferredHeight: 250 }] },
+				list: { title: "List", min: 200, max: 200, fold: false },
+				item: { title: "Item", min: 200, max: "*", preferred: 200, fold: false },
+			} });
+			navigator.resize({ width: 300, height: 300 });
+			navigator.open("split", { from: "menu" });
+			navigator.open("item", { from: "menu/split/list" });
+			navigator.startWindow("menu/split/list", "menu/split/list");
+			const workspace = new Workspace(host, { navigator, content: (occurrence) => {
+				const element = document.createElement("button");
+				element.textContent = occurrence.title;
+				return { element };
+			} });
+			const body = host.querySelector(".supermax-body");
+			const item = host.querySelector('[data-occurrence="menu/split/list/item"] button');
+			const before = item.getBoundingClientRect();
+			body.scrollLeft = body.scrollWidth;
+			const after = item.getBoundingClientRect();
+			const report = { scrollWidth: body.scrollWidth, clientWidth: body.clientWidth, before: before.left, after: after.left, viewportRight: body.getBoundingClientRect().right, visible: item.checkVisibility() };
+			workspace.destroy();
+			return report;
+		});
+		assert.ok(result.scrollWidth >= 440, "the scroll range includes the nested row");
+		assert.ok(result.scrollWidth > result.clientWidth, "horizontal scrolling is enabled");
+		assert.ok(result.after < result.before && result.after < result.viewportRight, "the trailing cell can be brought into the viewport");
+		assert.equal(result.visible, true);
+	} finally {
+		await browser.close();
+		await server.close();
+	}
+});
 
 test("folded cells and rows trade space when their cues are clicked", async () => {
 	const server = await serveDocs();

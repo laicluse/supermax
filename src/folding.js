@@ -1,5 +1,6 @@
 import { follow, unfollow } from "./follow.js";
 import { FoldDrag } from "./fold-drag.js";
+import { chainRootOf } from "./layout.js";
 import { EASING, TIMING } from "./motion.js";
 
 const CORNERS = ["borderTopLeftRadius", "borderTopRightRadius", "borderBottomRightRadius", "borderBottomLeftRadius"];
@@ -109,9 +110,11 @@ export class FoldController {
 			const direction = cue.dataset.direction;
 			const horizontal = axis === "horizontal";
 			const gutterBox = horizontal && entry.element.parentElement.matches(".supermax-room") ? entry.element.parentElement.getBoundingClientRect() : box;
-			const leading = !horizontal && entry.element.matches(".is-unreserved.is-leading");
-			let seam = horizontal ? direction === "right" ? gutterBox.right : gutterBox.left : direction === "down" ? gutterBox.bottom - (leading ? gutter : 0) : gutterBox.top;
-			const boundary = seam + (direction === "down" && leading ? gutter : 0);
+			const rowsTop = horizontal ? 0 : entry.element.parentElement.getBoundingClientRect().top;
+			const title = horizontal ? null : entry.element.closest(".supermax-cell")?.querySelector(":scope > .supermax-cell-title");
+			const atTitleGutter = !horizontal && direction === "down" && title && Math.abs(gutterBox.bottom - rowsTop) < .5;
+			let seam = horizontal ? direction === "right" ? gutterBox.right : gutterBox.left : direction === "down" ? gutterBox.bottom - (atTitleGutter ? gutter : 0) : gutterBox.top;
+			const boundary = seam + (atTitleGutter ? gutter : 0);
 			const edge = boundary >= (horizontal ? bounds.right : bounds.bottom) - .5 ? horizontal ? "right" : "bottom" : "";
 			cue.dataset.edge = edge;
 			if (edge) seam = (horizontal ? bounds.right : bounds.bottom) - gutter;
@@ -120,13 +123,20 @@ export class FoldController {
 			const x = horizontal ? seam + (direction === "left" ? gutter - width : 0) : box.left + (box.width - width) / 2;
 			const y = horizontal ? box.top + (box.height - height) / 2 : seam + (direction === "up" ? gutter - height : 0);
 			Object.assign(cue.style, { left: `${x - origin.left}px`, top: `${y - origin.top}px` });
+			const member = workspace.navigator.get(occurrence);
+			const order = horizontal
+				? workspace.layout.chains.get(chainRootOf(workspace.navigator, member).id)?.cells.findIndex((cell) => cell.occurrence === occurrence)
+				: workspace.layout.cells.get(member.parent)?.rows?.rows.findIndex((row) => row.occurrence === occurrence);
 			visible.set(cue, {
 				group: horizontal ? entry.element.closest(".supermax-strip") : entry.element.parentElement,
 				axis,
+				direction,
+				order,
 				rect: cue.getBoundingClientRect(),
 				shape: handleShape(cue),
 			});
 		}
+		this.showNearestPages(visible);
 		this.visibleCues = visible;
 		if (this.drag && !this.drag.settling || workspace.reducedMotion.matches) return;
 		const leaving = [...previous].filter(([cue]) => !visible.has(cue));
@@ -143,6 +153,55 @@ export class FoldController {
 			cue.animate([{ transform: `translate(${dx}px, ${dy}px)` }, { transform: "translate(0px, 0px)" }], timing);
 			const mark = cue.querySelector(".supermax-fold-mark");
 			if (prior.shape && next.shape && mark) mark.animate([prior.shape, next.shape], timing);
+		}
+	}
+
+	showNearestPages(visible) {
+		const groups = new Map();
+		for (const [cue, position] of visible) {
+			let byDirection = groups.get(position.group);
+			if (!byDirection) groups.set(position.group, byDirection = new Map());
+			const key = `${position.axis}:${position.direction}`;
+			if (!byDirection.has(key)) byDirection.set(key, []);
+			byDirection.get(key).push([cue, position]);
+		}
+		for (const byDirection of groups.values()) for (const candidates of byDirection.values()) {
+			const axis = candidates[0][1].axis;
+			const coordinate = ([, position]) => axis === "horizontal" ? position.rect.left : position.rect.top;
+			candidates.sort((first, second) => coordinate(first) - coordinate(second));
+			const clusters = [];
+			for (const candidate of candidates) {
+				const cluster = clusters.at(-1);
+				if (cluster && coordinate(candidate) - coordinate(cluster.at(-1)) < 44) cluster.push(candidate);
+				else clusters.push([candidate]);
+			}
+			for (const cluster of clusters) {
+				if (cluster.length < 2) continue;
+				const direction = cluster[0][1].direction;
+				const nearest = (this.drag?.cue && cluster.find(([cue]) => cue === this.drag.cue))
+					?? cluster.reduce((best, candidate) => ["right", "down"].includes(direction)
+						? candidate[1].order > best[1].order ? candidate : best
+						: candidate[1].order < best[1].order ? candidate : best);
+				for (const [cue] of cluster) {
+					if (cue === nearest[0]) continue;
+					cue.hidden = true;
+					cue.inert = true;
+					visible.delete(cue);
+				}
+			}
+		}
+		for (const byDirection of groups.values()) for (const [axis, backward, forward] of [["horizontal", "right", "left"], ["vertical", "down", "up"]]) {
+			const earlier = (byDirection.get(`${axis}:${backward}`) ?? []).filter(([cue]) => visible.has(cue));
+			const later = (byDirection.get(`${axis}:${forward}`) ?? []).filter(([cue]) => visible.has(cue));
+			for (const [cue, position] of earlier) {
+				const center = axis === "horizontal" ? position.rect.left + position.rect.width / 2 : position.rect.top + position.rect.height / 2;
+				const collision = later.find(([other, next]) => visible.has(other) && Math.abs(center - (axis === "horizontal" ? next.rect.left + next.rect.width / 2 : next.rect.top + next.rect.height / 2)) < 44);
+				if (!collision) continue;
+				const hidden = this.drag?.cue === cue ? collision[0] : cue;
+				hidden.hidden = true;
+				hidden.inert = true;
+				visible.delete(hidden);
+			}
 		}
 	}
 

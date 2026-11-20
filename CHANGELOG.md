@@ -6,6 +6,7 @@ Start with [Migrating from v1 to v2](docs/migrating-to-v2.md). A dependency vers
 
 ### Breaking changes
 
+- Layouts report an actual vertical space shortage through `overflow`; the fixed-threshold `belowMinimum` field is removed. `minViewportHeight` remains the validation guarantee for every declared split, even when a particular folded layout fits below it.
 - The package no longer assigns `globalThis.Supermax`; use named ESM imports.
 - The workspace draws no navigation bar. The Show control lives in the title bar of the cell highest in the hierarchy that hides what it brings back, or at that cell's top left corner; `chrome.navbar`, `strings.navigation` and the `--supermax-navbar` property are gone, and the group's title is the host's to show from `locationInfo`. The Show control spells out what it brings back only for a title of at most 20 characters that differs from its bar's, and says Back (`strings.back`) otherwise. The title bar carries no typography of its own and has three parts, leading for the Show control, the title, and trailing for the content's controls; the application styles it.
 - `CellCollection.distribute()` no longer returns `spareColumns`. Compute the remainder from the returned widths, or observe `layout.chains.get(root).spare` when using Workspace.
@@ -17,6 +18,7 @@ Start with [Migrating from v1 to v2](docs/migrating-to-v2.md). A dependency vers
 
 ### Added
 
+- Open cells and rows after the active surface retain a fold handle or a scroll route when space runs out. Show continues to reach earlier hidden content. Notices use the canvas hairline and fold-handle corner radius by default.
 - Navigator and Workspace provide a branching cell shell, layout declarations, Show, dividers, loading content, overlays, presentations and a shared time scale.
 - A cell draws no title bar unless it declares `header: "title"`; the title stays its accessible name. A split may declare it too, one bar above its rows.
 - A destination may declare `height: "full"`: opened from a cell in a row it stands beside the split at the full height, the shell's answer to a colspan; one breakout per split, replaced by the next. `navigator.next(occurrence)` names what follows a cell in its chain, `replay` takes a `sync` action, a split in `ifRoom` opens with its rows, and `sync` names a path into a row: after a split the next id is one of its rows.

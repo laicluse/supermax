@@ -70,7 +70,9 @@ body {
 .depth-number { margin: 0; font-size: 40px; font-weight: 700; color: var(--accent); line-height: 1; }
 .depth-end { margin: 0; font-size: 13px; color: var(--muted); }
 .album-lab { margin-top: 24px; }
-.supermax-presentation-fold .supermax-cell { box-shadow: inset 1px 0 0 rgba(255, 255, 255, 0.8), -6px 0 18px -12px rgba(0, 0, 0, 0.35); background: linear-gradient(90deg, #f7f9fb 0, #ffffff 24px); }
+.supermax-presentation-fold .supermax-cell { box-shadow: -6px 0 18px -12px rgba(0, 0, 0, 0.35); background: linear-gradient(90deg, #f7f9fb 0, #ffffff 24px); }
+.supermax-presentation-fold .supermax-cell:is(.is-split, :not(.is-headless)) { background: transparent; }
+.supermax-presentation-fold .supermax-cell:not(.is-split, .is-headless) > .supermax-cell-body { background: linear-gradient(90deg, #f7f9fb 0, #ffffff 24px); }
 .supermax-presentation-fold .supermax-cell-title { background: linear-gradient(180deg, var(--fill), var(--card)); }
 .supermax-presentation-fold .supermax-chain { perspective: 1400px; }
 @media (prefers-reduced-motion: no-preference) {
@@ -104,7 +106,6 @@ body {
 
 .readout { display: flex; flex-wrap: wrap; gap: 10px; font-size: 13px; color: var(--muted); width: 0; min-width: 100%; }
 .readout strong { color: var(--ink); }
-.readout-limit { color: var(--warn); font-weight: 600; }
 .readout-rejection { color: var(--warn); }
 .frame.is-folding-scenario .cell-spec { display: none; }
 

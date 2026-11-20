@@ -443,7 +443,6 @@ export class Workspace extends EventTarget {
 		rootViewport.style.width = layout.overflowX ? `${layout.chain.contentWidth}px` : "";
 		this.body.classList.toggle("is-overflow", layout.overflow);
 		this.body.classList.toggle("is-overflow-x", layout.overflowX);
-		this.element.classList.toggle("is-below-minimum", layout.belowMinimum);
 		this.pruneClosed();
 		this.refreshContent();
 		this.renderUp();
@@ -656,6 +655,8 @@ export class Workspace extends EventTarget {
 		host.style.justifyContent = JUSTIFY[this.navigator.spareSpace];
 		const focusIndex = cell.rows.rows.findIndex((row) => this.navigator.foldFocuses.some((focus) => focus.axis === "vertical" && focus.occurrence === row.occurrence) && row.visible && !row.folded);
 		const activeIndex = focusIndex >= 0 ? focusIndex : cell.rows.rows.findLastIndex((row) => row.visible && !row.folded);
+		const firstVisible = cell.rows.rows.find((row) => row.visible);
+		const firstFull = firstVisible?.folded && firstVisible.height === 0 ? cell.rows.rows.find((row) => row.visible && !row.folded) : null;
 		for (const [rowIndex, row] of cell.rows.rows.entries()) {
 			let entry = this.rows.get(row.occurrence);
 			if (!entry) {
@@ -672,7 +673,7 @@ export class Workspace extends EventTarget {
 			const exchangingFold = entry.element.classList.contains("is-folded") !== row.folded;
 			this.folds.apply(entry, row.folded, rowIndex < activeIndex ? "down" : "up");
 			entry.element.classList.toggle("is-unreserved", row.folded && row.height === 0);
-			const leading = row === cell.rows.rows.find((candidate) => candidate.visible);
+			const leading = row === firstVisible || row === firstFull;
 			entry.leading = leading;
 			this.setRowHeight(entry, row.height, animating, strip, exchangingFold);
 			entry.element.classList.toggle("is-hidden", !row.visible);
@@ -738,6 +739,7 @@ export class Workspace extends EventTarget {
 		entry.slide?.cancel();
 		entry.animation = null;
 		entry.slide = null;
+		entry.element.classList.remove("is-moving");
 		entry.paper = height;
 		entry.element.style.height = `${height}px`;
 		if (!animating || previous === null || Math.abs(previous - height) < STILL) return;
@@ -745,6 +747,11 @@ export class Workspace extends EventTarget {
 		entry.paper = paper;
 		const timing = strip?.roomTiming?.() ?? this.time.timing({ duration: STRIP_TIMING.duration, easing: STRIP_TIMING.easing });
 		entry.animation = entry.element.animate([{ height: `${previous}px` }, { height: `${height}px` }], { ...timing, fill: "backwards" });
+		entry.element.classList.add("is-moving");
+		const heightAnimation = entry.animation;
+		heightAnimation.finished.then(() => {
+			if (entry.animation === heightAnimation) entry.element.classList.remove("is-moving");
+		}, () => {});
 		if (exchangingFold) {
 			entry.chain.style.marginTop = "0px";
 			const animation = entry.animation;
@@ -832,7 +839,7 @@ export class Workspace extends EventTarget {
 		this.dividers.clear();
 		this.folds.destroy();
 		this.layout = null;
-		this.element.classList.remove("has-modal", "is-below-minimum");
+		this.element.classList.remove("has-modal");
 		this.observer.disconnect();
 		this.time.removeEventListener("change", this.onTimeScale);
 		this.document.defaultView.removeEventListener("resize", this.onViewportChange);
