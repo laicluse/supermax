@@ -415,6 +415,7 @@ class Session {
 			requests: document.querySelector("[data-requests]"),
 			presentation: document.querySelector("[data-presentation]"),
 			spare: document.querySelector("[data-spare]"),
+			speed: document.querySelector("[data-speed]"),
 		};
 		const query = new URLSearchParams(location.search);
 		const reloadWith = (key, value) => {
@@ -427,6 +428,14 @@ class Session {
 		if ([...this.controls.spare.options].some((option) => option.value === query.get("spare"))) this.controls.spare.value = query.get("spare");
 		this.controls.spare.addEventListener("change", () => reloadWith("spare", this.controls.spare.value));
 		this.controls.presentation.addEventListener("change", () => this.setPresentation(this.controls.presentation.value));
+		if ([...this.controls.speed.options].some((option) => option.value === query.get("speed"))) this.controls.speed.value = query.get("speed");
+		this.controls.speed.addEventListener("change", () => {
+			const next = new URL(location.href);
+			if (this.controls.speed.value === "1") next.searchParams.delete("speed");
+			else next.searchParams.set("speed", this.controls.speed.value);
+			history.replaceState(history.state, "", next);
+			for (const animation of document.getAnimations()) animation.updatePlaybackRate(this.playbackRate);
+		});
 		if (query.has("delay")) this.controls.delay.value = query.get("delay");
 		this.context = this.controls.context.value;
 		this.embedded = embeddedDestinations(this.context);
@@ -440,6 +449,10 @@ class Session {
 		if (requested && presentations[requested]) this.setPresentation(requested);
 		window.addEventListener("popstate", (event) => this.arrive(event.state));
 		this.arrive(history.state);
+	}
+
+	get playbackRate() {
+		return 1 / Number(this.controls.speed.value);
 	}
 
 	get pending() {
@@ -698,6 +711,14 @@ function describeRejection({ action, result }, model) {
 		default: return `Rejected: ${result.reason}`;
 	}
 }
+
+const animate = Element.prototype.animate;
+Element.prototype.animate = function slowable(...args) {
+	const animation = animate.apply(this, args);
+	const rate = window.supermaxDemo?.playbackRate ?? 1;
+	if (rate !== 1) animation.updatePlaybackRate(rate);
+	return animation;
+};
 
 const session = new Session();
 window.supermaxDemo = session;

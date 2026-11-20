@@ -1274,6 +1274,21 @@ test("a layout that fails leaves the workspace as it was, with Retry at its sour
 	assert.deepEqual(await groups("a"), ["Coast", "Photo B"], "and closes nothing");
 });
 
+test("the demo's Speed control plays every animation ten times slower and keeps that in the URL", async () => {
+	await openDemo([open("album:coast", "albums")]);
+	await page.selectOption("[data-speed]", "10");
+	assert.match(page.url(), /[?&]speed=10/, "the choice is in the URL");
+	await page.evaluate(() => window.supermaxDemo.prepare("coast:photo:b"));
+	await page.click(inFrame("a", `[data-occurrence="${coast.row("thumbnails")}"] .thumb[data-destination="coast:photo:b"]`));
+	await page.waitForFunction(() => document.getAnimations().some((animation) => animation.effect?.target?.classList?.contains("supermax-cell") && animation.playbackRate === 0.1));
+	await page.reload();
+	await page.waitForFunction(() => window.supermaxDemo?.frames.length === 2);
+	assert.equal(await page.inputValue("[data-speed]"), "10", "and survives a reload");
+	await page.selectOption("[data-speed]", "1");
+	assert.doesNotMatch(page.url(), /speed=/);
+	await settle();
+});
+
 test("reset restores both frames and clears the URL", async () => {
 	await openDemo(THREE_ROWS);
 	await page.click("[data-reset]");
