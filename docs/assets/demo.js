@@ -571,6 +571,7 @@ class Session {
 		const model = new Navigator({ destinations: definitions, root: "albums", minViewportHeight });
 		const workspace = new Workspace(root, { navigator: model, content: renderContent, onIntent: (action, origin) => this.dispatch(action, origin) });
 		workspace.addEventListener("change", () => this.completeDefaults());
+		workspace.addEventListener("up", () => this.record("push"));
 		workspace.addEventListener("rejected", (event) => {
 			rejection.hidden = false;
 			rejection.textContent = describeRejection(event.detail, model);
@@ -589,14 +590,29 @@ class Session {
 
 	dispatch(action, origin) {
 		this.replaying = null;
-		const results = this.frames.map((frame) => frame.workspace.apply(action, { focus: frame.workspace === origin }));
-		const originResult = results[this.frames.findIndex((frame) => frame.workspace === origin)];
+		const originResult = origin.apply(action, { focus: true });
+		const results = [originResult, ...this.frames.filter((frame) => frame.workspace !== origin).map((frame) => this.follow(frame.workspace, action, origin, originResult))];
 		if (results.some((result) => result.ok && !result.noop)) {
 			this.log.push(action);
 			this.record("push");
 		}
 		this.completeDefaults();
 		return originResult;
+	}
+
+	follow(workspace, action, origin, originResult) {
+		if (action.type !== "open" || !originResult.ok || !originResult.occurrence) return workspace.apply(action, { focus: false });
+		const path = [];
+		for (let current = originResult.occurrence; current?.parent; current = origin.navigator.get(current.parent)) path.unshift(current);
+		for (const step of path.slice(0, -1)) {
+			if (workspace.navigator.get(step.id)) continue;
+			const definition = origin.navigator.definitionOf(step.destination);
+			const hint = definition ? { title: definition.title, min: definition.min, max: definition.max, preferred: definition.preferred } : null;
+			workspace.apply({ type: "open", destination: step.destination, from: step.parent, hint }, { focus: false });
+		}
+		const existing = workspace.navigator.get(originResult.occurrence.id);
+		if (existing && !originResult.noop && !originResult.promoted) workspace.navigator.closeSubtree(existing);
+		return workspace.apply(action, { focus: false });
 	}
 
 	record(mode) {

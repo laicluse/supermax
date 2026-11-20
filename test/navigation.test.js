@@ -225,6 +225,37 @@ scenario("Up reaches every cell hidden above the window, newest branch first, ne
 	assert.ok(rows.upTarget()?.id.startsWith(row("list")), "a row hidden above is reached although it is no parent of the focus, the last row to appear climbing first");
 });
 
+scenario("showing a hidden parent closes as many cells from the end as it needs, and no more", () => {
+	const set = {
+		menu: { title: "Menu", min: 100, max: 100 },
+		wide: { title: "Wide", min: 300, max: 300, defaultChild: "a" },
+		a: { title: "A", min: 50, max: 50, defaultChild: "b" },
+		b: { title: "B", min: 50, max: 50, defaultChild: "c" },
+		c: { title: "C", min: 50, max: 50, defaultChild: "d" },
+		d: { title: "D", min: 50, max: 50, defaultChild: "e" },
+		e: { title: "E", min: 50, max: 50, defaultChild: "f" },
+		f: { title: "F", min: 50, max: 50 },
+	};
+	const instance = new Navigator({ destinations: set, root: "menu", minViewportHeight, chrome });
+	instance.resize({ width: 1000, height: 500 });
+	instance.open("wide", { from: "menu" });
+	instance.resize({ width: 300, height: 500 });
+	const visible = () => instance.layout().chain.cells.filter((cell) => cell.visible).map((cell) => cell.title);
+	assert.deepEqual(visible(), ["A", "B", "C", "D", "E", "F"], "the small cells fill the frame and Wide hides");
+	assert.deepEqual(instance.upTarget(), { id: "menu/wide", title: "Wide" });
+	const closed = instance.showByClosing("menu/wide");
+	assert.deepEqual(closed.map((entry) => entry.title), ["F", "E", "D", "C", "B", "A"], "Wide needs all 300 pixels, so every small cell after it closes, deepest first");
+	assert.deepEqual(visible(), ["Wide"]);
+	assert.equal(instance.focused, "menu/wide");
+
+	instance.resize({ width: 1000, height: 500 });
+	instance.open("a", { from: "menu/wide" });
+	instance.resize({ width: 600, height: 500 });
+	assert.deepEqual(visible(), ["Wide", "A", "B", "C", "D", "E", "F"], "only the menu hides");
+	assert.deepEqual(instance.showByClosing("menu").map((entry) => entry.title), ["F", "E"], "showing the menu closes only the two cells it needs");
+	assert.deepEqual(visible(), ["Menu", "Wide", "A", "B", "C", "D"]);
+});
+
 scenario("a revealed outer chain does not change which defaults open", () => {
 	const plain = model(150, 500);
 	openGallery(plain);

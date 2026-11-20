@@ -103,8 +103,11 @@ export class Workspace extends EventTarget {
 		const target = this.navigator.upTarget(this.layout ?? undefined);
 		if (!target) return { ok: false, reason: "nothing-hidden" };
 		if (this.modal) this.closeModal("navigation");
-		this.goTo(target.id);
-		return { ok: true, destination: target.id };
+		const closed = this.navigator.showByClosing(target.id);
+		this.render({ animate: true });
+		this.focusCell(target.id);
+		this.dispatchEvent(new CustomEvent("up", { detail: { shown: target.id, closed } }));
+		return { ok: true, destination: target.id, closed };
 	}
 
 	intent(action) {
@@ -409,7 +412,7 @@ export class Workspace extends EventTarget {
 		this.upName.textContent = next ? next.title : "";
 		if (next) this.upButton.setAttribute("aria-label", this.strings.up(next.title));
 		else this.upButton.removeAttribute("aria-label");
-		const info = this.navigator.locationInfo();
+		const info = this.navigator.locationInfo(this.layout ?? undefined);
 		this.titleText.textContent = info.title;
 		this.titleContext.replaceChildren(...info.trail.flatMap((step, index) => {
 			const crumb = this.create("button", "supermax-crumb", step.title);

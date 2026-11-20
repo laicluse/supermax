@@ -329,7 +329,7 @@ export class Navigator {
 		return this.sizes[axis]?.get(occurrenceId) ?? null;
 	}
 
-	bringIntoView(occurrenceId) {
+	bringIntoView(occurrenceId, { chains = true } = {}) {
 		const occurrence = this.get(occurrenceId);
 		const path = [];
 		for (let current = occurrence; current; current = current.parent ? this.get(current.parent) : null) path.unshift(current);
@@ -339,7 +339,7 @@ export class Navigator {
 				const rows = parent.children.map((id) => (id ? this.get(id) : null));
 				this.reachWindow(rows, step, (layout, id) => layout.rows.get(id), (id) => this.startRows(parent.id, id));
 			}
-			if (step !== occurrence && !isSplit(this.definitionOf(step.destination))) continue;
+			if (!chains || (step !== occurrence && !isSplit(this.definitionOf(step.destination)))) continue;
 			const chainRoot = chainRootOf(this, step);
 			this.reachWindow(chainCells(this, chainRoot), step, (layout, id) => layout.cells.get(id), (id) => this.startWindow(chainRoot.id, id));
 		}
@@ -359,6 +359,23 @@ export class Navigator {
 			start(members[index].id);
 			if (shown(target.id)) return;
 		}
+	}
+
+	showByClosing(occurrenceId) {
+		const target = this.get(occurrenceId);
+		if (!target) return [];
+		this.bringIntoView(occurrenceId, { chains: false });
+		const root = chainRootOf(this, target);
+		this.windowStarts.delete(root.id);
+		const closed = [];
+		while (!this.layout().cells.get(occurrenceId)?.visible) {
+			const cells = chainCells(this, root);
+			const last = cells[cells.length - 1];
+			if (last.id === occurrenceId) break;
+			closed.push(...this.closeSubtree(last));
+		}
+		this.focus(occurrenceId, { resetReveal: false });
+		return closed;
 	}
 
 	placeOf(occurrence, layout = this.layout()) {
@@ -402,9 +419,9 @@ export class Navigator {
 		else this.rowStarts.delete(splitId);
 	}
 
-	locationInfo() {
-		const newest = this.groups[this.groups.length - 1];
-		const occurrence = (newest && this.get(newest.root)) ?? this.root;
+	locationInfo(layout = this.layout()) {
+		const roots = [...this.groups].reverse().map((group) => this.get(group.root)).filter(Boolean);
+		const occurrence = roots.find((root) => layout.cells.get(root.id)?.inView) ?? roots[0] ?? this.root;
 		const trail = [];
 		let current = occurrence.parent ? this.get(occurrence.parent) : null;
 		while (current) {
