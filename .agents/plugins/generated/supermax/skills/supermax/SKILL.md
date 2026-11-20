@@ -59,4 +59,5 @@ A cell holds one kind of content for one task, as the guide's "one data owner an
 - **Build its own modal structure**, or move controls into `.supermax-*` elements after mount. Use `openModal` and the content's `header`.
 - **Label a source next to the frustum** ("From …"). The frustum shows it, and the dialog describes it to assistive technology.
 - **Animate cells, rooms, rows or the strip itself**, with CSS transitions or Web Animations on `.supermax-cell`, `.supermax-room`, `.supermax-row` or `.supermax-strip`. Motion belongs to the presentation; a host that needs different motion supplies a `presentation`.
+- **Rely on `position: fixed` inside cell content.** Cells and the strip carry transforms, so a fixed element positions against them, not the viewport. Move a popover to `document.body` or into the overlay root.
 - **Repeat a signature in its own docs or instruction files.** Point at the package docs above, so an upgrade cannot leave a stale copy behind.
