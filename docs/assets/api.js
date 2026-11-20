@@ -1,29 +1,45 @@
-import { destinations } from "./album.js";
+import { LAYOUT_HEADER, encodeLayoutHeader, layoutHashOf } from "./supermax/layout-declaration.js";
+import { declarationSet, destinations } from "./album.js";
 
-const catalog = destinations();
+const layouts = new Map();
 
-function manifestFor(id, context) {
-	const definition = catalog[id];
-	if (!definition) return null;
-	const { data, ...layout } = definition;
-	const manifest = { ...layout, data: JSON.parse(JSON.stringify(data)), context };
-	if (context === "ben" && data?.kind === "metadata") delete manifest.defaultChild;
-	return manifest;
+function layoutFor(id, context) {
+	const key = `${context}|${id}`;
+	if (!layouts.has(key)) layouts.set(key, encodeLayoutHeader(declarationSet(id, context)));
+	return layouts.get(key);
 }
 
-function contentFor(id, context) {
-	const definition = catalog[id];
-	if (!definition) return null;
-	return { id, context, viewer: context === "ben" ? "Ben (read-only)" : "Ana", title: definition.title };
+export const served = { layout: 0, content: 0 };
+
+function after(delay, answer) {
+	return new Promise((resolve) => setTimeout(() => resolve(answer()), delay));
 }
 
-export function fetchFromCatalog(kind, id, { context = "ana", delay = 0, fail = "" } = {}) {
-	const payload = kind === "manifest" ? manifestFor(id, context) : kind === "content" ? contentFor(id, context) : null;
-	return new Promise((resolve, reject) => {
-		setTimeout(() => {
-			if (!payload) reject(new Error("The server does not know this destination."));
-			else if (fail === kind || fail === "all") reject(new Error("The server answered 503."));
-			else resolve(payload);
-		}, delay);
-	});
+export async function serve(url, { method = "GET", context = "ana", delay = 0, fail = "" } = {}) {
+	const request = new URL(url, location.href);
+	const id = request.searchParams.get("destination");
+	const known = !!destinations(context)[id];
+	if (request.pathname.endsWith("/supermax/layout")) {
+		served.layout += 1;
+		const header = known ? await layoutFor(id, context) : null;
+		return after(delay, () => {
+			if (!header) return new Response(null, { status: 404 });
+			if (fail === "manifest" || fail === "all") return new Response(null, { status: 503 });
+			const response = new Response(method === "HEAD" ? null : header.text, { headers: { [LAYOUT_HEADER]: header.value, ETag: `"${header.hash}"`, "Cache-Control": "private, no-cache" } });
+			return Object.defineProperty(response, "url", { value: request.href });
+		});
+	}
+	if (request.pathname.endsWith("/supermax/content")) {
+		served.content += 1;
+		const pinned = request.searchParams.get("layout");
+		const current = known ? await layoutHashOf(destinations(context)[id]) : null;
+		return after(delay, () => {
+			if (!current) return new Response(null, { status: 404 });
+			if (fail === "content" || fail === "all") return new Response(null, { status: 503 });
+			if (pinned !== current) return new Response(null, { status: 409 });
+			const definition = destinations(context)[id];
+			return Response.json({ id, context, viewer: context === "ben" ? "Ben (read-only)" : "Ana", title: definition.title });
+		});
+	}
+	return new Response(null, { status: 404 });
 }

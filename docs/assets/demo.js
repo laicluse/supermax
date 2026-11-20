@@ -1,21 +1,21 @@
-import { Navigator, ORIGAMI_PRESENTATION, SLIDE_PRESENTATION, Workspace } from "./supermax/index.js";
-import { albums, depthCount, depthId, edits, hintFor, ids, localDestinations, minViewportHeight, paths, remoteKinds } from "./album.js";
+import { Navigator, ORIGAMI_PRESENTATION, SLIDE_PRESENTATION, Workspace, layoutHashOf, readLayout } from "./supermax/index.js";
+import { albums, depthCount, depthId, destinations, edits, embeddedDestinations, ids, minViewportHeight, paths, remoteContent } from "./album.js";
 import { appendAction, decodeLog, encodeLog } from "./deeplink.js";
 import { foldPresentation } from "./presentation-fold.js";
-import { fetchFromCatalog } from "./api.js";
+import { serve } from "./api.js";
 
 const presentations = { origami: ORIGAMI_PRESENTATION, slide: SLIDE_PRESENTATION, fold: foldPresentation };
 
 const coast = paths(albums[0]);
-const open = (destination, from, hint = null) => ({ type: "open", destination, from, hint });
+const open = (destination, from) => ({ type: "open", destination, from });
 const depthPath = (n) => ["albums", ...Array.from({ length: n }, (_, index) => depthId(index + 1))].join("/");
 const twentyDeep = Array.from({ length: depthCount }, (_, index) => open(depthId(index + 1), depthPath(index)));
 const longChain = [
 	open("album:coast", "albums"),
 	open("coast:photo:a", coast.row("thumbnails")),
-	open("coast:metadata:a", coast.photo("thumbnails", "a"), hintFor("coast:metadata:a")),
-	open("coast:history:a", coast.metadata("thumbnails", "a"), { title: "History A" }),
-	open("coast:edit:a:2", coast.history("thumbnails", "a"), hintFor("coast:edit:a:2")),
+	open("coast:metadata:a", coast.photo("thumbnails", "a")),
+	open("coast:history:a", coast.metadata("thumbnails", "a")),
+	open("coast:edit:a:2", coast.history("thumbnails", "a")),
 ];
 
 const frames = [
@@ -42,7 +42,7 @@ const scenarios = [
 	},
 	{
 		label: "Click metadata that is already open",
-		actions: [open("album:coast", "albums"), open("coast:metadata:a", coast.photo("thumbnails", "a"), hintFor("coast:metadata:a"))],
+		actions: [open("album:coast", "albums"), open("coast:metadata:a", coast.photo("thumbnails", "a"))],
 	},
 	{
 		label: "Slow layout metadata, failing content",
@@ -123,15 +123,16 @@ function renderAlbumIcons(occurrence, workspace) {
 }
 
 function renderContent(occurrence, definition, workspace) {
-	const kind = definition.data?.kind;
+	const { data } = destinations(session.context)[occurrence.destination];
+	const kind = data.kind;
 	const withSpec = (handle) => {
 		handle.element?.append(renderSpec(occurrence, definition));
 		return handle;
 	};
-	if (remoteKinds.has(kind)) {
-		return session.fetchContent(occurrence.destination).then((content) => withSpec(renderers[kind](occurrence, definition.data, workspace, content)));
+	if (remoteContent.has(kind)) {
+		return session.fetchContent(occurrence.destination).then((content) => withSpec(renderers[kind](occurrence, data, workspace, content)));
 	}
-	return withSpec(renderers[kind](occurrence, definition.data, workspace));
+	return withSpec(renderers[kind](occurrence, data, workspace));
 }
 
 function renderSpec(occurrence, definition) {
@@ -177,12 +178,6 @@ function updateSpecs(root, layout) {
 		if (body) specFit.observe(body);
 		requestAnimationFrame(() => fitSpec(spec));
 	}
-}
-
-function prefetchOnHover(button, id) {
-	let timer = null;
-	button.addEventListener("pointerenter", () => { timer = setTimeout(() => { if (!session.failed.has(id)) session.fetchManifest(id); }, 100); });
-	button.addEventListener("pointerleave", () => clearTimeout(timer));
 }
 
 function renderDepth(occurrence, data, workspace) {
@@ -287,8 +282,8 @@ function renderPhoto(occurrence, data, workspace) {
 	caption.rows = 1;
 	const link = element("button", "metadata-link", "Metadata");
 	link.type = "button";
-	link.addEventListener("click", () => workspace.navigate(key.metadata(photo), { from: occurrence.id, hint: hintFor(key.metadata(photo)) }));
-	prefetchOnHover(link, key.metadata(photo));
+	link.dataset.destination = key.metadata(photo);
+	link.addEventListener("click", () => workspace.navigate(key.metadata(photo), { from: occurrence.id }));
 	const editCaption = element("button", "metadata-link caption-edit", "Edit caption");
 	editCaption.type = "button";
 	editCaption.addEventListener("click", () => workspace.openModal({
@@ -349,7 +344,8 @@ function renderMetadata(occurrence, data, workspace, content) {
 	host.append(list);
 	const link = element("button", "metadata-link", "Edit history");
 	link.type = "button";
-	link.addEventListener("click", () => workspace.navigate(key.history(photo), { from: occurrence.id, hint: { title: `History ${photo.id.toUpperCase()}` } }));
+	link.dataset.destination = key.history(photo);
+	link.addEventListener("click", () => workspace.navigate(key.history(photo), { from: occurrence.id }));
 	const exportButton = element("button", "metadata-link album-export", "Export album");
 	exportButton.type = "button";
 	exportButton.addEventListener("click", () => session.exportAlbum(occurrence, album));
@@ -374,8 +370,8 @@ function renderHistory(occurrence, data, workspace) {
 		const button = element("button", "edit-item", edit.title);
 		button.type = "button";
 		button.dataset.destination = key.edit(photo, edit);
-		button.addEventListener("click", () => workspace.navigate(key.edit(photo, edit), { from: occurrence.id, hint: hintFor(key.edit(photo, edit)) }));
-		prefetchOnHover(button, key.edit(photo, edit));
+		button.dataset.destination = key.edit(photo, edit);
+		button.addEventListener("click", () => workspace.navigate(key.edit(photo, edit), { from: occurrence.id }));
 		item.append(button);
 		host.append(item);
 		return button;
@@ -406,10 +402,12 @@ class Session {
 		this.log = [];
 		this.requests = [];
 		this.inflight = new Map();
+		this.declarations = [];
 		this.failed = new Set();
 		this.replaying = null;
 		this.serial = 0;
 		this.saveNotices = new Map();
+		this.frames = [];
 		this.controls = {
 			delay: document.querySelector("[data-delay]"),
 			fail: document.querySelector("[data-fail]"),
@@ -418,27 +416,30 @@ class Session {
 			presentation: document.querySelector("[data-presentation]"),
 			spare: document.querySelector("[data-spare]"),
 		};
-		this.controls.context.addEventListener("change", () => this.setContext(this.controls.context.value));
-		this.controls.presentation.addEventListener("change", () => this.setPresentation(this.controls.presentation.value));
-		const spare = new URLSearchParams(location.search).get("spare");
-		if ([...this.controls.spare.options].some((option) => option.value === spare)) this.controls.spare.value = spare;
-		this.controls.spare.addEventListener("change", () => {
-			const query = new URLSearchParams(location.search);
-			query.set("spare", this.controls.spare.value);
-			location.search = query.toString();
-		});
-		this.frames = frames.map((frame) => this.buildFrame(frame));
-		this.presentations = presentations;
 		const query = new URLSearchParams(location.search);
+		const reloadWith = (key, value) => {
+			const next = new URLSearchParams(location.search);
+			next.set(key, value);
+			location.search = next.toString();
+		};
+		if ([...this.controls.context.options].some((option) => option.value === query.get("viewer"))) this.controls.context.value = query.get("viewer");
+		this.controls.context.addEventListener("change", () => reloadWith("viewer", this.controls.context.value));
+		if ([...this.controls.spare.options].some((option) => option.value === query.get("spare"))) this.controls.spare.value = query.get("spare");
+		this.controls.spare.addEventListener("change", () => reloadWith("spare", this.controls.spare.value));
+		this.controls.presentation.addEventListener("change", () => this.setPresentation(this.controls.presentation.value));
 		if (query.has("delay")) this.controls.delay.value = query.get("delay");
-		const requested = query.get("presentation");
+		this.context = this.controls.context.value;
+		this.embedded = embeddedDestinations(this.context);
+		this.presentations = presentations;
+		this.start(query.get("presentation"));
+	}
+
+	async start(requested) {
+		await this.prepareAll(history.state?.log ?? decodeLog(location.hash));
+		this.frames = frames.map((frame) => this.buildFrame(frame));
 		if (requested && presentations[requested]) this.setPresentation(requested);
 		window.addEventListener("popstate", (event) => this.arrive(event.state));
 		this.arrive(history.state);
-	}
-
-	get context() {
-		return this.controls.context.value;
 	}
 
 	get pending() {
@@ -451,43 +452,50 @@ class Session {
 		return { context: this.context, delay, fail: this.controls.fail.value };
 	}
 
-	request(kind, id) {
-		const context = this.context;
-		const key = `${kind}|${context}|${id}`;
-		if (this.inflight.has(key)) return this.inflight.get(key);
-		this.requests.push({ kind, id, context });
-		this.controls.requests.textContent = `${this.requests.length} request${this.requests.length === 1 ? "" : "s"}, last: ${kind} ${id}`;
-		const promise = fetchFromCatalog(kind, id, this.network())
-			.then((payload) => {
-				if (this.context !== context) throw Object.assign(new Error(`This answer was for ${context}; the viewer is now ${this.context}.`), { superseded: true });
-				return payload;
-			}, (error) => {
-				if (this.context !== context) throw Object.assign(error, { superseded: true });
-				throw error;
-			})
-			.finally(() => { if (this.inflight.get(key) === promise) this.inflight.delete(key); });
-		this.inflight.set(key, promise);
+	request(kind, method, url) {
+		if (this.inflight.has(url)) return this.inflight.get(url).then((response) => response.clone());
+		this.requests.push({ kind, url });
+		this.controls.requests.textContent = `${this.requests.length} request${this.requests.length === 1 ? "" : "s"}, last: ${method} ${kind}`;
+		const promise = serve(url, { method, ...this.network() }).then((response) => {
+			if (!response.ok) throw new Error(`The server answered ${response.status}.`);
+			return response;
+		}).finally(() => { if (this.inflight.get(url) === promise) this.inflight.delete(url); });
+		this.inflight.set(url, promise);
+		return promise.then((response) => response.clone());
+	}
+
+	declares(id) {
+		return Object.hasOwn(this.embedded, id) || this.declarations.some((set) => Object.hasOwn(set.destinations, id));
+	}
+
+	prepare(id) {
+		if (this.declares(id)) return Promise.resolve();
+		const url = `/supermax/layout?destination=${encodeURIComponent(id)}`;
+		const pending = this.inflight.get(`prepare:${url}`);
+		if (pending) return pending;
+		const promise = this.request("layout", "HEAD", url).then((response) => readLayout(response)).then((set) => {
+			if (!this.declares(id)) {
+				for (const frame of this.frames) frame.workspace.navigator.register(set);
+				this.declarations.push(set);
+			}
+			this.failed.delete(id);
+		}, (error) => {
+			this.failed.add(id);
+			throw error;
+		}).finally(() => this.inflight.delete(`prepare:${url}`));
+		this.inflight.set(`prepare:${url}`, promise);
 		return promise;
 	}
 
-	fetchManifest(id) {
-		if (this.frames.every((frame) => frame.workspace.navigator.definitionOf(id) && !frame.workspace.navigator.definitionOf(id).provisional)) return Promise.resolve(null);
-		this.failed.delete(id);
-		return this.request("manifest", id).then((manifest) => {
-			for (const frame of this.frames) frame.workspace.define(id, manifest);
-			this.completeDefaults();
-			this.record("replace");
-			return manifest;
-		}, (error) => {
-			if (error?.superseded) return null;
-			this.failed.add(id);
-			for (const frame of this.frames) frame.workspace.failDefinition(id, error, () => this.fetchManifest(id));
-			return null;
-		});
+	prepareAll(log) {
+		const wanted = [...new Set(log.filter((action) => action.type === "open").map((action) => action.destination))];
+		return Promise.allSettled(wanted.map((id) => this.prepare(id)));
 	}
 
-	fetchContent(id) {
-		return this.request("content", id);
+	async fetchContent(id) {
+		const layout = await layoutHashOf(destinations(this.context)[id]);
+		const response = await this.request("content", "GET", `/supermax/content?destination=${encodeURIComponent(id)}&layout=${encodeURIComponent(layout)}`);
+		return response.json();
 	}
 
 	notifyAll(notice) {
@@ -500,7 +508,9 @@ class Session {
 		if (previous) for (const frame of this.frames) frame.workspace.dismiss(previous);
 		this.saveNotices.set(occurrence.id, base.id);
 		try {
-			await fetchFromCatalog("content", photoId, this.network());
+			const layout = await layoutHashOf(destinations(this.context)[photoId]);
+			const response = await serve(`/supermax/content?destination=${encodeURIComponent(photoId)}&layout=${encodeURIComponent(layout)}`, this.network());
+			if (!response.ok) throw new Error(`The server answered ${response.status}.`);
 			this.notifyAll({ ...base, kind: "success", message: "Caption saved" });
 		} catch (error) {
 			this.notifyAll({ ...base, kind: "error", message: `Saving the caption failed. ${error.message}`, action: { label: "Retry", run: () => this.saveCaption(occurrence, photo, photoId) } });
@@ -520,48 +530,6 @@ class Session {
 		});
 	}
 
-	missingDefinitions() {
-		const missing = new Set();
-		for (const frame of this.frames) {
-			for (const id of frame.workspace.navigator.missingDefinitions()) if (!this.failed.has(id)) missing.add(id);
-		}
-		return [...missing];
-	}
-
-	completeDefaults() {
-		return this.missingDefinitions().map((id) => this.fetchManifest(id));
-	}
-
-	async settleDefaults() {
-		let previous = "";
-		for (;;) {
-			const missing = this.missingDefinitions();
-			const signature = missing.join("|");
-			if (missing.length === 0 || signature === previous) return;
-			previous = signature;
-			await Promise.all(missing.map((id) => this.fetchManifest(id)));
-		}
-	}
-
-	setContext(context) {
-		this.controls.context.value = context;
-		this.inflight.clear();
-		this.failed.clear();
-		const isRemote = (definition) => remoteKinds.has(definition?.data?.kind);
-		const remote = new Set();
-		for (const frame of this.frames) {
-			const model = frame.workspace.navigator;
-			for (const id of Object.keys(model.destinations)) {
-				if (isRemote(model.definitionOf(id)) && !model.forget(id)) remote.add(id);
-			}
-			frame.workspace.reload((occurrence, definition) => isRemote(definition));
-		}
-		for (const id of remote) {
-			this.request("manifest", id).then((manifest) => { for (const frame of this.frames) frame.workspace.define(id, manifest); }, () => null);
-		}
-		this.completeDefaults();
-	}
-
 	buildFrame(frame) {
 		const wrapper = element("div", "frame-wrapper");
 		const box = element("div", "frame");
@@ -579,11 +547,18 @@ class Session {
 		readout.append(element("strong", null, frame.name), size, limit, rejection);
 		wrapper.append(box, readout);
 		document.querySelector("[data-frames]").append(wrapper);
-		const definitions = localDestinations();
-		definitions.albums.compact = { min: 48, content: renderAlbumIcons };
-		const model = new Navigator({ destinations: definitions, root: "albums", minViewportHeight, spareSpace: this.controls.spare.value });
+		const definitions = { ...this.embedded, albums: { ...this.embedded.albums, compact: { min: 48, content: renderAlbumIcons } } };
+		const model = new Navigator({ destinations: definitions, root: "albums", minViewportHeight, spareSpace: this.controls.spare.value, context: this.context });
+		for (const set of this.declarations) model.register(set);
+		let hover = null;
+		const wanted = (id) => id && !this.declares(id) && !this.failed.has(id);
+		root.addEventListener("pointerover", (event) => {
+			const id = event.target.closest?.("[data-destination]")?.dataset.destination;
+			clearTimeout(hover);
+			if (wanted(id)) hover = setTimeout(() => { if (wanted(id)) this.prepare(id).catch(() => null); }, 100);
+		});
+		root.addEventListener("pointerdown", () => clearTimeout(hover));
 		const workspace = new Workspace(root, { navigator: model, content: renderContent, overlayRoot: box, onIntent: (action, origin) => this.dispatch(action, origin) });
-		workspace.addEventListener("change", () => this.completeDefaults());
 		workspace.addEventListener("up", () => this.record("push"));
 		workspace.addEventListener("rejected", (event) => {
 			rejection.hidden = false;
@@ -603,15 +578,34 @@ class Session {
 
 	dispatch(action, origin) {
 		this.replaying = null;
-		if (action.type === "open") this.failed.delete(action.destination);
+		this.intents = (this.intents ?? 0) + 1;
+		if (action.type === "open" && !this.declares(action.destination)) return this.dispatchWhenPrepared(action, origin, this.intents);
 		const originResult = origin.apply(action, { focus: true });
 		const results = [originResult, ...this.frames.filter((frame) => frame.workspace !== origin).map((frame) => this.follow(frame.workspace, action, origin, originResult))];
 		if (results.some((result) => result.ok && !result.noop)) {
 			this.log = results.every((result) => result.ok) ? appendAction(this.log, action) : [...this.log, action];
 			this.record("push");
 		}
-		this.completeDefaults();
 		return originResult;
+	}
+
+	dispatchWhenPrepared(action, origin, intent) {
+		const source = origin.element.querySelector(`[data-occurrence="${CSS.escape(action.from)}"]`);
+		const control = source?.querySelector(`[data-destination="${CSS.escape(action.destination)}"]`) ?? null;
+		control?.classList.add("is-pending");
+		control?.setAttribute("aria-busy", "true");
+		this.prepare(action.destination).then(() => {
+			if (this.intents === intent && origin.navigator.get(action.from)) this.dispatch(action, origin);
+		}, (error) => {
+			if (this.intents !== intent) return;
+			const name = control?.getAttribute("aria-label") || control?.textContent.trim() || action.destination;
+			const from = origin.navigator.get(action.from)?.title;
+			origin.notify({ id: `prepare:${action.from}:${action.destination}`, scope: "workspace", kind: "error", message: `Could not open ${name}${from ? ` from ${from}` : ""}. ${error.message}`, action: { label: "Retry", run: () => this.dispatch(action, origin) } });
+		}).finally(() => {
+			control?.classList.remove("is-pending");
+			control?.removeAttribute("aria-busy");
+		});
+		return { ok: false, reason: "pending", destination: action.destination };
 	}
 
 	follow(workspace, action, origin, originResult) {
@@ -619,10 +613,7 @@ class Session {
 		const path = [];
 		for (let current = originResult.occurrence; current?.parent; current = origin.navigator.get(current.parent)) path.unshift(current);
 		for (const step of path.slice(0, -1)) {
-			if (workspace.navigator.get(step.id)) continue;
-			const definition = origin.navigator.definitionOf(step.destination);
-			const hint = definition ? { title: definition.title, min: definition.min, max: definition.max, preferred: definition.preferred } : null;
-			workspace.apply({ type: "open", destination: step.destination, from: step.parent, hint }, { focus: false });
+			if (!workspace.navigator.get(step.id)) workspace.run({ type: "open", destination: step.destination, from: step.parent });
 		}
 		const existing = workspace.navigator.get(originResult.occurrence.id);
 		if (existing && !originResult.noop && !originResult.promoted) workspace.navigator.closeSubtree(existing);
@@ -636,7 +627,8 @@ class Session {
 		history[`${mode}State`](state, "", url);
 	}
 
-	arrive(state) {
+	async arrive(state) {
+		await this.prepareAll(state?.log ?? decodeLog(location.hash));
 		if (state?.snapshots && this.frames.every((frame, index) => frame.workspace.restore(state.snapshots[index]))) {
 			this.replaying = null;
 			this.log = state.log;
@@ -648,20 +640,18 @@ class Session {
 	async replay(log, { mode = "push" } = {}) {
 		const token = Symbol("replay");
 		this.replaying = token;
+		await this.prepareAll(log);
+		if (this.replaying !== token) return;
 		for (const frame of this.frames) {
 			frame.workspace.closeModal("reset");
 			frame.workspace.dismissAll();
-			frame.workspace.replay([]);
 		}
+		const perFrame = this.frames.map((frame) => frame.workspace.replay(log));
 		this.log = [];
-		for (const action of log) {
-			await this.settleDefaults();
-			if (this.replaying !== token) return;
-			const results = this.frames.map((frame) => frame.workspace.apply(action, { animate: false }));
+		log.forEach((action, index) => {
+			const results = perFrame.map((results) => results[index]);
 			if (results.some((result) => result.ok && !result.noop)) this.log = results.every((result) => result.ok) ? appendAction(this.log, action) : [...this.log, action];
-		}
-		await this.settleDefaults();
-		if (this.replaying !== token) return;
+		});
 		this.replaying = null;
 		const unchanged = encodeLog(this.log) === location.hash.replace(/^#/, "");
 		this.record(mode === "push" && unchanged ? "replace" : mode);

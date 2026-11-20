@@ -234,3 +234,7 @@ body {
 .cell-spec[hidden] { display: none; }
 .cell-spec dt { margin: 0; }
 .cell-spec dd { margin: 0; color: var(--ink); }
+
+[data-destination][aria-busy="true"] { cursor: progress; animation: demo-waiting 700ms ease-in-out infinite alternate; }
+@keyframes demo-waiting { to { opacity: 0.45; } }
+@media (prefers-reduced-motion: reduce) { [data-destination][aria-busy="true"] { animation: none; opacity: 0.6; } }

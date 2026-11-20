@@ -1,16 +1,18 @@
 import { chainCells, chainFits, chainRootOf, chainWidth, isSplit, layoutWorkspace, validateSplit } from "./layout.js";
+import { sameLayout, validateDeclarationSet } from "./layout-declaration.js";
 
 const DEFAULT_CHROME = { navbar: 44, maxRows: 4 };
 
 export class SupermaxConfigurationError extends Error {
 	constructor(problems) {
-		super(`Supermax configuration has impossible splits:\n${problems.map(describeProblem).join("\n")}`);
+		super(`Supermax configuration is invalid:\n${problems.map(describeProblem).join("\n")}`);
 		this.name = "SupermaxConfigurationError";
 		this.problems = problems;
 	}
 }
 
-function describeProblem({ destination, validation }) {
+function describeProblem({ destination, validation, reason }) {
+	if (!validation) return `- ${destination}: ${reason}`;
 	const rows = validation.rows.filter((row) => !row.ok);
 	if (rows.length === 0) return `- ${destination}: ${validation.reason}`;
 	return rows.map((row) => `- ${destination}, row ${row.row} (${row.title}): ${row.problems.join(", ")}; needs ${row.required}px of ${row.supported}px`).join("\n");
@@ -24,15 +26,14 @@ export function validateDestinations(destinations, { minViewportHeight, chrome =
 		.filter((problem) => !problem.validation.ok);
 	return { ok: problems.length === 0, problems };
 }
-const GENERIC_CELL = { min: 200, max: 320 };
-
 const SPARE_SPACE = Object.freeze(["stretch", "start", "center", "end"]);
 
 export class Navigator {
-	constructor({ destinations, root, minViewportHeight, chrome = {}, spareSpace = "stretch" }) {
+	constructor({ destinations, root, minViewportHeight, chrome = {}, spareSpace = "stretch", context = null }) {
 		if (!Number.isFinite(minViewportHeight)) throw new TypeError("minViewportHeight must be a finite number of pixels");
 		if (!SPARE_SPACE.includes(spareSpace)) throw new TypeError(`spareSpace must be one of ${SPARE_SPACE.join(", ")}`);
 		this.spareSpace = spareSpace;
+		this.context = context;
 		this.destinations = Object.assign(Object.create(null), destinations);
 		this.rootDestination = root;
 		this.minViewportHeight = minViewportHeight;
@@ -62,79 +63,25 @@ export class Navigator {
 		return Object.hasOwn(this.destinations, id) ? this.destinations[id] : null;
 	}
 
-	define(id, definition) {
-		const previous = this.definitionOf(id);
-		this.destinations[id] = { ...definition, provisional: false };
-		const completed = [];
-		const rejected = [];
-		const closed = [];
-		for (const occurrence of [...this.occurrences.values()]) {
-			if (occurrence.destination !== id) continue;
-			occurrence.title = definition.title;
-			const group = this.groupOf(occurrence);
-			if (!previous?.provisional || !group) continue;
-			if (isSplit(definition)) {
-				const parent = occurrence.parent ? this.get(occurrence.parent) : null;
-				const validation = validateSplit(this, id, parent);
-				if (!validation.ok) {
-					this.closeSubtree(occurrence);
-					rejected.push({ occurrence: occurrence.id, result: { ok: false, reason: "invalid-rows", validation } });
-					continue;
-				}
-				for (const childId of occurrence.children) {
-					const child = childId ? this.get(childId) : null;
-					if (child) closed.push(...this.removeSubtree(child));
-				}
-				occurrence.children = [];
-				this.dropEmptyGroups();
-			}
-			if (group.root === occurrence.id) group.title = definition.title;
-			this.openDefaults(occurrence, group);
-			completed.push(occurrence.id);
+	register(set) {
+		const problems = validateDeclarationSet(set, { known: (id) => !!this.definitionOf(id) });
+		if (problems.length === 0 && set.context !== this.context) problems.push({ destination: set.root, reason: "declaration-context" });
+		const added = [];
+		for (const [id, declaration] of problems.length === 0 ? Object.entries(set.destinations) : []) {
+			const existing = this.definitionOf(id);
+			if (!existing) added.push(id);
+			else if (!sameLayout(existing, declaration)) problems.push({ destination: id, reason: "declaration-mismatch" });
 		}
-		for (const occurrence of [...this.occurrences.values()]) {
-			if (occurrence.awaiting !== id || occurrence.children[0]) continue;
-			const group = this.groupOf(occurrence);
-			if (!group) continue;
-			occurrence.awaiting = null;
-			const before = occurrence.children.length;
-			this.openDefaults(occurrence, group);
-			if (occurrence.children.length > before) completed.push(occurrence.children[0]);
+		const merged = { ...this.destinations, ...set.destinations };
+		const model = { chrome: this.chrome, minViewportHeight: this.minViewportHeight, definitionOf: (id) => merged[id] ?? null };
+		for (const id of problems.length === 0 ? added : []) {
+			if (!isSplit(merged[id])) continue;
+			const validation = validateSplit(model, id, null);
+			if (!validation.ok) problems.push({ destination: id, reason: "invalid-rows", validation });
 		}
-		return { completed, rejected, closed };
-	}
-
-	provisional(id, hint) {
-		const size = (value, fallback) => (Number.isFinite(value) && value > 0 ? value : fallback);
-		const title = typeof hint?.title === "string" && hint.title.trim().length > 0 ? hint.title : id;
-		const definition = { title, min: size(hint?.min, GENERIC_CELL.min), max: size(hint?.max, GENERIC_CELL.max), provisional: true };
-		if (Number.isFinite(hint?.preferred) && hint.preferred > 0) definition.preferred = hint.preferred;
-		if (typeof hint?.defaultChild === "string" && hint.defaultChild.length > 0) definition.defaultChild = hint.defaultChild;
-		if (definition.min > definition.max) definition.max = definition.min;
-		this.destinations[id] = definition;
-		return definition;
-	}
-
-	forget(id) {
-		if (!Object.hasOwn(this.destinations, id)) return false;
-		if ([...this.occurrences.values()].some((occurrence) => occurrence.destination === id)) return false;
-		delete this.destinations[id];
-		return true;
-	}
-
-	abandon(id) {
-		for (const occurrence of this.occurrences.values()) {
-			if (occurrence.awaiting === id) occurrence.awaiting = null;
-		}
-	}
-
-	missingDefinitions() {
-		const missing = new Set();
-		for (const occurrence of this.occurrences.values()) {
-			if (this.definitionOf(occurrence.destination)?.provisional) missing.add(occurrence.destination);
-			if (occurrence.awaiting && !this.definitionOf(occurrence.awaiting)) missing.add(occurrence.awaiting);
-		}
-		return [...missing];
+		if (problems.length > 0) throw new SupermaxConfigurationError(problems);
+		for (const id of added) this.destinations[id] = { ...set.destinations[id] };
+		return added;
 	}
 
 	get(id) {
@@ -169,24 +116,19 @@ export class Navigator {
 			slot: row,
 			children: [],
 			group: group ? group.id : null,
-			awaiting: null,
 		};
 		this.occurrences.set(occurrence.id, occurrence);
-		if (parent) {
-			parent.children[row] = occurrence.id;
-			parent.awaiting = null;
-		}
+		if (parent) parent.children[row] = occurrence.id;
 		return occurrence;
 	}
 
-	open(destinationId, { from, hint = null } = {}) {
+	open(destinationId, { from, ...rest } = {}) {
+		if (Object.hasOwn(rest, "hint")) throw new TypeError("open() takes no hint: register the destination's layout declaration before opening it");
 		const parent = this.get(from ?? this.root.id);
 		if (!parent) return { ok: false, reason: "source-closed", source: from };
-		let definition = this.definitionOf(destinationId);
-		const canProvision = !definition && typeof destinationId === "string" && destinationId.length > 0 && !!hint;
-		if (!definition && !canProvision) return { ok: false, reason: "unknown-destination", destination: destinationId };
+		const definition = this.definitionOf(destinationId);
+		if (!definition) return { ok: false, reason: "unknown-destination", destination: destinationId };
 		if (isSplit(this.definitionOf(parent.destination))) return { ok: false, reason: "split-source", source: parent.id };
-		if (canProvision) definition = this.provisional(destinationId, hint);
 		if (isSplit(definition)) {
 			const validation = validateSplit(this, destinationId, parent);
 			if (!validation.ok) return { ok: false, reason: "invalid-rows", validation };
@@ -240,13 +182,9 @@ export class Navigator {
 			}
 			return;
 		}
-		if (definition.provisional || occurrence.children[0]) return;
+		if (occurrence.children[0]) return;
 		const candidate = definition.defaultChild;
-		if (!candidate) return;
-		if (!this.definitionOf(candidate)) {
-			occurrence.awaiting = candidate;
-			return;
-		}
+		if (!candidate || !this.definitionOf(candidate)) return;
 		if (chainCells(this, chainRootOf(this, occurrence)).some((cell) => cell.destination === candidate)) return;
 		if (isSplit(this.definitionOf(candidate)) && !validateSplit(this, candidate, occurrence).ok) return;
 		if (!this.fits(occurrence, candidate)) return;

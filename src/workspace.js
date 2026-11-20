@@ -117,8 +117,8 @@ export class Workspace extends EventTarget {
 		this.render({ animate: false });
 	}
 
-	navigate(destination, { from, hint } = {}) {
-		return this.intent({ type: "open", destination, from, hint: hint ?? null });
+	navigate(destination, { from } = {}) {
+		return this.intent({ type: "open", destination, from });
 	}
 
 	requestUp() {
@@ -199,25 +199,12 @@ export class Workspace extends EventTarget {
 	reload(predicate = () => true) {
 		for (const [occurrenceId, entry] of this.cells) {
 			const occurrence = this.navigator.get(occurrenceId);
-			if (!occurrence || entry.provisional) continue;
+			if (!occurrence) continue;
 			const definition = this.navigator.definitionOf(occurrence.destination);
 			if (isSplit(definition) || !predicate(occurrence, definition)) continue;
 			this.mountContent(entry, occurrence);
 		}
 		this.modal?.retry();
-	}
-
-	failDefinition(id, error, retry = null) {
-		let shown = 0;
-		for (const [occurrenceId, entry] of this.cells) {
-			const occurrence = this.navigator.get(occurrenceId);
-			if (occurrence?.destination !== id || !entry.provisional) continue;
-			entry.slot.retry = () => { entry.slot.loading(occurrence.title); retry?.(); };
-			entry.slot.error(occurrence.title, error);
-			shown += 1;
-		}
-		this.navigator.abandon(id);
-		return shown;
 	}
 
 	goTo(occurrenceId) {
@@ -245,63 +232,12 @@ export class Workspace extends EventTarget {
 	run(action) {
 		return action.type === "close"
 			? this.navigator.closeNewestGroup()
-			: this.navigator.open(action.destination, { from: action.from, hint: action.hint ?? null });
-	}
-
-	define(id, definition) {
-		const result = this.navigator.define(id, definition);
-		const completed = this.navigator.definitionOf(id);
-		for (const [occurrenceId, entry] of this.cells) {
-			const occurrence = this.navigator.get(occurrenceId);
-			if (occurrence?.destination !== id) continue;
-			this.setTitle(entry, occurrence.title);
-			if (!entry.provisional) continue;
-			if (isSplit(completed)) {
-				this.becomeSplit(entry);
-				continue;
-			}
-			if (completed.keep && completed.compact && !entry.rail) this.peeks.mount(entry, occurrence, completed);
-			this.mountContent(entry, occurrence);
-		}
-		for (const rejection of result.rejected) {
-			this.dispatchEvent(new CustomEvent("rejected", { detail: { action: { type: "define", destination: id, occurrence: rejection.occurrence }, result: rejection.result } }));
-		}
-		if (result.completed.includes(this.navigator.focused)) this.navigator.bringIntoView(this.navigator.focused);
-		this.render({ animate: true });
-		return result;
-	}
-
-	setTitle(entry, title) {
-		if (entry.titleNode) entry.titleNode.textContent = title;
-		entry.element.setAttribute("aria-label", title);
-		if (entry.rail) {
-			entry.rail.setAttribute("aria-label", this.strings.peek(title));
-			entry.rail.firstChild.textContent = title;
-		}
-	}
-
-	becomeSplit(entry) {
-		entry.slot.dispose();
-		entry.provisional = false;
-		entry.header?.remove();
-		entry.header = null;
-		entry.element.querySelector(":scope > .supermax-compact")?.remove();
-		entry.rail = null;
-		entry.element.classList.remove("is-provisional", "is-loading", "is-error", "is-compact");
-		entry.element.classList.add("is-split");
-		entry.body.replaceChildren(this.create("div", "supermax-rows"));
+			: this.navigator.open(action.destination, { from: action.from });
 	}
 
 	mountContent(entry, occurrence) {
 		const definition = this.navigator.definitionOf(occurrence.destination);
-		entry.provisional = !!definition.provisional;
-		entry.element.classList.toggle("is-provisional", entry.provisional);
 		entry.slot.retry = () => this.mountContent(entry, this.navigator.get(occurrence.id));
-		if (entry.provisional) {
-			entry.slot.dispose();
-			entry.slot.loading(occurrence.title);
-			return;
-		}
 		entry.slot.mount(occurrence.title, () => this.content(occurrence, definition, this), () => this.cells.get(occurrence.id) === entry);
 	}
 
@@ -609,7 +545,7 @@ export class Workspace extends EventTarget {
 			element.append(header);
 		}
 		element.append(body);
-		entry = { element, body, header, titleNode, slot: new ContentSlot(this, { element, body, id: occurrenceId }), parent: occurrence.parent, rail: null, provisional: false };
+		entry = { element, body, header, titleNode, slot: new ContentSlot(this, { element, body, id: occurrenceId }), parent: occurrence.parent, rail: null };
 		if (!isSplit(definition) && definition.keep && definition.compact) this.peeks.mount(entry, occurrence, definition);
 		this.cells.set(occurrenceId, entry);
 		if (!isSplit(definition)) this.mountContent(entry, occurrence);

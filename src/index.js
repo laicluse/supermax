@@ -7,3 +7,4 @@ export { validateSplit } from "./layout.js";
 export { DEFAULT_STRINGS } from "./strings.js";
 export { defaultNoticeIcon } from "./icons.js";
 export { frustumOrigin } from "./origin.js";
+export { LAYOUT_HEADER, LAYOUT_SCHEMA, SupermaxLayoutError, encodeLayoutHeader, layoutHashOf, layoutOf, parseLayoutHeader, readLayout, validateDeclarationSet } from "./layout-declaration.js";

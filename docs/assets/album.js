@@ -1,3 +1,5 @@
+import { LAYOUT_SCHEMA, layoutOf } from "./supermax/layout-declaration.js";
+
 export const minViewportHeight = 360;
 
 const widths = {
@@ -79,20 +81,13 @@ export function paths(album) {
 	return { album: albumPath, row, photo, metadata, history, edit };
 }
 
-export const remoteKinds = new Set(["metadata", "history", "edit"]);
+export const remoteLayouts = new Set(["photo", "metadata", "history", "edit"]);
+export const remoteContent = new Set(["metadata", "history", "edit"]);
 
-export function localDestinations() {
-	const all = destinations();
-	return Object.fromEntries(Object.entries(all).filter(([, definition]) => !remoteKinds.has(definition.data.kind)));
-}
+const catalogs = new Map();
 
-export function hintFor(id) {
-	const definition = destinations()[id];
-	if (!definition) return null;
-	return { title: definition.title, min: definition.min, max: definition.max, preferred: definition.preferred };
-}
-
-export function destinations() {
+export function destinations(context = "ana") {
+	if (catalogs.has(context)) return catalogs.get(context);
 	const result = { albums: { title: "Albums", ...widths.albums, data: { kind: "albums" } } };
 	for (let n = 1; n <= depthCount; n += 1) {
 		result[depthId(n)] = { title: `Depth ${n}`, ...widths.depth, data: { kind: "depth", n } };
@@ -115,12 +110,47 @@ export function destinations() {
 		}
 		for (const photo of album.photos) {
 			result[key.photo(photo)] = { title: photo.title, ...widths.photo, defaultChild: key.metadata(photo), data: { kind: "photo", album, photo } };
-			result[key.metadata(photo)] = { title: `Metadata ${photo.id.toUpperCase()}`, ...widths.metadata, defaultChild: key.history(photo), data: { kind: "metadata", album, photo } };
+			result[key.metadata(photo)] = { title: `Metadata ${photo.id.toUpperCase()}`, ...widths.metadata, defaultChild: context === "ben" ? null : key.history(photo), data: { kind: "metadata", album, photo } };
 			result[key.history(photo)] = { title: `History ${photo.id.toUpperCase()}`, ...widths.history, data: { kind: "history", album, photo } };
 			for (const edit of edits) {
 				result[key.edit(photo, edit)] = { title: `${edit.title} (${photo.id.toUpperCase()})`, ...widths.edit, data: { kind: "edit", album, photo, edit } };
 			}
 		}
 	}
+	catalogs.set(context, result);
 	return result;
+}
+
+export function closureOf(roots, context = "ana") {
+	const catalog = destinations(context);
+	const reached = new Set();
+	const visit = (id) => {
+		if (reached.has(id) || !catalog[id]) return;
+		reached.add(id);
+		if (catalog[id].defaultChild) visit(catalog[id].defaultChild);
+		for (const row of catalog[id].rows ?? []) visit(row.destination);
+	};
+	roots.forEach(visit);
+	return [...reached];
+}
+
+export function declarationSet(root, context = "ana") {
+	const catalog = destinations(context);
+	return {
+		schemaVersion: LAYOUT_SCHEMA,
+		context,
+		root,
+		destinations: Object.fromEntries(closureOf([root], context).map((id) => [id, declare(catalog[id])])),
+	};
+}
+
+function declare(definition) {
+	const { keep, compact, rows, ...layout } = layoutOf(definition);
+	return { ...layout, ...(keep ? { keep } : {}), ...(compact ? { compact } : {}), ...(rows ? { rows: rows.map(({ keep: rowKeep, preferredHeight, ...row }) => ({ ...row, ...(preferredHeight !== null ? { preferredHeight } : {}), ...(rowKeep ? { keep: rowKeep } : {}) })) } : {}) };
+}
+
+export function embeddedDestinations(context = "ana") {
+	const catalog = destinations(context);
+	const local = Object.keys(catalog).filter((id) => !remoteLayouts.has(catalog[id].data.kind));
+	return Object.fromEntries(closureOf(local, context).map((id) => [id, catalog[id]]));
 }

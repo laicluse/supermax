@@ -343,86 +343,32 @@ scenario("a dragged size is a session preference inside min and max, and rows fo
 	instance.setSize(item("list", "a"), null, "width");
 });
 
-scenario("a hinted destination opens provisionally and completes when its definition arrives", () => {
+scenario("a destination opens only from its registered declaration, and a second declaration may not differ", () => {
+	const declared = (title, more = {}) => ({ title, min: 100, max: 200, preferred: null, defaultChild: null, ...more });
+	const set = { schemaVersion: 1, context: null, root: "remote:a", destinations: { "remote:a": declared("Remote A", { min: 150, max: 260, defaultChild: "remote:b" }), "remote:b": declared("Remote B") } };
 	const instance = model(1000, 500);
 	openGallery(instance);
-	assert.equal(instance.open("remote:a", { from: item("list", "a") }).reason, "unknown-destination", "without a hint an unknown id is refused");
-	const hinted = instance.open("remote:a", { from: item("list", "a"), hint: { title: "Remote A", min: 120, max: 240 } });
-	assert.equal(hinted.ok, true);
-	assert.equal(instance.definitionOf("remote:a").provisional, true);
-	assert.equal(instance.get(`${item("list", "a")}/remote:a`).title, "Remote A");
-	assert.deepEqual(titles(instance), ["Gallery", "Remote A"]);
-	assert.deepEqual([instance.layout().chain.cells[1].rows.rows[0].chain.cells[2].min, instance.layout().chain.cells[1].rows.rows[0].chain.cells[2].max], [120, 240], "the hint sizes the placeholder cell");
-	const group = instance.groupOf(instance.get(`${item("list", "a")}/remote:a`)).id;
-	instance.open("item:b", { from: row("grid") });
-	const result = instance.define("remote:a", { title: "Remote A!", min: 150, max: 260, defaultChild: "detail:b" });
-	assert.deepEqual(result.completed, [`${item("list", "a")}/remote:a`]);
-	assert.equal(instance.get(`${item("list", "a")}/remote:a`).title, "Remote A!", "the definition updates the open occurrence in place");
-	assert.equal([...instance.occurrences.values()].filter((occurrence) => occurrence.destination === "remote:a").length, 1, "no second occurrence for the same opening");
-	const late = instance.get(`${item("list", "a")}/remote:a/detail:b`);
-	assert.ok(late, "the late default opened");
-	assert.equal(late.group, group, "and joined the group that started the navigation, not the newer one");
-	assert.deepEqual(titles(instance), ["Gallery", "Remote A!", "Item B"], "Back order is unchanged by the late arrival");
-	assert.equal(instance.layout().chain.cells[1].rows.rows[0].chain.cells[2].min, 150, "a hint mismatch is repaired in place");
+	assert.equal(instance.open("remote:a", { from: item("list", "a") }).reason, "unknown-destination", "an undeclared destination is refused");
+	assert.throws(() => instance.open("remote:a", { from: item("list", "a"), hint: { title: "Remote A", min: 120, max: 240 } }), TypeError, "a link cannot carry layout of its own");
+	assert.deepEqual(instance.register(set), ["remote:a", "remote:b"], "registering adds the destination and its whole default chain");
+	assert.deepEqual(titles(instance), ["Gallery"], "and opens nothing by itself");
+	assert.equal(instance.open("remote:a", { from: item("list", "a") }).ok, true);
+	assert.ok(instance.get(`${item("list", "a")}/remote:a/remote:b`), "the default chain opens in the same navigation");
+	assert.deepEqual(instance.register(set), [], "the same declaration again changes nothing");
+	const differs = (problems, reason) => (error) => error instanceof SupermaxConfigurationError && error.problems.some((problem) => problem.reason === reason && problems.includes(problem.destination));
+	assert.throws(() => instance.register({ ...set, destinations: { ...set.destinations, "remote:a": { ...set.destinations["remote:a"], min: 120 } } }), differs(["remote:a"], "declaration-mismatch"), "a different declaration for a known destination is a configuration error");
+	assert.equal(instance.definitionOf("remote:a").min, 150, "and the known declaration stays");
+	assert.throws(() => instance.register({ ...set, root: "remote:c", destinations: { "remote:c": declared("Remote C", { defaultChild: "remote:missing" }) } }), differs(["remote:c"], "missing-destination"), "a set must carry every default it names");
+	assert.throws(() => instance.register({ ...set, root: "remote:d", destinations: { "remote:d": declared("Remote D", { defaultChild: "remote:e" }), "remote:e": declared("Remote E", { defaultChild: "remote:d" }) } }), differs(["remote:d", "remote:e"], "default-cycle"), "a cyclic default chain is refused");
+	assert.throws(() => instance.register({ ...set, schemaVersion: 2 }), differs(["remote:a"], "schema-version"), "an unknown schema version is refused");
+	assert.throws(() => instance.register({ ...set, root: "remote:f", destinations: { "remote:f": { ...declared("Remote F"), data: { kind: "photo" } } } }), differs(["remote:f"], "unknown-field"), "a declaration carries layout only");
+	assert.throws(() => instance.register({ ...set, root: "remote:g", destinations: { "remote:g": declared("Remote G", { min: 300, max: 200 }) } }), differs(["remote:g"], "invalid-size"));
+	assert.throws(() => instance.register({ ...set, root: "remote:t", destinations: { "remote:t": declared("Remote T", { min: 300, max: 600, rows: [{ destination: "list", minHeight: 400, maxHeight: 500 }] }) } }), differs(["remote:t"], "invalid-rows"), "a split is validated against the minimum height when it is registered");
+	assert.equal(instance.definitionOf("remote:c"), null, "a refused set registers nothing");
 
-	const closedByUser = model(1000, 500);
-	openGallery(closedByUser);
-	closedByUser.open("remote:p", { from: item("list", "a"), hint: { title: "Remote P", min: 100, max: 200, defaultChild: "remote:q" } });
-	closedByUser.define("remote:p", { title: "Remote P", min: 100, max: 200, defaultChild: "remote:q" });
-	assert.equal(closedByUser.get(`${item("list", "a")}/remote:p`).awaiting, "remote:q", "a parent remembers the default it could not open yet");
-	closedByUser.open("detail:b", { from: `${item("list", "a")}/remote:p` });
-	closedByUser.closeNewestGroup();
-	assert.equal(closedByUser.get(`${item("list", "a")}/remote:p`).children[0], undefined, "the user closed what was open under the parent");
-	closedByUser.define("remote:q", { title: "Remote Q", min: 100, max: 200 });
-	assert.equal(closedByUser.get(`${item("list", "a")}/remote:p`).children[0], undefined, "a definition arriving after the user chose and closed opens nothing");
-
-	const lateSplit = model(1000, 500);
-	openGallery(lateSplit);
-	lateSplit.open("remote:s", { from: item("list", "a"), hint: { title: "Remote S", min: 100, max: 200 } });
-	const invalid = lateSplit.define("remote:s", { title: "Remote S", min: 100, max: 200, rows: [{ destination: "detail:b", minHeight: 400, maxHeight: 500 }] });
-	assert.deepEqual([invalid.rejected[0]?.result.reason, invalid.rejected[0]?.result.validation.reason], ["invalid-rows", "nested-split"], "a definition with rows is validated when it completes a cell, here inside a row, with the same verdict shape as a refused open");
-	assert.ok(!lateSplit.get(`${item("list", "a")}/remote:s`), "and a refused split closes the cell it was meant to complete");
-	assert.deepEqual(titles(lateSplit), ["Gallery"], "leaving the earlier history intact");
-	lateSplit.open("remote:t", { from: "root", hint: { title: "Remote T", min: 300, max: 600 } });
-	const tooTall = lateSplit.define("remote:t", { title: "Remote T", min: 300, max: 600, rows: [{ destination: "list", minHeight: 400, maxHeight: 500 }] });
-	assert.equal(tooTall.rejected[0]?.result.validation.reason, "invalid-rows", "a split at the root chain is validated against the minimum height");
-	assert.ok(!lateSplit.get("root/remote:t"));
-	lateSplit.open("remote:u", { from: "root", hint: { title: "Remote U", min: 300, max: 600 } });
-	const valid = lateSplit.define("remote:u", { title: "Remote U", min: 300, max: 600, rows: [{ destination: "list", minHeight: 100, maxHeight: 300 }, { destination: "tags", minHeight: 100, maxHeight: 300 }] });
-	assert.deepEqual(valid.rejected, []);
-	assert.deepEqual(lateSplit.get("root/remote:u").children, ["root/remote:u/list", "root/remote:u/tags"], "a valid late split opens its rows in place");
-
-	const gone = model(1000, 500);
-	openGallery(gone);
-	gone.open("remote:b", { from: item("tags", "a"), hint: { title: "Remote B", min: 100, max: 200 } });
-	gone.closeNewestGroup();
-	const after = gone.define("remote:b", { title: "Remote B", min: 100, max: 200, defaultChild: "detail:c" });
-	assert.deepEqual(after.completed, [], "a definition arriving after Back opens nothing");
-	assert.ok(!gone.get(`${item("tags", "a")}/remote:b`), "the closed group does not return");
-
-	const twoRows = model(1000, 500);
-	openGallery(twoRows);
-	twoRows.open("remote:e", { from: item("list", "a"), hint: { title: "Remote E", min: 100, max: 200 } });
-	twoRows.open("remote:e", { from: item("tags", "a"), hint: { title: "Remote E", min: 100, max: 200 } });
-	const both = twoRows.define("remote:e", { title: "Remote E", min: 100, max: 200 });
-	assert.deepEqual(both.completed.sort(), [`${item("list", "a")}/remote:e`, `${item("tags", "a")}/remote:e`].sort(), "one definition completes the same destination in every row");
-
-	const chosen = model(1000, 500);
-	openGallery(chosen);
-	chosen.open("remote:c", { from: item("tags", "a"), hint: { title: "Remote C", min: 100, max: 200 } });
-	chosen.open("detail:b", { from: `${item("tags", "a")}/remote:c` });
-	chosen.define("remote:c", { title: "Remote C", min: 100, max: 200, defaultChild: "detail:c" });
-	assert.equal(chosen.child(chosen.get(`${item("tags", "a")}/remote:c`)).destination, "detail:b", "an explicit selection beats a late default");
-
-	const garbage = model(1000, 500);
-	openGallery(garbage);
-	assert.equal(garbage.open("remote:g", { from: item("list", "a"), hint: { title: "", min: Number.NaN, max: 0, preferred: -5 } }).ok, true, "a hint with unusable numbers still opens");
-	assert.deepEqual([garbage.definitionOf("remote:g").title, garbage.definitionOf("remote:g").min, garbage.definitionOf("remote:g").max, garbage.definitionOf("remote:g").preferred], ["remote:g", 200, 320, undefined], "with the generic cell in place of the garbage");
-	assert.equal(garbage.open("__proto__", { from: item("list", "a"), hint: { title: "Proto" } }).ok, true);
-	assert.equal(garbage.definitionOf("constructor"), null, "a registry entry never comes from the prototype");
-	assert.equal(garbage.open("remote:h", { from: "root/gallery", hint: { title: "Nope" } }).reason, "split-source", "a refused opening registers nothing");
-	assert.equal(garbage.definitionOf("remote:h"), null);
-
+	const viewer = new Navigator({ destinations, root: "root", minViewportHeight, chrome, context: "ana" });
+	assert.throws(() => viewer.register({ ...set, context: "ben" }), differs(["remote:a"], "declaration-context"), "a set for another context is refused");
+	assert.deepEqual(viewer.register({ ...set, context: "ana" }), ["remote:a", "remote:b"]);
 });
 
 scenario("default chains are finite and do not repeat a destination already in the chain", () => {

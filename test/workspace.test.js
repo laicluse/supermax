@@ -51,6 +51,10 @@ async function settle() {
 	await page.waitForFunction(() => document.getAnimations().length === 0 && window.supermaxDemo.pending === 0 && !document.querySelector(".supermax-cell.is-loading"));
 }
 
+async function opened() {
+	await page.waitForFunction(() => window.supermaxDemo.pending === 0);
+}
+
 async function state(key) {
 	return page.evaluate((frameKey) => window.supermaxDemo.frames.find((candidate) => candidate.key === frameKey).workspace.navigator.state(), key);
 }
@@ -103,7 +107,7 @@ test("an explicit click on auto-open content promotes it here, and the other fra
 	assert.deepEqual(await groups("a"), ["Coast", "Metadata A"]);
 	assert.deepEqual(await groups("b"), ["Coast", "Photo A", "Metadata A"], "the narrow frame never auto-opened Photo A, so it opens Photo A first and then the clicked metadata");
 	assert.equal(await page.locator(readout("b", "rejection")).isHidden(), true, "nothing is refused");
-	assert.equal(page.url().split("#")[1], `o:album:coast@albums;o:coast:metadata:a@${coast.photo("thumbnails", "a")}?title=Metadata+A&min=200&max=320&preferred=220`, "an action applied in one frame enters the log with its hint, so a reload can open it before its definition loads");
+	assert.equal(page.url().split("#")[1], `o:album:coast@albums;o:coast:metadata:a@${coast.photo("thumbnails", "a")}`, "an action applied in one frame enters the log as destination and source only");
 });
 
 test("frames diverge on what closing the newest group closes and the demo does not equalise them", async () => {
@@ -488,6 +492,7 @@ test("a host that shows the canvas keeps cells at their maximum and centres them
 
 test("a render during an entrance carries the fold on instead of dropping it", { skip: PRESENTATION !== "origami" }, async () => {
 	await openDemo(THREE_ROWS);
+	await page.evaluate(() => window.supermaxDemo.prepare("coast:photo:d"));
 	const carried = await page.evaluate(({ row, photo }) => {
 		document.querySelector(`.frame[data-frame="a"] [data-occurrence="${row}"] [data-destination="coast:photo:d"]`).click();
 		window.supermaxDemo.frames[0].workspace.render();
@@ -640,6 +645,7 @@ test("browser back restores the state before the last action, also after a resiz
 	const wideBefore = await state("a");
 	await resize([[600, 640], [420, 640]]);
 	await page.click(inFrame("b", `[data-occurrence="${coast.row("map")}"] .pin[data-destination="coast:photo:b"]`));
+	await opened();
 	assert.deepEqual(await groups("a"), ["Coast", "Photo B"]);
 	await page.goBack();
 	await page.waitForFunction(() => !location.hash.includes("photo:b"));
@@ -677,7 +683,7 @@ test("keyboard opening in the narrow frame keeps focus on the opened content", a
 	assert.ok((await state("a")).occurrences.includes(coast.photo("thumbnails", "a")), "while the other frame keeps it open");
 });
 
-const LONG_CHAIN = [open("album:coast", "albums"), { ...open("coast:history:a", coast.metadata("thumbnails", "a")), hint: { title: "History A" } }, { ...open("coast:edit:a:2", coast.history("thumbnails", "a")), hint: { title: "Crop 3:2 (A)", min: 200, max: 320 } }];
+const LONG_CHAIN = [open("album:coast", "albums"), open("coast:history:a", coast.metadata("thumbnails", "a")), open("coast:edit:a:2", coast.history("thumbnails", "a"))];
 
 test("a long chain hides old cells entirely while the kept albums menu stays as an icon rail", async () => {
 	await openDemo(LONG_CHAIN);
@@ -775,76 +781,86 @@ test("dividers resize cells and rows within their bounds by pointer and keyboard
 	assert.ok((await page.locator(inFrame("a", ".supermax-divider.is-horizontal")).count()) >= 2, "reopening the same split brings its row dividers back");
 });
 
-test("remote cells open from hints, complete when their layout metadata arrives, and recover from failures", async () => {
-	await openDemo();
+test("a remote destination opens once its layout arrives, with its whole chain in one render, and its content loads in a cell that already has its final shape", async () => {
+	await openDemo([open("album:coast", "albums")]);
 	await resize([[1100, 640], [360, 640]]);
 	await page.selectOption("[data-delay]", "400");
-	await page.click(inFrame("a", '.album-item[data-destination="album:coast"]'));
-	const thumbnailsRow = (id) => `[data-occurrence="${coast.row("thumbnails")}/${id}"]`;
-	await page.waitForSelector(inFrame("a", thumbnailsRow("coast:photo:a")));
-	assert.equal(await page.locator(inFrame("a", thumbnailsRow("coast:photo:a/coast:metadata:a"))).count(), 0, "a default whose layout metadata is still in flight has not opened yet");
+	await page.evaluate(() => {
+		window.__renders = 0;
+		window.supermaxDemo.frames[0].workspace.addEventListener("render", () => { window.__renders += 1; });
+	});
+	const thumb = inFrame("a", `[data-occurrence="${coast.row("people")}"] [data-destination="coast:photo:c"]`);
+	await page.click(thumb);
+	await page.evaluate(() => { window.__renders = 0; });
+	assert.equal(await page.locator(thumb).getAttribute("aria-busy"), "true", "the control shows at once that it is waiting");
+	assert.ok(!(await state("a")).occurrences.includes(coast.photo("people", "c")), "nothing opens before the layout is known");
+	const metadataCell = inFrame("a", `[data-occurrence="${coast.metadata("people", "c")}"]`);
+	await page.waitForSelector(`${metadataCell}.is-loading`);
+	const loading = await page.locator(metadataCell).evaluate((element) => element.offsetWidth);
+	assert.ok((await state("a")).occurrences.includes(coast.history("people", "c")), "the whole default chain opens with the photo");
 	await settle();
-	assert.ok((await state("a")).occurrences.includes(coast.history("thumbnails", "a")), "metadata and then its own history default open once their metadata arrives");
-	assert.deepEqual(await groups("a"), ["Coast"], "late defaults join the group that opened the album");
-	const requests = await page.evaluate(() => window.supermaxDemo.requests.map((request) => `${request.kind} ${request.id}`));
-	assert.equal(requests.filter((entry) => entry === "manifest coast:metadata:a").length, 1, "three rows in two frames share one request per destination");
-	const editCell = inFrame("a", `[data-occurrence="${coast.edit("thumbnails", "a", 2)}"]`);
-	await page.click(inFrame("a", `[data-occurrence="${coast.history("thumbnails", "a")}"] .edit-item[data-destination="coast:edit:a:2"]`));
-	await page.waitForSelector(`${editCell}.is-loading`);
-	const loading = await page.locator(editCell).evaluate((element) => ({ title: element.querySelector(".supermax-cell-title").textContent, width: element.offsetWidth, status: element.querySelector(".supermax-loading").textContent }));
-	assert.equal(loading.title, "Crop 3:2 (A)", "the hint names the cell while it loads");
-	assert.equal(loading.status, "Loading Crop 3:2 (A)");
-	assert.ok(loading.width >= 200 && loading.width <= 320, "the hint sizes the placeholder inside its bounds");
-	await settle();
-	const loaded = await page.locator(editCell).evaluate((element) => ({ viewer: element.querySelector(".viewer-line").textContent, width: element.offsetWidth, provisional: element.classList.contains("is-provisional") }));
-	assert.equal(loaded.viewer, "Viewing as Ana");
-	assert.equal(loaded.width, loading.width, "the loaded cell keeps the placeholder's width, nothing jumps");
-	assert.equal(loaded.provisional, false);
-	assert.deepEqual(await groups("a"), ["Coast", "Crop 3:2 (A)"], "the hinted opening is one group, completed in place");
+	assert.equal(await page.evaluate(() => window.__renders), 1, "one render once the layout is known, also while content loads");
+	assert.equal(await page.locator(metadataCell).evaluate((element) => element.offsetWidth), loading, "the loaded cell keeps the width it opened with");
+	assert.equal(await page.locator(thumb).getAttribute("aria-busy"), null);
+	assert.deepEqual(await groups("a"), ["Coast", "Photo C"]);
+	const layouts = await page.evaluate(() => window.supermaxDemo.requests.filter((request) => request.kind === "layout").map((request) => request.url));
+	assert.deepEqual(layouts, ["/supermax/layout?destination=coast%3Aphoto%3Ac"], "two frames share one HEAD for the destination");
+
 	await page.selectOption("[data-fail]", "content");
-	await page.click(inFrame("a", `[data-occurrence="${coast.history("thumbnails", "a")}"] .edit-item[data-destination="coast:edit:a:3"]`));
+	await page.click(inFrame("a", `[data-occurrence="${coast.history("people", "c")}"] .edit-item[data-destination="coast:edit:c:3"]`));
 	await settle();
-	const failedCell = inFrame("a", `[data-occurrence="${coast.edit("thumbnails", "a", 3)}"]`);
-	assert.equal(await page.locator(`${failedCell} .supermax-error strong`).textContent(), "Warm tint (A) could not load.", "a failed content request shows its error in the cell");
-	assert.deepEqual(await groups("a"), ["Coast", "Warm tint (A)"], "the navigation itself stands, so Back still closes it");
+	const failedCell = inFrame("a", `[data-occurrence="${coast.edit("people", "c", 3)}"]`);
+	assert.equal(await page.locator(`${failedCell} .supermax-error strong`).textContent(), "Warm tint (C) could not load.", "a failed content request shows its error in the cell");
+	assert.deepEqual(await groups("a"), ["Coast", "Photo C", "Warm tint (C)"], "the navigation itself stands, so Back still closes it");
 	await page.selectOption("[data-fail]", "");
 	await page.click(`${failedCell} .supermax-retry`);
 	await settle();
 	assert.equal(await page.locator(`${failedCell} .viewer-line`).textContent(), "Viewing as Ana", "retry loads the content without a new navigation");
-	assert.deepEqual(await groups("a"), ["Coast", "Warm tint (A)"], "and adds no Back step");
+	assert.deepEqual(await groups("a"), ["Coast", "Photo C", "Warm tint (C)"], "and adds no Back step");
+
 	await page.selectOption("[data-delay]", "1500");
 	await page.click(inFrame("a", `[data-occurrence="${coast.row("map")}"] [data-destination="coast:photo:b"]`));
 	await closeNewest("a");
 	await page.waitForTimeout(1700);
 	await settle();
-	assert.ok(!(await state("a")).occurrences.includes(coast.metadata("map", "b")), "layout metadata arriving after Back opens nothing");
-	await page.selectOption("[data-delay]", "0");
-	await page.selectOption("[data-context]", "ben");
+	assert.ok(!(await state("a")).occurrences.includes(coast.photo("map", "b")), "a layout arriving after Back opens nothing");
+});
+
+test("a reload shows the whole restored chain at once, without a fold, while layouts and content load", async () => {
+	await page.goto("about:blank");
+	await page.addInitScript(() => {
+		window.__folds = 0;
+		const seen = new WeakSet();
+		const watch = () => {
+			for (const animation of document.getAnimations()) {
+				if (seen.has(animation)) continue;
+				seen.add(animation);
+				if (animation.effect?.target?.classList?.contains("supermax-cell") && animation.effect.getKeyframes().some((frame) => String(frame.transform ?? "").includes("rotate"))) window.__folds += 1;
+			}
+			requestAnimationFrame(watch);
+		};
+		requestAnimationFrame(watch);
+	});
+	await page.goto(`${server.url}/?delay=400${PRESENTATION === "origami" ? "" : `&presentation=${PRESENTATION}`}#${encodeLog([open("album:coast", "albums"), open("coast:photo:c", coast.row("people")), open("coast:history:c", coast.metadata("people", "c")), open("coast:edit:c:2", coast.history("people", "c"))])}`);
+	await page.waitForFunction(() => window.supermaxDemo?.frames.length === 2);
+	assert.ok((await state("a")).occurrences.includes(coast.edit("people", "c", 2)), "the first render already holds the whole chain");
 	await settle();
-	assert.equal(await page.locator(inFrame("a", `[data-occurrence="${coast.metadata("thumbnails", "a")}"] .viewer-line`)).textContent(), "Viewing as Ben (read-only)", "a context switch reloads remote content in place");
-	await page.click(inFrame("a", `[data-occurrence="${coast.row("people")}"] [data-destination="coast:photo:c"]`));
+	assert.equal(await page.evaluate(() => window.__folds), 0, "nothing folds on load");
+});
+
+test("another viewer is another context, with its own layout for the same destination", async () => {
+	await page.goto("about:blank");
+	await page.goto(`${server.url}/?delay=0&viewer=ben${PRESENTATION === "origami" ? "" : `&presentation=${PRESENTATION}`}#${encodeLog([open("album:coast", "albums")])}`);
+	await page.waitForFunction(() => window.supermaxDemo?.frames.length === 2);
 	await settle();
-	assert.ok((await state("a")).occurrences.includes(coast.metadata("people", "c")), "Ben still gets metadata");
-	assert.ok(!(await state("a")).occurrences.includes(coast.history("people", "c")), "but Ben's layout metadata declares no history default");
-	await page.selectOption("[data-delay]", "400");
-	await page.click(inFrame("a", `[data-occurrence="${coast.row("people")}"] [data-destination="coast:photo:d"]`));
+	assert.equal(await page.locator(inFrame("a", `[data-occurrence="${coast.metadata("thumbnails", "a")}"] .viewer-line`)).textContent(), "Viewing as Ben (read-only)");
+	const defaultOfMetadata = () => page.evaluate(() => window.supermaxDemo.frames[0].workspace.navigator.definitionOf("coast:metadata:a").defaultChild ?? null);
+	assert.equal(await defaultOfMetadata(), null, "Ben's metadata declares no history default");
 	await page.selectOption("[data-context]", "ana");
+	await page.waitForURL(/viewer=ana/);
+	await page.waitForFunction(() => window.supermaxDemo?.frames.length === 2);
 	await settle();
-	assert.equal(await page.locator(inFrame("a", `[data-occurrence="${coast.metadata("people", "d")}"] .viewer-line`)).textContent(), "Viewing as Ana", "a response for the old viewer is discarded, the new viewer's content lands");
-	assert.equal(await page.locator(inFrame("a", ".viewer-line")).evaluateAll((elements) => elements.filter((element) => element.textContent.includes("Ben")).length), 0, "no cell keeps the old viewer");
-	const before = await page.evaluate(() => window.supermaxDemo.requests.length);
-	await page.hover(inFrame("a", `[data-occurrence="${coast.history("thumbnails", "a")}"] .edit-item[data-destination="coast:edit:a:1"]`));
-	await page.waitForFunction((count) => window.supermaxDemo.requests.length > count, before);
-	await settle();
-	assert.equal(await page.evaluate(() => window.supermaxDemo.requests.at(-1).id), "coast:edit:a:1", "hovering an item prefetches its layout metadata");
-	assert.equal(await page.locator(inFrame("a", `[data-occurrence="${coast.edit("thumbnails", "a", 1)}"]`)).count(), 0, "without opening anything");
-	await page.selectOption("[data-context]", "ben");
-	await settle();
-	while ((await groups("a")).length > 0) { await closeNewest("a"); await settle(); }
-	await page.click(inFrame("a", '.album-item[data-destination="album:coast"]'));
-	await settle();
-	assert.ok((await state("a")).occurrences.includes(coast.metadata("thumbnails", "a")), "reopening as Ben still shows metadata");
-	assert.ok(!(await state("a")).occurrences.includes(coast.history("thumbnails", "a")), "and does not reuse the layout metadata that Ana loaded earlier");
+	assert.equal(await defaultOfMetadata(), "coast:history:a", "switching the viewer loads the page with that viewer's layout");
 });
 
 test("a modal knows its source, traps the keyboard, closes before Back and returns focus to a usable place", async () => {
@@ -1045,6 +1061,7 @@ test("a second presentation replaces motion and surface while behaviour, interru
 	await page.exposeFunction("countChange", () => { changes += 1; });
 	await page.evaluate(() => window.supermaxDemo.frames[0].workspace.addEventListener("change", () => window.countChange()));
 	await page.click(inFrame("a", `[data-occurrence="${coast.row("thumbnails")}"] .thumb[data-destination="coast:photo:d"]`));
+	await opened();
 	assert.ok(await page.evaluate(() => document.getAnimations().some((animation) => animation.effect?.target?.closest?.(".supermax-cell") && String(animation.effect.getKeyframes?.()[0]?.transform ?? "").includes("rotateY"))), "the fold animates the entering cell with a rotation");
 	await page.click(inFrame("a", `[data-occurrence="${coast.row("thumbnails")}"] .thumb[data-destination="coast:photo:c"]`));
 	const divider = inFrame("a", `.supermax-row[data-row="${coast.row("thumbnails")}"] .supermax-divider-handle[aria-label="Resize Photo C"]`);
@@ -1117,42 +1134,46 @@ test("a twenty-cell chain stays navigable in both presentations", async () => {
 	assert.equal(await page.locator(inFrame("a", ".supermax-cell")).count(), 1, "only the root remains");
 });
 
-test("opening a cell whose layout definition failed before fetches it again, also without a pointer", async () => {
+test("a layout that failed is asked for again on the next attempt, also from the keyboard", async () => {
 	await openDemo([open("album:coast", "albums")]);
 	await resize([[1100, 640], [360, 640]]);
 	await page.selectOption("[data-fail]", "manifest");
-	await page.click(inFrame("a", `[data-occurrence="${coast.row("people")}"] [data-destination="coast:photo:b"]`));
+	const thumb = inFrame("a", `[data-occurrence="${coast.row("people")}"] [data-destination="coast:photo:b"]`);
+	await page.click(thumb);
 	await settle();
+	assert.ok(!(await state("a")).occurrences.includes(coast.photo("people", "b")));
 	await page.selectOption("[data-fail]", "");
-	await page.focus(inFrame("a", `[data-occurrence="${coast.photo("people", "b")}"] .metadata-link:not(.caption-edit):not(.caption-save)`));
+	await page.focus(thumb);
 	await page.keyboard.press("Enter");
 	await settle();
 	assert.equal(await page.locator(inFrame("a", `[data-occurrence="${coast.metadata("people", "b")}"] .viewer-line`)).textContent(), "Viewing as Ana");
 });
 
-test("a layout definition that fails shows its error with Retry, and a prefetch never opens a cell", async () => {
+test("a layout that fails leaves the workspace as it was, with Retry at its source, and a prefetch never opens a cell", async () => {
 	await openDemo([open("album:coast", "albums")]);
 	await resize([[1100, 640], [360, 640]]);
 	await page.selectOption("[data-fail]", "manifest");
+	const opened = async () => { const { occurrences, groups: list } = await state("a"); return { occurrences, groups: list }; };
+	const before = await opened();
 	await page.click(inFrame("a", `[data-occurrence="${coast.row("people")}"] [data-destination="coast:photo:b"]`));
 	await settle();
-	assert.ok(!(await state("a")).occurrences.includes(coast.metadata("people", "b")), "a default whose layout definition failed does not open");
-	await page.click(inFrame("a", `[data-occurrence="${coast.photo("people", "b")}"] .metadata-link:not(.caption-edit):not(.caption-save)`));
-	await settle();
-	const cell = inFrame("a", `[data-occurrence="${coast.metadata("people", "b")}"]`);
-	assert.equal(await page.locator(`${cell} .supermax-error strong`).textContent(), "Metadata B could not load.", "a hinted cell whose definition fails says so");
-	assert.equal(await page.locator(`${cell} .supermax-retry`).count(), 1, "with a Retry control");
-	assert.deepEqual(await groups("a"), ["Coast", "Photo B", "Metadata B"], "the failed cell is still a Back step");
+	assert.deepEqual(await opened(), before, "nothing opened and no Back step was added");
+	assert.equal(await page.locator(inFrame("a", `[data-occurrence="${coast.row("people")}"] .supermax-notice`)).count(), 0, "the row stays usable: the message does not cover it");
+	const notice = inFrame("a", ".supermax-notice");
+	assert.match(await page.locator(notice).textContent(), /Could not open Person 2 in Photo B from People\. The server answered 503\./, "the source says what failed");
 	await page.selectOption("[data-fail]", "");
 	const requestsBefore = await page.evaluate(() => window.supermaxDemo.requests.length);
-	await page.hover(inFrame("a", `[data-occurrence="${coast.photo("people", "b")}"] .metadata-link:not(.caption-edit):not(.caption-save)`));
+	await page.hover(inFrame("a", `[data-occurrence="${coast.row("people")}"] [data-destination="coast:photo:d"]`));
 	await page.waitForTimeout(250);
 	await settle();
-	assert.equal(await page.evaluate(() => window.supermaxDemo.requests.length), requestsBefore, "hovering a link to an open cell requests nothing new");
-	await page.click(`${cell} .supermax-retry`);
+	const asked = await page.evaluate((from) => window.supermaxDemo.requests.slice(from).map((request) => request.url), requestsBefore);
+	assert.deepEqual(asked, ["/supermax/layout?destination=coast%3Aphoto%3Ad"], "hovering a link asks for its layout");
+	assert.ok(!(await state("a")).occurrences.includes(coast.photo("people", "d")), "and opens nothing");
+	await page.click(`${notice} .supermax-notice-action`);
 	await settle();
-	assert.equal(await page.locator(`${cell} .viewer-line`).textContent(), "Viewing as Ana", "Retry fetches the definition and the content");
-	assert.deepEqual(await groups("a"), ["Coast", "Photo B", "Metadata B"], "without a new Back step");
+	const cell = inFrame("a", `[data-occurrence="${coast.metadata("people", "b")}"]`);
+	assert.equal(await page.locator(`${cell} .viewer-line`).textContent(), "Viewing as Ana", "Retry asks for the layout again and opens the destination");
+	assert.deepEqual(await groups("a"), ["Coast", "Photo B"]);
 	await page.click(inFrame("a", ".supermax-crumb:has-text('Coast')"));
 	await settle();
 	assert.equal(await activeOccurrence(), coast.row("thumbnails"), "a crumb in the title context goes to that ancestor, here into the album's top row");
@@ -1172,7 +1193,7 @@ test("a layout definition that fails shows its error with Retry, and a prefetch 
 	await page.keyboard.press("Alt+ArrowLeft");
 	await settle();
 	assert.equal(await activeOccurrence(), target, "Alt+ArrowLeft on a cell is Back");
-	assert.deepEqual(await groups("a"), ["Coast", "Photo B", "Metadata B"], "and closes nothing");
+	assert.deepEqual(await groups("a"), ["Coast", "Photo B"], "and closes nothing");
 });
 
 test("reset restores both frames and clears the URL", async () => {
@@ -1228,6 +1249,7 @@ test("cells inside a hidden row are not painted and Back brings the row back", a
 test("motion: an opening animates, an immediate close leaves nothing behind, reduced motion animates nothing", async () => {
 	await openDemo([open("album:coast", "albums")]);
 	await page.click(inFrame("a", `[data-occurrence="${coast.row("map")}"] .pin[data-destination="coast:photo:c"]`));
+	await opened();
 	assert.ok(await page.evaluate(() => document.getAnimations().filter((animation) => animation.playState === "running").length) > 0);
 	await closeNewest("a");
 	await page.waitForFunction(() => document.getAnimations().length === 0);
