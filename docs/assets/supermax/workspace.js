@@ -136,8 +136,10 @@ export class Workspace extends EventTarget {
 		const target = this.visibleCellFor(occurrenceId);
 		const entry = target ? this.cells.get(target) : null;
 		if (!entry) return;
+		const moved = target !== this.navigator.focused;
 		this.navigator.focus(target, { resetReveal: false });
 		entry.element.focus({ preventScroll: true });
+		if (moved && !this.rendering) this.render({ animate: true });
 	}
 
 	visibleCellFor(occurrenceId) {
@@ -166,28 +168,28 @@ export class Workspace extends EventTarget {
 	}
 
 	*walk(chain = this.layout.chain) {
-		yield { chain };
+		yield { kind: "chain", chain };
 		for (const cell of chain.cells) {
-			yield { cell, chain };
+			yield { kind: "cell", cell };
 			for (const row of cell.rows?.rows ?? []) {
-				yield { row, cell };
+				yield { kind: "row", row };
 				if (row.chain) yield* this.walk(row.chain);
 			}
 		}
 	}
 
 	findChain(chainRootId) {
-		for (const node of this.walk()) if (node.chain && !node.cell && !node.row && node.chain.root === chainRootId) return node.chain;
+		for (const node of this.walk()) if (node.kind === "chain" && node.chain.root === chainRootId) return node.chain;
 		return null;
 	}
 
 	findCell(occurrenceId) {
-		for (const node of this.walk()) if (node.cell && !node.row && node.cell.occurrence === occurrenceId) return node.cell;
+		for (const node of this.walk()) if (node.kind === "cell" && node.cell.occurrence === occurrenceId) return node.cell;
 		return null;
 	}
 
 	findRow(rowRootId) {
-		for (const node of this.walk()) if (node.row && node.row.occurrence === rowRootId) return node.row;
+		for (const node of this.walk()) if (node.kind === "row" && node.row.occurrence === rowRootId) return node.row;
 		return null;
 	}
 
@@ -205,22 +207,24 @@ export class Workspace extends EventTarget {
 		this.rendering = true;
 		this.rendered = true;
 		this.activeAtRender = this.document.activeElement;
-		const layout = this.navigator.layout();
-		this.layout = layout;
-		const animating = animate && !this.reducedMotion.matches;
-		const rootViewport = this.renderChain(layout.chain, this.body, animating);
-		rootViewport.style.height = `${layout.overflow ? layout.contentHeight : layout.chain.height}px`;
-		this.body.classList.toggle("is-overflow", layout.overflow);
-		this.element.classList.toggle("is-below-minimum", layout.belowMinimum);
-		this.pruneClosed();
-		this.refreshContent();
-		this.renderNavbar();
-		this.rendering = false;
-		if (this.pendingFocus) {
-			const target = this.pendingFocus;
-			this.pendingFocus = null;
-			this.focusCell(target);
+		let layout;
+		try {
+			layout = this.navigator.layout();
+			this.layout = layout;
+			const animating = animate && !this.reducedMotion.matches;
+			const rootViewport = this.renderChain(layout.chain, this.body, animating);
+			rootViewport.style.height = `${layout.overflow ? layout.contentHeight : layout.chain.height}px`;
+			this.body.classList.toggle("is-overflow", layout.overflow);
+			this.element.classList.toggle("is-below-minimum", layout.belowMinimum);
+			this.pruneClosed();
+			this.refreshContent();
+			this.renderNavbar();
+		} finally {
+			this.rendering = false;
 		}
+		const target = this.pendingFocus;
+		this.pendingFocus = null;
+		if (target) this.focusCell(target);
 		this.dispatchEvent(new CustomEvent("render", { detail: { layout } }));
 	}
 
@@ -311,7 +315,7 @@ export class Workspace extends EventTarget {
 			if (handle.element) body.append(handle.element);
 		}
 		element.append(body);
-		entry = { element, body, header, handle };
+		entry = { element, body, header, handle, parent: occurrence.parent };
 		this.cells.set(occurrenceId, entry);
 		return element;
 	}
@@ -349,7 +353,7 @@ export class Workspace extends EventTarget {
 	}
 
 	setRowHeight(entry, height, animating) {
-		const previous = entry.height === null ? null : entry.element.getBoundingClientRect().height;
+		const previous = animating && entry.height !== null ? entry.element.offsetHeight : null;
 		entry.height = height;
 		entry.animation?.cancel();
 		entry.animation = null;
@@ -364,7 +368,7 @@ export class Workspace extends EventTarget {
 	pruneClosed() {
 		for (const [occurrenceId, entry] of this.cells) {
 			if (this.navigator.get(occurrenceId)) continue;
-			this.protectFocus([entry.element], occurrenceId.slice(0, occurrenceId.lastIndexOf("/")));
+			this.protectFocus([entry.element], entry.parent);
 			this.cells.delete(occurrenceId);
 			this.afterExit(entry.element, () => entry.handle.dispose?.());
 		}

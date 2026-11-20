@@ -126,10 +126,15 @@ test("a deeplink opens three rows in both frames; a fresh navigation replays it 
 	await page.waitForFunction(() => window.supermaxDemo?.frames.length === 2);
 	assert.deepEqual(await state("a"), live.a, "a fresh navigation replays the wide frame after clicks");
 	assert.deepEqual(await state("b"), live.b, "a fresh navigation replays the narrow frame after clicks");
+	await page.click("[data-reset]");
+	await page.waitForFunction(() => !location.hash);
 	await resize([[600, 640], [420, 640]]);
+	await page.click(inFrame("a", '.album-item[data-destination="album:coast"]'));
+	const narrowLive = await state("a");
+	assert.ok(!narrowLive.occurrences.includes(coast.photo("thumbnails", "a")), "at 600px the photo did not auto-open");
 	await page.reload();
 	await page.waitForFunction(() => window.supermaxDemo?.frames.length === 2);
-	assert.deepEqual(await state("a"), live.a, "a reload restores the stored snapshot, not a replay at the resized width");
+	assert.deepEqual(await state("a"), narrowLive, "a reload restores the stored snapshot although the frame is wide again");
 });
 
 test("the Back control names content in another row than the focus, also when hidden", async () => {
@@ -326,14 +331,18 @@ test("history restore that removes the focused cell hands focus to visible conte
 	await page.goBack();
 	await page.waitForFunction(() => !location.hash.includes("photo:b"));
 	assert.equal(await activeOccurrence(), coast.row("map"), "focus moved to the selector that remains");
+	assert.equal(await page.locator(inFrame("b", ".supermax-title-text")).textContent(), "Map", "the title follows the handed-over focus");
 });
 
 test("rows inside a split hidden by a reveal are not painted", async () => {
 	await openDemo([open("album:coast", "albums")]);
 	await page.click(inFrame("b", ".supermax-navbar .supermax-reveal.is-left"));
 	await settle();
-	const visibility = await page.locator(inFrame("b", `[data-occurrence="${coast.album}"] .supermax-row-chain`)).evaluateAll((elements) => elements.map((element) => getComputedStyle(element).visibility));
-	assert.deepEqual(visibility, ["hidden", "hidden", "hidden"]);
+	const visibility = await page.locator(inFrame("b", `[data-occurrence="${coast.album}"] .supermax-row .supermax-cell`)).evaluateAll((elements) => [...new Set(elements.map((element) => getComputedStyle(element).visibility))]);
+	assert.deepEqual(visibility, ["hidden"], "every cell inside the hidden split computes hidden");
+	await page.click(inFrame("b", `[data-occurrence="albums"] .supermax-reveal.is-right`));
+	await settle();
+	assert.equal(await page.locator(inFrame("b", ".supermax-title-text")).textContent(), "Coast", "the title follows the reveal");
 });
 
 test("motion: an opening animates, an immediate Back leaves nothing behind, reduced motion animates nothing", async () => {

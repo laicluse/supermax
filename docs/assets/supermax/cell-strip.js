@@ -55,7 +55,7 @@ export class CellStrip {
 			entry.element.style.minWidth = "0";
 			entry.element.style.maxWidth = "none";
 			entry.element.style.height = "100%";
-			entry.element.style.visibility = "visible";
+			entry.element.style.visibility = "";
 			entry.element.inert = !entry.visible;
 			entry.element.toggleAttribute("data-supermax-exiting", entry.departing);
 			entry.element.style.width = `${entry.width}px`;
@@ -122,7 +122,7 @@ export class CellStrip {
 	settle() {
 		for (const entry of this.entries) {
 			if (entry.departing) entry.element.remove();
-			else entry.element.style.visibility = entry.visible ? "visible" : "hidden";
+			else entry.element.style.visibility = entry.visible ? "" : "hidden";
 		}
 		this.entries = this.entries.filter((entry) => !entry.departing);
 		this.strip.style.width = `${this.entries.reduce((width, entry) => width + entry.width, 0)}px`;

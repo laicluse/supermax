@@ -7,13 +7,15 @@ export function isSplit(definition) {
 	return Array.isArray(definition?.rows);
 }
 
-export function validateSplit(model, definitionId, parentOccurrence, inheritedTabs = null) {
+export function validateSplit(model, definitionId, parentOccurrence, inheritedTabs = null, visiting = new Set()) {
 	const definition = model.destination(definitionId);
 	const { navbar, rowTab, maxRows } = model.chrome;
 	const rows = definition.rows;
 	const base = { ok: false, rows: [], chrome: null, supported: model.minViewportHeight };
+	if (visiting.has(definitionId)) return { ...base, reason: "cycle", destination: definitionId };
 	if (rows.length === 0) return { ...base, reason: "no-rows" };
 	if (rows.length > maxRows) return { ...base, reason: "too-many-rows", count: rows.length, maxRows };
+	const path = new Set([...visiting, definitionId]);
 	const ancestorTabs = inheritedTabs ?? ancestorSplits(model, parentOccurrence)
 		.reduce((sum, split) => sum + model.destination(split.destination).rows.length - 1, 0);
 	const chrome = navbar + rowTab * (ancestorTabs + rows.length - 1);
@@ -26,7 +28,8 @@ export function validateSplit(model, definitionId, parentOccurrence, inheritedTa
 		seen.add(row.destination);
 		if (row.minHeight > row.maxHeight) problems.push("row-min-exceeds-max");
 		if (rowDefinition && rowDefinition.min > rowDefinition.max) problems.push("cell-min-exceeds-max");
-		if (rowDefinition && isSplit(rowDefinition) && !validateSplit(model, row.destination, null, ancestorTabs + rows.length - 1).ok) problems.push("invalid-nested-split");
+		const nested = rowDefinition && isSplit(rowDefinition) ? validateSplit(model, row.destination, null, ancestorTabs + rows.length - 1, path) : null;
+		if (nested && !nested.ok) problems.push("invalid-nested-split");
 		const required = chrome + row.minHeight;
 		if (required > model.minViewportHeight) problems.push("exceeds-supported-height");
 		return {
@@ -37,6 +40,7 @@ export function validateSplit(model, definitionId, parentOccurrence, inheritedTa
 			supported: model.minViewportHeight,
 			ok: problems.length === 0,
 			problems,
+			nested,
 		};
 	});
 	const ok = results.every((row) => row.ok);
@@ -143,42 +147,50 @@ function layoutRows(model, split, width, height) {
 	const roots = definition.map((row, index) => model.get(split.children[index]));
 	const pinnedId = rowContaining(model, split, model.focused) ?? roots[roots.length - 1].id;
 	const { rowTab } = model.chrome;
+	const floors = new Map();
+	for (let pass = 0; pass <= roots.length; pass += 1) {
+		const allocation = allocateRows(roots, definition, floors, height, rowTab, pinnedId);
+		let overflow = false;
+		let grown = false;
+		const rows = roots.map((root, index) => {
+			const allocated = allocation.cells[index];
+			const pinned = root.id === pinnedId;
+			const minHeight = Math.max(definition[index].minHeight, floors.get(root.id) ?? 0);
+			let rowHeight = allocated.actual;
+			if (pinned && rowHeight < minHeight) {
+				rowHeight = minHeight;
+				overflow = true;
+			}
+			const collapsed = !pinned && !allocated.visible;
+			const chain = collapsed ? null : layoutChain(model, root, width, rowHeight);
+			if (chain && chain.contentHeight > rowHeight) {
+				floors.set(root.id, chain.contentHeight);
+				grown = true;
+			}
+			if (chain?.overflow) overflow = true;
+			return { occurrence: root.id, title: root.title, height: collapsed ? rowTab : rowHeight, collapsed, focused: pinned, chain };
+		});
+		if (grown && pass < roots.length) continue;
+		return { rows, overflow, contentHeight: rows.reduce((sum, row) => sum + row.height, 0) };
+	}
+	return { rows: [], overflow: true, contentHeight: 0 };
+}
+
+function allocateRows(roots, definition, floors, height, rowTab, pinnedId) {
 	let hidden = 0;
 	let allocation;
 	for (let attempt = 0; attempt <= roots.length; attempt += 1) {
 		const collection = new CellCollection(roots.map((root, index) => ({
-			id: root.id, title: root.title, min: definition[index].minHeight, max: definition[index].maxHeight,
+			id: root.id,
+			title: root.title,
+			min: Math.max(definition[index].minHeight, floors.get(root.id) ?? 0),
+			max: Math.max(definition[index].maxHeight, floors.get(root.id) ?? 0),
 		})));
 		allocation = collection.distribute(Math.max(0, height - hidden * rowTab), null, { pinnedId });
 		if (allocation.hiddenCount === hidden) break;
 		hidden = allocation.hiddenCount;
 	}
-	let overflow = false;
-	const rows = roots.map((root, index) => {
-		const allocated = allocation.cells[index];
-		const pinned = root.id === pinnedId;
-		let rowHeight = allocated.actual;
-		if (pinned && rowHeight < definition[index].minHeight) {
-			rowHeight = definition[index].minHeight;
-			overflow = true;
-		}
-		const collapsed = !pinned && !allocated.visible;
-		const chain = collapsed ? null : layoutChain(model, root, width, rowHeight);
-		if (chain && chain.contentHeight > rowHeight) {
-			rowHeight = chain.contentHeight;
-			overflow = true;
-		}
-		return {
-			occurrence: root.id,
-			title: root.title,
-			height: collapsed ? rowTab : rowHeight,
-			collapsed,
-			focused: pinned,
-			chain,
-		};
-	});
-	const contentHeight = rows.reduce((sum, row) => sum + row.height, 0);
-	return { rows, overflow, contentHeight };
+	return allocation;
 }
 
 function rowContaining(model, split, occurrenceId) {

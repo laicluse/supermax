@@ -24,6 +24,15 @@ before(async () => {
 		const { Navigator, Workspace } = await import("/src/index.js");
 		const fixture = await import("/test/fixtures/gallery.js");
 		window.fixture = fixture;
+		window.measure = () => {
+			const body = document.querySelector(".supermax-body");
+			return {
+				scrolls: body.scrollHeight > body.clientHeight,
+				collapsed: [...document.querySelectorAll('.supermax-cell[data-occurrence="root/gallery"] > .supermax-cell-body > .supermax-rows > .supermax-row')].map((row) => row.classList.contains("is-collapsed")),
+				gridRow: document.querySelector('.supermax-row[data-row="root/gallery/grid"]').getBoundingClientRect().height,
+				innerList: document.querySelector('.supermax-row[data-row="root/gallery/grid/item:deep/innerfit/list"]').getBoundingClientRect().height,
+			};
+		};
 		window.model = new Navigator({ destinations: fixture.destinations, root: "root", minViewportHeight: fixture.minViewportHeight, chrome: fixture.chrome });
 		window.workspace = new Workspace(host, {
 			navigator: window.model,
@@ -88,13 +97,17 @@ test("a nested split that outgrows its row makes the workspace scroll to it", as
 	const result = await page.evaluate(async () => {
 		window.workspace.navigate("item:deep", { from: window.fixture.row("grid") });
 		window.workspace.focusRow("root/gallery/grid/item:deep/innerfit/list");
+		document.getAnimations().forEach((animation) => animation.finish());
 		await Promise.all([...window.workspace.chains.values()].map((entry) => entry.strip.finished));
-		const body = document.querySelector(".supermax-body");
-		const gridRow = document.querySelector('.supermax-row[data-row="root/gallery/grid"]').getBoundingClientRect().height;
-		const innerList = document.querySelector('.supermax-row[data-row="root/gallery/grid/item:deep/innerfit/list"]').getBoundingClientRect().height;
-		return { scrolls: body.scrollHeight > body.clientHeight, gridRow, innerList };
+		return measure();
 	});
-	assert.equal(result.scrolls, true);
-	assert.equal(result.innerList, 200, "the inner list keeps its minimum");
-	assert.ok(result.gridRow >= 220, "the outer row grew to hold it");
+	assert.deepEqual(result, { scrolls: false, collapsed: [true, false, true], gridRow: 220, innerList: 200 }, "the siblings collapse so the grown row fits without scrolling");
+	await page.evaluate(() => { document.getElementById("host").style.height = "200px"; });
+	await page.waitForFunction(() => window.model.size.height === 200);
+	const short = await page.evaluate(async () => {
+		document.getAnimations().forEach((animation) => animation.finish());
+		await Promise.all([...window.workspace.chains.values()].map((entry) => entry.strip.finished));
+		return measure();
+	});
+	assert.deepEqual(short, { scrolls: true, collapsed: [true, false, true], gridRow: 220, innerList: 200 }, "below that height the workspace scrolls and the grown row keeps its content height");
 });

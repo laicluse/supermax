@@ -168,8 +168,10 @@ function renderPhoto(occurrence, data, workspace) {
 		element: host,
 		update(current) {
 			const child = workspace.navigator.child(current);
+			const auto = !!child && workspace.navigator.isAuto(child);
 			link.setAttribute("aria-current", child ? "true" : "false");
-			link.textContent = child && workspace.navigator.isAuto(child) ? "Metadata (opened automatically)" : "Metadata";
+			link.setAttribute("aria-label", auto ? "Metadata, opened automatically" : "Metadata");
+			link.textContent = auto ? "Metadata (auto)" : "Metadata";
 		},
 	};
 }
@@ -257,7 +259,8 @@ class Session {
 	replay(log, { mode = "push" } = {}) {
 		const results = this.frames.map((frame) => frame.workspace.replay(log));
 		this.log = log.filter((action, index) => results.some((frameResults) => frameResults[index].ok && !frameResults[index].noop));
-		this.record(mode);
+		const unchanged = encodeLog(this.log) === location.hash.replace(/^#/, "");
+		this.record(mode === "push" && unchanged ? "replace" : mode);
 	}
 
 	reset() {
@@ -282,8 +285,13 @@ function describeRejection({ action, result }, model) {
 		case "split-source": return `Rejected: ${titleOf(action.from)} owns its rows; nothing opens next to them.`;
 		case "unknown-destination": return `Rejected: ${action.destination} is not a destination.`;
 		case "invalid-rows": {
-			const row = result.validation.rows.find((candidate) => !candidate.ok);
-			if (!row) return `Rejected: ${result.validation.reason}.`;
+			let validation = result.validation;
+			let row = validation.rows.find((candidate) => !candidate.ok);
+			while (row?.nested && !row.nested.ok && row.nested.rows.some((candidate) => !candidate.ok)) {
+				validation = row.nested;
+				row = validation.rows.find((candidate) => !candidate.ok);
+			}
+			if (!row) return `Rejected: ${validation.reason}.`;
 			return `Rejected: row ${row.title} needs ${row.required}px (${row.chrome}px chrome), supported ${row.supported}px.`;
 		}
 		case "history-empty": return "Nothing left to close.";
