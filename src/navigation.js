@@ -127,6 +127,40 @@ export class Navigator {
 	resize(size) {
 		if (![size.width, size.height].every((value) => Number.isFinite(value) && value >= 0)) throw new TypeError("Viewport dimensions must be finite non-negative numbers");
 		this.size = { width: size.width, height: size.height };
+		this.releaseOptionals();
+	}
+
+	// allow-comment: an optional cell opened because it showed without hiding anything; when a resize takes that room it closes again, so what the user works in is never traded for it. The deepest entry goes first and a nested entry goes whole, as it opened; once the user took over its first cell, the rest of that entry stands on its own. A branch that holds a cell the user opened is theirs and stays, and a zoom is left alone.
+	releaseOptionals() {
+		if (!(this.size.width > 0 && this.size.height > 0) || this.zoomed) return;
+		const automatic = (occurrence) => occurrence.optional === true;
+		const own = (occurrence) => !automatic(occurrence) && !this.isAuto(occurrence);
+		const entry = (occurrence) => occurrence.optionalHead ?? occurrence.id;
+		const depth = (occurrence) => occurrence.id.split("/").length;
+		const above = (occurrence) => {
+			for (let parent = occurrence.parent ? this.get(occurrence.parent) : null; parent; parent = parent.parent ? this.get(parent.parent) : null) {
+				if (automatic(parent)) return parent;
+				if (own(parent)) return null;
+			}
+			return null;
+		};
+		const shown = (model) => new Set([...model.layout().cells.values()].filter((cell) => cell.full).map((cell) => cell.occurrence));
+		const heads = [...this.occurrences.values()].filter((occurrence) => {
+			if (!automatic(occurrence)) return false;
+			const earlier = above(occurrence);
+			return !(earlier && entry(earlier) === entry(occurrence));
+		}).sort((first, second) => depth(second) - depth(first));
+		for (const head of heads) {
+			if (!this.occurrences.has(head.id)) continue;
+			const branch = [...this.occurrences.values()].filter((occurrence) => occurrence.id.startsWith(`${head.id}/`));
+			if (branch.some(own)) continue;
+			// allow-comment: the trial runs on a copy, so a resize that closes nothing leaves every occurrence the host holds as it was.
+			const trial = Object.create(this);
+			trial.restore(this.snapshot());
+			const beside = shown(trial);
+			trial.closeSubtree(trial.get(head.id));
+			if (![...shown(trial)].every((id) => beside.has(id))) this.closeSubtree(this.get(head.id));
+		}
 	}
 
 	definitionOf(id) {
@@ -250,6 +284,7 @@ export class Navigator {
 		}
 		const existing = this.child(parent);
 		if (existing && existing.destination === destinationId) {
+			existing.optional = false;
 			this.focused = existing.id;
 			if (!this.isAuto(existing)) return { ok: true, noop: true, occurrence: existing };
 			const group = this.promote(existing);
@@ -276,6 +311,7 @@ export class Navigator {
 
 	promote(occurrence) {
 		const previousGroup = occurrence.group;
+		occurrence.optional = false;
 		const group = this.createGroup(occurrence);
 		const move = (current) => {
 			for (const childId of current.children) {
@@ -411,6 +447,7 @@ export class Navigator {
 			path.push(next);
 			shared += 1;
 		}
+		for (const member of path) member.optional = false;
 		const before = this.snapshot();
 		let last = path[path.length - 1];
 		let changed = false;
@@ -507,6 +544,7 @@ export class Navigator {
 				const group = this.groups.find((candidate) => candidate.id === start.group) ?? null;
 				const child = this.createOccurrence(id, start, 0, group);
 				child.optional = true;
+				child.optionalHead = added[0] ?? child.id;
 				const owner = group ?? this.createGroup(child);
 				if (isSplit(this.definitionOf(id))) this.openDefaults(child, owner);
 				added.push(child.id);
