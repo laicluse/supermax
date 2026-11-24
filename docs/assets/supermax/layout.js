@@ -195,15 +195,15 @@ function belowKept(model, occurrence) {
 	let below = occurrence;
 	for (let above = occurrence.parent ? model.get(occurrence.parent) : null; above; below = above, above = above.parent ? model.get(above.parent) : null) {
 		const definition = definitionFor(model, above);
-		if (overflowMode(definition) === "keep") return true;
+		if (overflowMode(definition, model.size.width) === "keep") return true;
 		const row = isSplit(definition) ? above.children?.indexOf(below.id) ?? -1 : -1;
-		if (row >= 0 && rowDefinitions(model, above).slice(0, row + 1).some((candidate) => overflowMode(candidate) === "keep")) return true;
+		if (row >= 0 && rowDefinitions(model, above).slice(0, row + 1).some((candidate) => overflowMode(candidate, model.size.width) === "keep")) return true;
 	}
 	return false;
 }
 
 function pressureMode(model, occurrence, definition) {
-	if (overflowMode(definition) === "keep") return "keep";
+	if (overflowMode(definition, model.size.width) === "keep") return "keep";
 	return belowKept(model, occurrence) ? "fold" : "hide";
 }
 
@@ -301,7 +301,7 @@ function settleChain(model, cells, width, protectedIndex, demandOf, laddered, he
 		const definition = definitionFor(model, occurrence);
 		const own = boundsOf(model, occurrence);
 		const steps = fold.has(occurrence.id) ? [fold.get(occurrence.id)] : laddered ? own.steps : [demandOf(model, occurrence)];
-		return { occurrence, definition, own, steps, level: 0, hidden: false, keep: overflowMode(definition) === "keep" || fold.has(occurrence.id) || held.has(occurrence.id) || index >= protectedIndex };
+		return { occurrence, definition, own, steps, level: 0, hidden: false, keep: overflowMode(definition, model.size.width) === "keep" || fold.has(occurrence.id) || held.has(occurrence.id) || index >= protectedIndex };
 	});
 	const demand = (unit) => unit.steps[unit.level];
 	let total = units.reduce((sum, unit) => sum + demand(unit), 0);
@@ -366,7 +366,7 @@ function giveWay(model, units, fold, target, preferred, width, floorOf) {
 	const order = [...units.slice(0, at), ...units.slice(at + 1).reverse()];
 	for (const unit of order) {
 		if (over <= 0) break;
-		if (unit.hidden || fold.has(unit.occurrence.id) || overflowMode(unit.definition) === "keep") continue;
+		if (unit.hidden || fold.has(unit.occurrence.id) || overflowMode(unit.definition, model.size.width) === "keep") continue;
 		const before = units.indexOf(unit) < at;
 		const mode = before ? pressureMode(model, unit.occurrence, unit.definition) : "fold";
 		if (mode === "fold" && isSplit(unit.definition)) continue;
@@ -589,7 +589,7 @@ function layoutChain(model, chainRoot, width, height, containerInView) {
 		const cellWidth = visible ? allocated.actual : bounds.min;
 		const isFolded = visible && fold.has(occurrence.id);
 		const inView = containerInView && visible;
-		const cell = { occurrence: occurrence.id, title: occurrence.title, width: cellWidth, height, visible, folded: isFolded, inView, full: inView && !isFolded, kept: overflowMode(definition) === "keep", sized: model.sizeOf(occurrence.id, "width") !== null, min: bounds.min, max: bounds.reach, resizeMin: resize.min, resizeMax: resize.reach };
+		const cell = { occurrence: occurrence.id, title: occurrence.title, width: cellWidth, height, visible, folded: isFolded, inView, full: inView && !isFolded, kept: overflowMode(definition, model.size.width) === "keep", sized: model.sizeOf(occurrence.id, "width") !== null, min: bounds.min, max: bounds.reach, resizeMin: resize.min, resizeMax: resize.reach };
 		if (isSplit(definition)) {
 			const bar = headerOf(model, definition);
 			cell.rows = layoutRows(model, occurrence, cellWidth, Math.max(0, height - bar), inView);
@@ -647,8 +647,8 @@ function layoutRows(model, split, width, height, containerInView) {
 	const boundsAt = (index) => fitBounds(heightBounds(definition[index]), fits[index]);
 	const budget = Math.max(0, height);
 	const required = definition.reduce((sum, row) => sum + row.minHeight, 0);
-	const belowKeptRow = (index) => definition.slice(0, index).some((row) => overflowMode(row) === "keep");
-	const rowFolds = (activeIndex) => chooseFolds(roots.length, activeIndex, () => false, required, budget, (index) => overflowMode(definition[index]) === "keep" || !(belowKeptRow(index) || belowKept(model, roots[index])) ? null : definition[index].minHeight - foldSize(definition[index]));
+	const belowKeptRow = (index) => definition.slice(0, index).some((row) => overflowMode(row, model.size.width) === "keep");
+	const rowFolds = (activeIndex) => chooseFolds(roots.length, activeIndex, () => false, required, budget, (index) => overflowMode(definition[index], model.size.width) === "keep" || !(belowKeptRow(index) || belowKept(model, roots[index])) ? null : definition[index].minHeight - foldSize(definition[index]));
 	// allow-comment: the other rows fold for the row with focus, the farthest from it first; a kept row stays.
 	const rowsGiveWay = (folded, grownRow, preferred) => {
 		const standing = (index) => folded.has(index) ? foldSize(definition[index]) : index === grownRow ? preferred : Math.max(definition[index].minHeight, model.sizeOf(roots[index].id, "height") ?? 0, model.variantFloors?.height.get(roots[index].id) ?? 0);
@@ -656,7 +656,7 @@ function layoutRows(model, split, width, height, containerInView) {
 		const order = roots.map((root, index) => index).filter((index) => index !== grownRow).sort((a, b) => Math.abs(b - grownRow) - Math.abs(a - grownRow) || a - b);
 		for (const index of order) {
 			if (over <= 0) break;
-			if (folded.has(index) || overflowMode(definition[index]) === "keep") continue;
+			if (folded.has(index) || overflowMode(definition[index], model.size.width) === "keep") continue;
 			const stood = standing(index);
 			folded.add(index);
 			over -= stood - standing(index);
@@ -671,7 +671,7 @@ function layoutRows(model, split, width, height, containerInView) {
 		const grownRow = grown ? roots.findIndex((root, index) => root && !folded.has(index) && model.sizeOf(root.id, "height") === null && boundsAt(index).preferred !== null && chainCells(model, root).some((member) => member.id === grown.id)) : -1;
 		if (grownRow >= 0) rowsGiveWay(folded, grownRow, boundsAt(grownRow).preferred);
 		const bounds = shown.map((index) => folded.has(index) ? { min: foldSize(definition[index]), max: foldSize(definition[index]), preferred: null, session: null } : { ...boundsAt(index), session: model.sizeOf(roots[index].id, "height") });
-		const configs = shown.map((index, position) => ({ id: roots[index].id, title: roots[index].title, keep: overflowMode(definition[index]) === "keep" || folded.has(index) || index >= Math.max(0, activeIndex), ...sessionBounds(bounds[position], null, false) }));
+		const configs = shown.map((index, position) => ({ id: roots[index].id, title: roots[index].title, keep: overflowMode(definition[index], model.size.width) === "keep" || folded.has(index) || index >= Math.max(0, activeIndex), ...sessionBounds(bounds[position], null, false) }));
 		let allocation = distributeSessions(configs, bounds, budget, null, model.curve ?? DEFAULT_CURVE);
 		if (grownRow >= 0) {
 			const shared = new Map(allocation.cells.map((cell) => [cell.config.id, cell.actual]));
@@ -698,7 +698,7 @@ function layoutRows(model, split, width, height, containerInView) {
 			height: rowHeight,
 			visible,
 			folded,
-			kept: overflowMode(definition[index]) === "keep",
+			kept: overflowMode(definition[index], model.size.width) === "keep",
 			sized: model.sizeOf(root.id, "height") !== null,
 			inView: containerInView && visible,
 			minHeight: definition[index].minHeight,

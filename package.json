@@ -38,7 +38,7 @@
     "build:docs": "node scripts/build-docs.mjs",
     "check:docs": "node scripts/build-docs.mjs --check",
     "serve": "node scripts/serve-demo.mjs",
-    "test:node": "node test/smoke.test.js && node test/variants.test.js && node test/navigation.test.js && node test/reachability.test.js && node test/layout-declaration.test.js && node test/edge-drag.test.js && node --test test/resize-allocation.test.js test/unfold.test.js test/root-split.test.js test/aspect-ratio.test.js test/grow-on-focus.test.js test/row-fill.test.js",
+    "test:node": "node test/smoke.test.js && node test/variants.test.js && node test/navigation.test.js && node test/reachability.test.js && node test/layout-declaration.test.js && node test/edge-drag.test.js && node --test test/resize-allocation.test.js test/unfold.test.js test/root-split.test.js test/aspect-ratio.test.js test/grow-on-focus.test.js test/row-fill.test.js test/keep-above-width.test.js",
     "test:bun": "bun test/smoke.test.js && bun test/navigation.test.js && bun test/layout-declaration.test.js",
     "test:browser": "node test/run-browser.js",
     "test:browser:fold": "SUPERMAX_PRESENTATION=fold node --test --test-concurrency=1 test/workspace.test.js test/workspace-demo.test.js",
