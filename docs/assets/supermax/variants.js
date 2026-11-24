@@ -249,7 +249,7 @@ export function pinVariants(model, layout) {
 export function keepsVariants(model, layout, from) {
 	for (const [id, before] of from.cells) {
 		const cell = layout.cells.get(id);
-		if (!cell || cell.visible !== before.visible || cell.folded !== before.folded) return false;
+		if (!cell || (cell.visible && !before.visible) || (before.folded && cell.visible && !cell.folded)) return false;
 		if (before.variant) {
 			const variant = model.definitionOf(model.get(id).destination).variants.find((form) => form.id === before.variant);
 			if (cell.full && !matches(variant, cell.width, cell.height)) return false;
@@ -259,7 +259,7 @@ export function keepsVariants(model, layout, from) {
 	}
 	for (const [id, before] of from.rows) {
 		const row = layout.rows.get(id);
-		if (!row || row.visible !== before.visible || row.folded !== before.folded) return false;
+		if (!row || (row.visible && !before.visible) || (before.folded && row.visible && !row.folded)) return false;
 		if (before.variant) {
 			const root = model.get(id);
 			const split = model.get(root.parent);

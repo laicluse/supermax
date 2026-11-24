@@ -191,7 +191,8 @@ test("the tallest visible ratio counts, and a hidden one stops counting", () => 
 	model.resize({ width: 400, height: 800 });
 	assert.equal(model.layout().cells.get("menu/card/wide/tall").full, true);
 	assert.equal(model.layout().cells.get("menu/card/wide").full, false);
-	assert.equal(model.layout().rows.get("menu/card/wide").fitHeight, 50, "the hidden cell no longer counts");
+	assert.equal(model.layout().cells.get("menu/card/wide/tall").width, 400, "the cell left standing fills its row");
+	assert.equal(model.layout().rows.get("menu/card/wide").fitHeight, 67, "the hidden cell no longer counts: 400/6");
 });
 
 test("removing a ratio while naming an inset is refused", () => {
