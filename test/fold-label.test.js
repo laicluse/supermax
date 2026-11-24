@@ -1,12 +1,12 @@
 import assert from "node:assert/strict";
 import { after, before, test } from "node:test";
-import { chromium } from "playwright";
+import { openBrowser } from "./browser.js";
 import { serveDocs } from "./serve-docs.js";
 import { readFile } from "node:fs/promises";
 import { execFileSync } from "node:child_process";
 
 let server, browser;
-before(async () => { server = await serveDocs(); browser = await chromium.launch({ channel: "chrome", headless: true }); });
+before(async () => { server = await serveDocs(); browser = await openBrowser(); });
 after(async () => { await browser?.close(); await server?.close(); });
 
 async function example(title = "Photo view", options = {}) {

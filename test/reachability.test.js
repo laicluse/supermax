@@ -118,7 +118,7 @@ function verifyRoutes(model, context) {
 			if (route.kind === "zoom-out") model.zoom(null);
 			else if (route.kind === "back") {
 				assert.equal(model.upTarget(layout).id, route.occurrence, "the route uses the actual Back target");
-				model.showByClosing(route.occurrence);
+				model.showByClosing(route.occurrence, { before: layout });
 			} else {
 				const placement = (route.axis === "horizontal" ? layout.cells : layout.rows).get(route.occurrence);
 				assert.equal(placement.inView, true, "the route's page handle is in the visible scope");

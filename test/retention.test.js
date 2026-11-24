@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { after, before, test } from "node:test";
-import { chromium } from "playwright";
+import { openBrowser } from "./browser.js";
 import { serveDocs } from "./serve-docs.js";
 
 let server;
@@ -10,7 +10,7 @@ let cdp;
 
 before(async () => {
 	server = await serveDocs();
-	browser = await chromium.launch({ channel: "chrome", headless: true });
+	browser = await openBrowser();
 	page = await browser.newPage({ viewport: { width: 1600, height: 900 } });
 	await page.goto(`${server.url}/blank`);
 	await page.addStyleTag({ url: "/src/workspace.css" });

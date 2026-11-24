@@ -51,6 +51,13 @@ async function livePage(file) {
 	return (await readFile(file, "utf8")).replaceAll('"./assets/', `"${build}`).replace("</body>", `${followRevision}</body>`);
 }
 
+export function closeServer(server) {
+	return new Promise((resolve, reject) => {
+		server.close((error) => error ? reject(error) : resolve());
+		server.closeAllConnections();
+	});
+}
+
 export async function serveDocs({ port = 0, live = false } = {}) {
 	const server = createServer(async (request, response) => {
 		let pathname = new URL(request.url, "http://localhost").pathname;
@@ -86,6 +93,6 @@ export async function serveDocs({ port = 0, live = false } = {}) {
 	await new Promise((done) => server.listen(port, "127.0.0.1", done));
 	return {
 		url: `http://127.0.0.1:${server.address().port}`,
-		close: () => new Promise((done) => server.close(done)),
+		close: () => closeServer(server),
 	};
 }
