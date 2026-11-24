@@ -48,7 +48,15 @@ export class ModalHost {
 		this.resizeObserver.observe(dialog);
 		const originLayer = workspace.originLayer("supermax-origin is-modal");
 		element.append(...(originLayer ? [originLayer] : []), dialog);
-		element.addEventListener("pointerdown", (event) => { if (event.target === element) this.close("backdrop"); });
+		// allow-comment: the backdrop closes the modal on a primary click that starts and ends on it; a right click, a press the browser cancels and a press released on the modal leave it open.
+		let pressed = null;
+		element.addEventListener("pointerdown", (event) => { pressed = event.target === element && event.button === 0 ? event.pointerId : null; }, { signal: bindings.signal });
+		element.addEventListener("pointercancel", () => { pressed = null; }, { signal: bindings.signal });
+		element.addEventListener("pointerup", (event) => {
+			const clicked = pressed !== null && event.pointerId === pressed && event.button === 0 && event.target === element;
+			pressed = null;
+			if (clicked) this.close("backdrop");
+		}, { signal: bindings.signal });
 		const modal = { part, backdropPart, backdrop, bindings, element, dialog, body, title: definition.title, source: source?.id ?? null, originLayer, slot: null, retry: null };
 		modal.slot = new ContentSlot(workspace, { element, body, header: controls, onSettled: () => this.settled(modal) });
 		modal.retry = () => modal.slot.mount(definition.title, () => definition.content(modal, workspace), () => this.current === modal);

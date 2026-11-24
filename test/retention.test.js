@@ -109,6 +109,34 @@ test("a modal drag cut short by closing the modal lets go of the document", asyn
 	await page.mouse.up();
 });
 
+test("only a primary click on the backdrop closes a modal", async () => {
+	await mount("veil");
+	const open = () => page.evaluate(() => window.retention.workspace.modal !== null);
+	await page.evaluate(() => window.retention.workspace.openModal({ title: "Edit", content: () => ({ element: document.createElement("p") }) }, { from: null }));
+	await settled();
+	await page.mouse.click(5, 5, { button: "right" });
+	await settled();
+	assert.equal(await open(), true, "a right click beside the modal leaves it open");
+	await page.evaluate(() => {
+		const layer = document.querySelector(".supermax-modal-layer");
+		layer.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, button: 0, pointerId: 7 }));
+		layer.dispatchEvent(new PointerEvent("pointercancel", { bubbles: true, pointerId: 7 }));
+		layer.dispatchEvent(new PointerEvent("pointerup", { bubbles: true, button: 0, pointerId: 7 }));
+	});
+	await settled();
+	assert.equal(await open(), true, "a press the browser cancelled leaves it open");
+	const box = await page.locator(".supermax-modal").boundingBox();
+	await page.mouse.move(5, 5);
+	await page.mouse.down();
+	await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2, { steps: 3 });
+	await page.mouse.up();
+	await settled();
+	assert.equal(await open(), true, "a press that ends on the modal leaves it open");
+	await page.mouse.click(5, 5);
+	await settled();
+	assert.equal(await open(), false, "a primary click on the backdrop closes it");
+});
+
 test("a strip taken out of the document leaves cells that moved to another strip where they are", async () => {
 	const result = await page.evaluate(async () => {
 		document.body.replaceChildren();
