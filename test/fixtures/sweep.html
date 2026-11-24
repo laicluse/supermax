@@ -35,7 +35,9 @@ const workspace = new Workspace(document.getElementById("host"), {
 		return { element };
 	},
 });
-workspace.sync(["rail", "menu", "board", "lanes", "detail"], { animate: false, origin: null });
+if (!new URLSearchParams(location.search).has("root-only")) {
+	workspace.sync(["rail", "menu", "board", "lanes", "detail"], { animate: false, origin: null });
+}
 </script>
 </body>
 </html>

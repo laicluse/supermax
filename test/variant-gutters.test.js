@@ -1,14 +1,15 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { chromium } from "playwright";
+import { openBrowser } from "./browser.js";
 import { serveDocs } from "./serve-docs.js";
 
 test("moving split and row seams expose one gutter throughout responsive exchanges", async () => {
 	const server = await serveDocs();
-	const browser = await chromium.launch({ channel: "chrome", headless: true });
+	const browser = await openBrowser();
 	try {
 		for (const scale of [1, 2]) for (const presentation of ["veil", "origami", "plain"]) for (const gutter of [0, 1, 4]) {
 			const page = await browser.newPage({ viewport: { width: 800, height: 760 }, deviceScaleFactor: scale, colorScheme: "dark" });
+			const capture = await page.context().newCDPSession(page);
 			await page.goto(`${server.url}/?delay=0&presentation=${presentation}`);
 			await page.waitForFunction(() => window.supermaxDemo?.frames.length === 2);
 			await page.addStyleTag({ content: ".topbar,.controls,.frame-wrapper:first-child{display:none}.demo{display:block;padding:16px}" });
@@ -49,22 +50,38 @@ test("moving split and row seams expose one gutter throughout responsive exchang
 						return points;
 					}, fraction);
 					if (gutter === 0) points.splice(0, 1);
-					const screenshot = (await page.screenshot()).toString("base64");
-					const pixels = await page.evaluate(async ({ screenshot, points, scale, gutter }) => {
-						const image = new Image(); image.src = `data:image/png;base64,${screenshot}`; await image.decode();
+					const span = Math.max(1, gutter * scale);
+					const samples = points.map((point) => ({
+						...point,
+						px: point.axis === "x" ? Math.round(point.x * scale) : Math.floor(point.x * scale),
+						py: point.axis === "y" ? Math.round(point.y * scale) : Math.floor(point.y * scale),
+					}));
+					assert.ok(samples.length, "the fixture exposes gutter points");
+					const left = Math.floor(Math.min(...samples.map(({ px }) => px)) / scale);
+					const top = Math.floor(Math.min(...samples.map(({ py }) => py)) / scale);
+					const right = Math.ceil(Math.max(...samples.map(({ px, axis }) => px + (axis === "x" ? span : 1))) / scale);
+					const bottom = Math.ceil(Math.max(...samples.map(({ py, axis }) => py + (axis === "y" ? span : 1))) / scale);
+					const region = { x: left, y: top, width: right - left, height: bottom - top, scale };
+					const { data } = await capture.send("Page.captureScreenshot", { format: "png", clip: region, captureBeyondViewport: false, optimizeForSpeed: true });
+					const reds = await page.evaluate(async ({ data, samples, clip, span }) => {
+						const image = new Image(); image.src = `data:image/png;base64,${data}`; await image.decode();
+						if (image.width !== clip.width * clip.scale || image.height !== clip.height * clip.scale) throw new Error(`Unexpected screenshot dimensions: ${image.width} × ${image.height}`);
 						const canvas = document.createElement("canvas"); canvas.width = image.width; canvas.height = image.height;
 						const context = canvas.getContext("2d"); context.drawImage(image, 0, 0);
-						return points.map((point) => {
-							let coverage = 0;
-							const edge = point.axis === "x" ? point.x : point.y;
-							for (let pixel = Math.round(edge * scale); pixel < Math.round(edge * scale) + Math.max(1, gutter * scale); pixel += 1) {
-								const red = context.getImageData(point.axis === "x" ? pixel : Math.floor(point.x * scale), point.axis === "y" ? pixel : Math.floor(point.y * scale), 1, 1).data[0];
-								coverage += (red - 23) / (201 - 23) / scale;
-							}
-							return { ...point, coverage };
+						return samples.map(({ axis, px, py }) => {
+							const x = px - clip.x * clip.scale;
+							const y = py - clip.y * clip.scale;
+							const width = axis === "x" ? span : 1;
+							const height = axis === "y" ? span : 1;
+							if (x < 0 || y < 0 || x + width > image.width || y + height > image.height) throw new Error("Gutter sample lies outside the screenshot");
+							const rgba = context.getImageData(x, y, width, height).data;
+							return Array.from({ length: span }, (_, index) => rgba[index * 4]);
 						});
-					}, { screenshot, points, scale, gutter });
-					for (const point of pixels) assert.ok(Math.abs(point.coverage - gutter) < .03, `${presentation}, DPR ${scale}, gutter ${gutter}, width ${width}, progress ${fraction}, ${point.name}: ${point.coverage} CSS pixels of canvas`);
+					}, { data, samples, clip: region, span });
+					for (const [index, point] of samples.entries()) {
+						const coverage = reds[index].reduce((sum, red) => sum + (red - 23) / (201 - 23) / scale, 0);
+						assert.ok(Math.abs(coverage - gutter) < .03, `${presentation}, DPR ${scale}, gutter ${gutter}, width ${width}, progress ${fraction}, ${point.name}: ${coverage} CSS pixels of canvas`);
+					}
 				}
 				await page.evaluate(async () => {
 					for (const animation of document.getAnimations()) animation.finish();

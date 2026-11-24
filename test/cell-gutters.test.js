@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { chromium } from "playwright";
+import { openBrowser } from "./browser.js";
 import { serveDocs } from "./serve-docs.js";
 
 const COLOURS = { albums: [255, 255, 0], "albums/album": [255, 0, 255], "albums/album/thumbs": [255, 0, 0], "albums/album/thumbs/photo": [0, 0, 255], "albums/album/map": [0, 255, 0], "albums/album/map/photo": [0, 255, 255] };
@@ -111,7 +111,7 @@ const strips = () => {
 
 test("a cell's renderer paints the gutters around its cell, and a raised cell wins a shared gutter", async () => {
 	const server = await serveDocs();
-	const browser = await chromium.launch({ channel: "chrome", headless: true });
+	const browser = await openBrowser();
 	try {
 		const page = await browser.newPage({ viewport: { width: 940, height: 540 } });
 		await page.goto(`${server.url}/blank`);
@@ -156,7 +156,7 @@ test("a cell's renderer paints the gutters around its cell, and a raised cell wi
 
 test("gutter paint outside a room waits until its chain rests", async () => {
 	const server = await serveDocs();
-	const browser = await chromium.launch({ channel: "chrome", headless: true });
+	const browser = await openBrowser();
 	try {
 		const page = await browser.newPage({ viewport: { width: 940, height: 540 } });
 		await page.goto(`${server.url}/blank`);
@@ -184,7 +184,7 @@ test("gutter paint outside a room waits until its chain rests", async () => {
 
 test("a presentation without rooms keeps the same gutter rules", async () => {
 	const server = await serveDocs();
-	const browser = await chromium.launch({ channel: "chrome", headless: true });
+	const browser = await openBrowser();
 	try {
 		const page = await browser.newPage({ viewport: { width: 940, height: 540 } });
 		await page.goto(`${server.url}/blank`);
@@ -213,7 +213,7 @@ test("a presentation without rooms keeps the same gutter rules", async () => {
 
 test("a row that changes height shows no gutter paint between its cells", async () => {
 	const server = await serveDocs();
-	const browser = await chromium.launch({ channel: "chrome", headless: true });
+	const browser = await openBrowser();
 	try {
 		const page = await browser.newPage({ viewport: { width: 940, height: 540 } });
 		await page.goto(`${server.url}/blank`);

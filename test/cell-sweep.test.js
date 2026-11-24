@@ -34,7 +34,7 @@ test("the cell-sweep helper records every cell of a route alone, from its smalle
 		assert.equal((await frameOf(join(out, clips[3].file))).split(",")[0], "420");
 		assert.equal(result.stdout.trim().split("\n").length, clips.length, "one line per clip");
 
-		const none = await run(`${server.url}/test/fixtures/sweep.html`, "--out", join(out, "none"), "--only", "no such cell");
+		const none = await run(`${server.url}/test/fixtures/sweep.html?root-only`, "--out", join(out, "none"), "--only", "no such cell");
 		assert.equal(none.code, 1);
 		assert.match(none.stderr, /No cell of the route .* matches "no such cell"/);
 		assert.deepEqual(JSON.parse(readFileSync(join(out, "none", "sweeps.json"), "utf8")).clips, [], "a failed run leaves an empty manifest");

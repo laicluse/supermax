@@ -1,12 +1,12 @@
 import assert from "node:assert/strict";
 import { after, before, test } from "node:test";
-import { chromium } from "playwright";
+import { openBrowser } from "./browser.js";
 import { serveDocs } from "./serve-docs.js";
 
 let server, browser, page;
 before(async () => {
 	server = await serveDocs();
-	browser = await chromium.launch({ channel: "chrome", headless: true });
+	browser = await openBrowser();
 	page = await browser.newPage({ viewport: { width: 1000, height: 600 } });
 	await page.goto(`${server.url}/blank`);
 	await page.evaluate(async () => {
