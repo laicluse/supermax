@@ -7,7 +7,7 @@ export const LAYOUT_SCHEMA = 2;
 const REQUIRED = ["title", "min", "max", "preferred", "defaultChild"];
 const REQUIRED_SPLIT = ["title", "rows"];
 const WIDTH = ["min", "max", "preferred"];
-const FIELDS = new Set([...REQUIRED, "overflow", "rows", "zoomable", "placement", "header", "variants", "menu", "aspectRatio", "aspectInset"]);
+const FIELDS = new Set([...REQUIRED, "overflow", "rows", "zoomable", "placement", "header", "variants", "menu", "aspectRatio", "aspectInset", "growOnFocus"]);
 const ROW_FIELDS = new Set(["destination", "minHeight", "maxHeight", "preferredHeight", "overflow", "variants"]);
 
 export class SupermaxLayoutError extends Error {
@@ -43,10 +43,18 @@ export function layoutOf(definition) {
 		rows: null,
 		defaultChild: definition.defaultChild ?? null,
 		...(definition.zoomable ? { zoomable: true } : {}),
+		...(definition.growOnFocus ? { growOnFocus: definition.growOnFocus } : {}),
 		...(definition.placement === "beside-split" ? { placement: "beside-split" } : {}),
 		...(definition.header === "title" ? { header: "title" } : {}),
 		...(definition.menu != null ? { menu: definition.menu } : {}),
 	};
+}
+
+// allow-comment: growOnFocus is true to grow toward the preference, or a width in pixels for a host whose preference here is held low on purpose, such as a compact layout.
+export function growthProblems(declaration) {
+	const growth = declaration.growOnFocus;
+	if (growth == null || typeof growth === "boolean") return [];
+	return Number.isFinite(growth) && growth > 0 && !(Number.isFinite(declaration.min) && growth < declaration.min) ? [] : ["invalid-grow-on-focus"];
 }
 
 export function canonicalJSON(value) {
@@ -67,9 +75,10 @@ function problemsOf(id, declaration) {
 	if (declaration.header != null && declaration.header !== "title") problems.push("invalid-header");
 	if (declaration.menu != null && declaration.menu !== true && declaration.menu !== "exact") problems.push("invalid-menu");
 	if (typeof declaration.title !== "string" || declaration.title.trim().length === 0) problems.push("invalid-title");
+	problems.push(...growthProblems(declaration));
 	if (declaration.rows != null) {
 		if (REQUIRED_SPLIT.some((key) => !Object.hasOwn(declaration, key))) problems.push("missing-field");
-		if (WIDTH.some((key) => declaration[key] != null) || declaration.defaultChild != null || declaration.overflow?.mode === "fold" || declaration.variants != null || declaration.aspectRatio != null || declaration.aspectInset != null) problems.push("split-with-width");
+		if (WIDTH.some((key) => declaration[key] != null) || declaration.defaultChild != null || declaration.overflow?.mode === "fold" || declaration.variants != null || declaration.aspectRatio != null || declaration.aspectInset != null || declaration.growOnFocus != null) problems.push("split-with-width");
 		const rows = declaration.rows;
 		const badHeight = (row) => (row.maxHeight === ELASTIC ? !(size(row.preferredHeight) && row.preferredHeight >= row.minHeight) : !size(row.maxHeight) || row.minHeight > row.maxHeight);
 		const badRow = (row) => !row || variantProblems(row, "height").length > 0 || typeof row.destination !== "string" || Object.keys(row).some((key) => !ROW_FIELDS.has(key)) || !size(row.minHeight) || badHeight(row) || overflowProblems(row, row.minHeight).length > 0;

@@ -1,7 +1,7 @@
 import { mountPart } from "./renderer.js";
 import { followEdge } from "./edge-drag.js";
 import { follow, unfollow } from "./follow.js";
-import { layoutWorkspace } from "./layout.js";
+import { layoutWorkspace, withGrowth } from "./layout.js";
 import { TIMING } from "./motion.js";
 
 function previewLayout(workspace, axis, sizes) {
@@ -9,7 +9,7 @@ function previewLayout(workspace, axis, sizes) {
 	const preview = Object.create(navigator);
 	preview.sizes = { ...navigator.sizes, [axis]: new Map(navigator.sizes[axis]) };
 	for (const [id, size] of sizes) preview.setSize(id, size, axis);
-	return layoutWorkspace(preview);
+	return layoutWorkspace(withGrowth(preview, workspace.growth.current()));
 }
 
 function projectedOffset(workspace, divider, sizes) {

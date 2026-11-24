@@ -6,7 +6,8 @@ import { CellStrip, STILL, STRIP_TIMING } from "./cell-strip.js";
 import { ContentSlot } from "./content-slot.js";
 import { DividerLayer } from "./dividers.js";
 import { follow, projectionAlong, unfollow } from "./follow.js";
-import { chainRootOf, isSplit } from "./layout.js";
+import { chainRootOf, isSplit, layoutWorkspace, withGrowth } from "./layout.js";
+import { FocusGrowth } from "./growth.js";
 import { ModalHost } from "./modal.js";
 import { NoticeBoard } from "./notices.js";
 import { FoldController } from "./folding.js";
@@ -43,9 +44,9 @@ const asksContent = (definition) => !isSplit(definition) || definition.header ==
 export class Workspace extends EventTarget {
 	constructor(element, options) {
 		super();
-		const known = ["navigator", "content", "renderer", "onIntent", "presentation", "strings", "overlayRoot", "noticePlacement", "time"];
+		const known = ["navigator", "content", "renderer", "onIntent", "presentation", "strings", "overlayRoot", "noticePlacement", "time", "growOnFocus"];
 		for (const key of Object.keys(options)) if (!known.includes(key)) throw new TypeError(`Unknown Workspace option "${key}"`);
-		const { navigator, content, renderer = {}, onIntent = null, presentation = VEIL_PRESENTATION, strings = {}, overlayRoot = element.ownerDocument.body, noticePlacement = "source", time = new TimeScale() } = options;
+		const { navigator, content, renderer = {}, onIntent = null, presentation = VEIL_PRESENTATION, strings = {}, overlayRoot = element.ownerDocument.body, noticePlacement = "source", time = new TimeScale(), growOnFocus = false } = options;
 		this.time = time;
 		this.renderer = resolveRenderer(renderer);
 		this.renderParts = new Set();
@@ -72,6 +73,7 @@ export class Workspace extends EventTarget {
 			this.notices = new NoticeBoard(this);
 			this.modalHost = new ModalHost(this);
 			this.folds = new FoldController(this);
+			this.growth = new FocusGrowth(this, growOnFocus);
 			this.dividers = new DividerLayer(this);
 			this.reducedMotion = this.document.defaultView.matchMedia("(prefers-reduced-motion: reduce)");
 			this.buildChrome();
@@ -310,6 +312,10 @@ export class Workspace extends EventTarget {
 		this.setSizes(new Map([[occurrenceId, size]]), axis);
 	}
 
+	setGrowOnFocus(enabled) {
+		this.growth.set(enabled);
+	}
+
 	setVariants(destination, variants, { row = null, animate = true } = {}) {
 		this.navigator.setVariants(destination, variants, { row });
 		this.render({ animate });
@@ -470,7 +476,7 @@ export class Workspace extends EventTarget {
 		this.departure = null;
 		this.wasRendered = this.rendered;
 		this.rendered = true;
-		const layout = this.navigator.layout();
+		const layout = layoutWorkspace(withGrowth(this.navigator, this.growth.current()));
 		if (animateVariants && this.layout) animate ||= [...layout.cells].some(([id, cell]) => {
 			const before = this.layout.cells.get(id);
 			return before && (before.variant !== cell.variant || before.rowVariant !== cell.rowVariant);
@@ -1017,6 +1023,7 @@ export class Workspace extends EventTarget {
 		this.notices?.clear();
 		this.dividers?.clear();
 		this.folds?.destroy();
+		this.growth?.destroy();
 		this.layout = null;
 		this.element.classList.remove("has-modal");
 		if (this.element.supermaxWorkspace === this) delete this.element.supermaxWorkspace;
