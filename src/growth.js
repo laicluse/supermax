@@ -1,4 +1,4 @@
-// allow-comment: a cell whose destination declares growOnFocus grows toward its preference while DOM focus is inside it and the host switched growth on. Focus changes settle once per frame, and a change made by a pointer waits until its click has run, so a target never moves away under the pointer that is pressing it. A zoom suspends growth without forgetting it.
+// allow-comment: a cell whose destination declares growOnFocus grows toward its preference while DOM focus is inside it and the host switched growth on; the cells around it give way for that and return when focus leaves. A fold that only growth made opens by ending the growth, so nothing closes for it. Focus changes settle once per frame, and a change made by a pointer waits until its click has run, so a target never moves away under the pointer that is pressing it. A zoom suspends growth without forgetting it.
 export class FocusGrowth {
 	constructor(workspace, enabled) {
 		this.workspace = workspace;
@@ -7,6 +7,7 @@ export class FocusGrowth {
 		this.frame = null;
 		this.release = null;
 		this.pressed = false;
+		this.yielded = null;
 		const { element, document } = workspace;
 		this.onFocus = () => this.schedule();
 		this.onPress = () => { this.pressed = true; };
@@ -43,10 +44,27 @@ export class FocusGrowth {
 		const { workspace } = this;
 		if (!this.enabled) return null;
 		const active = workspace.element.getRootNode().activeElement;
-		if (!active || !workspace.element.contains(active)) return null;
+		if (active !== this.yielded) this.yielded = null;
+		if (!active || this.yielded || !workspace.element.contains(active)) return null;
+		// allow-comment: focus on a fold handle keeps the growth that made the fold, so the handle stays under the key that opens it.
+		if (this.grown && active.closest(".supermax-fold-cue")) return this.grown;
 		const id = active.closest(".supermax-cell[data-occurrence]")?.dataset.occurrence;
 		const occurrence = id && workspace.cells.has(id) ? workspace.navigator.get(id) : null;
 		return occurrence && workspace.navigator.definitionOf(occurrence.destination).growOnFocus ? id : null;
+	}
+
+	// allow-comment: whether this fold exists only because another cell grew: the ordinary layout shows the surface unfolded.
+	gaveWay(occurrenceId, axis) {
+		if (!this.current()) return false;
+		const plain = this.workspace.navigator.layout();
+		const state = axis === "vertical" ? plain.rows.get(occurrenceId) : plain.cells.get(occurrenceId);
+		return !!state && state.visible && !state.folded;
+	}
+
+	// allow-comment: growth steps back while focus stays where it is, and may start again once focus has moved.
+	yield() {
+		this.yielded = this.workspace.element.getRootNode().activeElement;
+		this.settle();
 	}
 
 	schedule() {

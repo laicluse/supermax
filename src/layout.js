@@ -348,7 +348,33 @@ function growthIn(model, cells) {
 	return null;
 }
 
-// allow-comment: growth raises one member's floor after the ordinary distribution and never lowers it, toward its preference and within what the others leave above their own floors; which members show and fold stays the ordinary layout's.
+// allow-comment: the member with focus asks its preference, and the others give way for it the way they give way to a narrow window: first the members before it from the leading end, hiding or folding by their overflow mode, then the members after it from the trailing end, which fold. A kept member and a split after it stay. Nothing closes, so the ordinary layout returns when focus leaves.
+function giveWay(model, units, fold, target, preferred, width, floorOf) {
+	const want = Math.min(preferred, target.own.reach ?? target.own.max);
+	const standing = (unit) => {
+		if (unit.hidden) return 0;
+		if (fold.has(unit.occurrence.id)) return fold.get(unit.occurrence.id);
+		if (unit === target) return want;
+		const session = model.sizeOf(unit.occurrence.id, "width");
+		return Math.max(floorOf(unit), session ?? 0, model.variantFloors?.width.get(unit.occurrence.id) ?? 0);
+	};
+	let over = units.reduce((sum, unit) => sum + standing(unit), 0) - width;
+	const at = units.indexOf(target);
+	const order = [...units.slice(0, at), ...units.slice(at + 1).reverse()];
+	for (const unit of order) {
+		if (over <= 0) break;
+		if (unit.hidden || fold.has(unit.occurrence.id) || overflowMode(unit.definition) === "keep") continue;
+		const before = units.indexOf(unit) < at;
+		const mode = before ? pressureMode(model, unit.occurrence, unit.definition) : "fold";
+		if (mode === "fold" && isSplit(unit.definition)) continue;
+		const stood = standing(unit);
+		if (mode === "hide") unit.hidden = true;
+		else fold.set(unit.occurrence.id, foldSize(unit.definition));
+		over -= stood - standing(unit);
+	}
+}
+
+// allow-comment: growth raises one member's floor after the ordinary distribution and never lowers it, toward its preference and within what the members still standing leave above their own floors.
 function raisedFloor(bounds, sizes, index, preferred, budget, holds) {
 	const others = bounds.reduce((sum, bound, position) => position === index ? sum : sum + holds[position].min, 0);
 	const target = Math.min(preferred, bounds[index].reach ?? bounds[index].max, budget - others);
@@ -389,10 +415,13 @@ function allocateChain(model, cells, width) {
 	if (!settled || settled.total > shown) settled = settleChain(model, cells, shown, protectedIndex, askDemand, false);
 	if (settled.total > shown) settled = settleChain(model, cells, shown, protectedIndex, minDemand, true);
 	const { fold, units, floorOf } = settled;
-	const members = units.filter((unit) => !unit.hidden);
-	// allow-comment: a split the user sized hands that width to its rows: the newest cell of a row takes what its row was given, up to where its next form takes over, as if the divider were its own.
 	const split = chainRootOf(model, cells[0]).parent;
 	const sizedRow = !!split && model.sizeOf(split, "width") !== null;
+	const growth = growthIn(model, cells);
+	const grownUnit = growth && !sizedRow ? units.find((unit) => unit.occurrence.id === growth.occurrence.id && !unit.hidden && !fold.has(unit.occurrence.id)) : null;
+	if (grownUnit) giveWay(model, units, fold, grownUnit, growth.preferred, width, floorOf);
+	const members = units.filter((unit) => !unit.hidden);
+	// allow-comment: a split the user sized hands that width to its rows: the newest cell of a row takes what its row was given, up to where its next form takes over, as if the divider were its own.
 	const bounds = members.map((unit, index) => {
 		if (fold.has(unit.occurrence.id)) return { min: floorOf(unit), max: floorOf(unit), preferred: null, session: null };
 		return { ...unit.own, min: Math.min(floorOf(unit), unit.own.max), session: model.sizeOf(unit.occurrence.id, "width") ?? (sizedRow && index === members.length - 1 ? width : null) };
@@ -402,8 +431,7 @@ function allocateChain(model, cells, width) {
 		return unit.occurrence.id === anchor ? { ...config, zoomable: true, elastic: true } : config;
 	});
 	let sharing = distributeSessions(configs, bounds, width, anchor, model.curve ?? DEFAULT_CURVE);
-	const growth = growthIn(model, cells);
-	const grownIndex = growth && !sizedRow && model.sizeOf(growth.occurrence.id, "width") === null && !fold.has(growth.occurrence.id) ? members.findIndex((unit) => unit.occurrence.id === growth.occurrence.id) : -1;
+	const grownIndex = grownUnit ? members.indexOf(grownUnit) : -1;
 	if (grownIndex >= 0) {
 		const shared = new Map(sharing.cells.map((cell) => [cell.config.id, cell.actual]));
 		const raised = growInto(bounds, members.map((unit) => shared.get(unit.occurrence.id) ?? 0), grownIndex, growth.preferred, width, members.map((unit) => model.variantFloors?.width.get(unit.occurrence.id)));
@@ -434,12 +462,31 @@ export function withGrowth(model, grown) {
 	return view;
 }
 
-// allow-comment: growth lays out once more on top of the ordinary layout, with its forms pinned; when that would still change what shows, folds or which form holds, the ordinary layout stands.
+// allow-comment: growth lays out once more on top of the ordinary layout, with its forms pinned. Members may give way in that layout; when one would appear or unfold that the ordinary layout holds back, a form would no longer hold, or an open cell would lose its route, the ordinary layout stands.
 export function layoutWorkspace(model) {
 	const plain = selectVariants(withGrowth(model, null), layoutWorkspaceFor);
 	if (!grownOccurrence(model)) return plain;
-	const grown = layoutWorkspaceFor(pinVariants(model, plain));
-	return keepsVariants(model, grown, plain) ? grown : plain;
+	let grown;
+	try {
+		grown = layoutWorkspaceFor(pinVariants(model, plain));
+	} catch (error) {
+		if (error instanceof LayoutRefusal) return plain;
+		throw error;
+	}
+	return keepsVariants(model, grown, plain) && standsAsLarge(model, grown, plain) ? grown : plain;
+}
+
+// allow-comment: a layout the allocator refuses on purpose: no cell would stay active, or an open cell would lose its route.
+class LayoutRefusal extends Error {}
+
+// allow-comment: the cell with focus and every row around it end at least as large as in the ordinary layout, on both axes: what gives way for it can lower an aspect-ratio ceiling.
+function standsAsLarge(model, grown, plain) {
+	const occurrence = grownOccurrence(model);
+	if (grown.cells.get(occurrence.id).width < plain.cells.get(occurrence.id).width - 0.5) return false;
+	for (let root = chainRootOf(model, occurrence); root.parent; root = chainRootOf(model, model.get(root.parent))) {
+		if ((grown.rows.get(root.id)?.height ?? 0) < (plain.rows.get(root.id)?.height ?? 0) - 0.5) return false;
+	}
+	return true;
 }
 
 function layoutWorkspaceFor(model) {
@@ -456,7 +503,7 @@ function layoutWorkspaceFor(model) {
 		chain,
 		...index,
 	};
-	if (![...layout.cells.values()].some((cell) => cell.full && cell.width > 0)) throw new Error("A workspace layout must retain an active cell");
+	if (![...layout.cells.values()].some((cell) => cell.full && cell.width > 0)) throw new LayoutRefusal("A workspace layout must retain an active cell");
 	layout.back = model.zoomed ? null : model.upTarget(layout);
 	layout.access = accessRoutes(model, layout);
 	return layout;
@@ -498,7 +545,7 @@ function accessRoutes(model, layout) {
 			}
 		}
 		if (!route && back && model.placeOf(occurrence, layout) === "above") route = { kind: "back", occurrence: back.id };
-		if (!route) throw new Error(`No navigation route to open cell ${occurrence.id}`);
+		if (!route) throw new LayoutRefusal(`No navigation route to open cell ${occurrence.id}`);
 		routes.set(occurrence.id, route);
 	}
 	return routes;
@@ -591,16 +638,30 @@ function layoutRows(model, split, width, height, containerInView) {
 	const required = definition.reduce((sum, row) => sum + row.minHeight, 0);
 	const belowKeptRow = (index) => definition.slice(0, index).some((row) => overflowMode(row) === "keep");
 	const rowFolds = (activeIndex) => chooseFolds(roots.length, activeIndex, () => false, required, budget, (index) => overflowMode(definition[index]) === "keep" || !(belowKeptRow(index) || belowKept(model, roots[index])) ? null : definition[index].minHeight - foldSize(definition[index]));
+	// allow-comment: the other rows fold for the row with focus, the farthest from it first; a kept row stays.
+	const rowsGiveWay = (folded, grownRow, preferred) => {
+		const standing = (index) => folded.has(index) ? foldSize(definition[index]) : index === grownRow ? preferred : Math.max(definition[index].minHeight, model.sizeOf(roots[index].id, "height") ?? 0, model.variantFloors?.height.get(roots[index].id) ?? 0);
+		let over = roots.reduce((sum, root, index) => sum + standing(index), 0) - budget;
+		const order = roots.map((root, index) => index).filter((index) => index !== grownRow).sort((a, b) => Math.abs(b - grownRow) - Math.abs(a - grownRow) || a - b);
+		for (const index of order) {
+			if (over <= 0) break;
+			if (folded.has(index) || overflowMode(definition[index]) === "keep") continue;
+			const stood = standing(index);
+			folded.add(index);
+			over -= stood - standing(index);
+		}
+	};
 	const allocate = () => {
 		const shown = roots.map((root, index) => index);
 		const active = activeRow(model, split, roots);
 		const activeIndex = roots.findIndex((root) => root.id === active);
 		const folded = new Set(rowFolds(activeIndex));
+		const grown = grownOccurrence(model);
+		const grownRow = grown ? roots.findIndex((root, index) => root && !folded.has(index) && model.sizeOf(root.id, "height") === null && boundsAt(index).preferred !== null && chainCells(model, root).some((member) => member.id === grown.id)) : -1;
+		if (grownRow >= 0) rowsGiveWay(folded, grownRow, boundsAt(grownRow).preferred);
 		const bounds = shown.map((index) => folded.has(index) ? { min: foldSize(definition[index]), max: foldSize(definition[index]), preferred: null, session: null } : { ...boundsAt(index), session: model.sizeOf(roots[index].id, "height") });
 		const configs = shown.map((index, position) => ({ id: roots[index].id, title: roots[index].title, keep: overflowMode(definition[index]) === "keep" || folded.has(index) || index >= Math.max(0, activeIndex), ...sessionBounds(bounds[position], null, false) }));
 		let allocation = distributeSessions(configs, bounds, budget, null, model.curve ?? DEFAULT_CURVE);
-		const grown = grownOccurrence(model);
-		const grownRow = grown ? roots.findIndex((root, index) => root && !folded.has(index) && bounds[index].session === null && bounds[index].preferred !== null && chainCells(model, root).some((member) => member.id === grown.id)) : -1;
 		if (grownRow >= 0) {
 			const shared = new Map(allocation.cells.map((cell) => [cell.config.id, cell.actual]));
 			const raised = growInto(bounds, roots.map((root) => shared.get(root.id) ?? 0), grownRow, bounds[grownRow].preferred, budget, roots.map((root, index) => folded.has(index) ? undefined : model.variantFloors?.height.get(root.id)));

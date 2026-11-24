@@ -30,6 +30,7 @@ export class FoldController {
 		cue.addEventListener("pointerdown", (event) => {
 			if (event.button !== 0 || !event.isPrimary || this.drag || workspace.body.inert) return;
 			event.preventDefault();
+			if (workspace.growth.gaveWay(occurrence.id, axis)) return workspace.growth.yield();
 			this.drag = new FoldDrag(this, cue, event);
 		});
 		if (!this.layer) {
@@ -193,6 +194,7 @@ export class FoldController {
 	open(occurrenceId, axis) {
 		const { workspace } = this;
 		if (!workspace.navigator.get(occurrenceId)) return false;
+		if (workspace.growth.gaveWay(occurrenceId, axis)) return workspace.growth.yield(), true;
 		const { after, closed } = workspace.rehearse(() => workspace.navigator.unfold(occurrenceId, axis));
 		if (!workspace.askToShow(occurrenceId, closed)) return false;
 		workspace.navigator.restore(after);
