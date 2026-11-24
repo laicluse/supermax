@@ -1263,6 +1263,7 @@ test("a root cell places content controls in its title bar, which keeps them vis
 	await openDemo([open(depthId(1), "albums")]);
 	const depth = `albums/${depthId(1)}`;
 	const result = await page.evaluate(async (id) => {
+		const { waitForElement } = await import("/test/fixtures/readiness.js");
 		const workspace = window.supermaxDemo.frames[0].workspace;
 		const original = workspace.content;
 		workspace.content = (occurrence, definition, host) => {
@@ -1273,7 +1274,7 @@ test("a root cell places content controls in its title bar, which keeps them vis
 		};
 		workspace.reload((occurrence) => occurrence.id === id);
 		const cell = document.querySelector(`.frame[data-frame="a"] [data-occurrence="${id}"]`);
-		await new Promise((resolve) => setTimeout(resolve, 50));
+		await waitForElement(cell, ".host-search");
 		const header = cell.querySelector(":scope > .supermax-cell-title");
 		const title = header.querySelector(".supermax-cell-title-text");
 		title.textContent = "A very long photo title that cannot possibly fit in the header of this cell";
@@ -1281,7 +1282,7 @@ test("a root cell places content controls in its title bar, which keeps them vis
 		const placed = !!button && button.getBoundingClientRect().right <= header.getBoundingClientRect().right + 0.5;
 		const cut = getComputedStyle(title).textOverflow;
 		const modal = workspace.openModal({ title: "Zoom", content: () => ({ element: document.createElement("p"), header: Object.assign(document.createElement("button"), { className: "host-zoom", textContent: "Zoom" }) }) }, {});
-		await new Promise((resolve) => setTimeout(resolve, 50));
+		await waitForElement(document.querySelector('.frame[data-frame="a"]'), ".host-zoom");
 		const inModal = !!document.querySelector('.frame[data-frame="a"] .supermax-modal-header .host-zoom');
 		workspace.closeModal("close");
 		return { placed, cut, inModal };
@@ -1297,6 +1298,7 @@ test("a cell inside a split row that declares a title header puts content contro
 	await openDemo([open("album:coast", "albums"), open("coast:history:a", coast.metadata("thumbnails", "a"))]);
 	const history = coast.history("thumbnails", "a");
 	const placement = await page.evaluate(async (id) => {
+		const { waitForElement } = await import("/test/fixtures/readiness.js");
 		const workspace = window.supermaxDemo.frames[0].workspace;
 		const original = workspace.content;
 		workspace.content = (occurrence, definition, host) => {
@@ -1306,8 +1308,8 @@ test("a cell inside a split row that declares a title header puts content contro
 			return typeof handle?.then === "function" ? handle.then((inner) => ({ ...inner, header: button })) : { ...handle, header: button };
 		};
 		workspace.reload((occurrence) => occurrence.id === id);
-		await new Promise((resolve) => setTimeout(resolve, 50));
 		const cell = document.querySelector(`.frame[data-frame="a"] [data-occurrence="${id}"]`);
+		await waitForElement(cell, ".host-search");
 		return { bar: !!cell.querySelector(":scope > .supermax-cell-title .supermax-cell-title-trailing .host-search"), body: !!cell.querySelector(":scope > .supermax-cell-body .host-search") };
 	}, history);
 	assert.deepEqual(placement, { bar: true, body: false }, "the history cell declares its bar, so its search goes there as it would outside a row");
@@ -1317,6 +1319,7 @@ test("a split that declares a title header puts content controls in its bar, the
 	await page.goto(`${server.url}/blank`);
 	await page.addStyleTag({ url: "/src/workspace.css" });
 	const seen = await page.evaluate(async () => {
+		const { waitForElement } = await import("/test/fixtures/readiness.js");
 		const { Navigator, Workspace } = await import("/src/index.js");
 		const host = Object.assign(document.body.appendChild(document.createElement("div")), { style: "position:relative;width:1200px;height:400px" });
 		const navigator = new Navigator({ root: "albums", minViewportHeight: 300, destinations: {
@@ -1340,8 +1343,8 @@ test("a split that declares a title header puts content controls in its bar, the
 			return { element: Object.assign(document.createElement("div"), { className: "host-body", textContent: occurrence.title }) };
 		} });
 		workspace.sync(["albums", "split"]);
-		await new Promise((resolve) => setTimeout(resolve, 50));
 		const split = host.querySelector('[data-occurrence="albums/split"]');
+		await waitForElement(split, ".host-copy");
 		const result = {
 			bar: split.querySelector(":scope > .supermax-cell-title .supermax-cell-title-trailing .host-copy")?.textContent ?? null,
 			rows: split.querySelectorAll(":scope > .supermax-cell-body .supermax-row").length,

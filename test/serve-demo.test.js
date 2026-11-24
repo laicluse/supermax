@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
-import { readFile, stat } from "node:fs/promises";
+import { stat, utimes } from "node:fs/promises";
 import { createServer } from "node:http";
 import { openBrowser } from "./browser.js";
-import { serveDocs } from "./serve-docs.js";
+import { closeServer, serveDocs } from "./serve-docs.js";
 
 const earlier = { "/": "<!doctype html><script type=\"module\" src=\"./assets/demo.js\"></script>", "/assets/demo.js": "window.build = \"earlier\";" };
 const plain = createServer((request, response) => {
@@ -15,31 +15,38 @@ const plain = createServer((request, response) => {
 await new Promise((done) => plain.listen(0, "127.0.0.1", done));
 const port = plain.address().port;
 
-const browser = await openBrowser();
+let browser;
 try {
+	browser = await openBrowser();
 	const page = await browser.newPage();
 	await page.goto(`http://127.0.0.1:${port}/`);
 	await page.waitForFunction(() => window.build === "earlier");
-	await new Promise((done) => plain.close(done));
+	await closeServer(plain);
 	const demo = await serveDocs({ port, live: true });
 	try {
 		await page.reload();
 		await page.waitForFunction(() => window.supermaxDemo?.frames.length === 2, null, { timeout: 5000 });
 		assert.equal(await page.evaluate(() => typeof window.supermaxDemo.declares), "function", "a plain reload runs the current build, whatever an earlier server let the browser cache");
-		const source = (await page.evaluate(() => document.querySelector('script[type="module"][src]').getAttribute("src")));
+		const moduleSource = () => page.locator('script[type="module"][src]').getAttribute("src");
+		const source = await moduleSource();
 		assert.match(source, /^\/__build\/[\w.-]+\/assets\/demo\.js$/, "the demo's modules live under a path of their own build");
 		const before = source;
 		const touched = new URL("../docs/assets/demo.css", import.meta.url);
-		const { mtime } = await stat(touched);
-		const { utimes } = await import("node:fs/promises");
-		await utimes(touched, new Date(), new Date());
-		await page.waitForFunction((previous) => document.querySelector('script[type="module"][src]')?.getAttribute("src") !== previous, before, { timeout: 5000 });
-		await utimes(touched, mtime, mtime);
-		assert.ok(await readFile(touched), "a change reloads the page into the next build's path");
+		const { atime, mtime } = await stat(touched);
+		try {
+			await utimes(touched, atime, new Date());
+			await page.waitForFunction((previous) => {
+				const src = document.querySelector('script[type="module"][src]')?.getAttribute("src");
+				return src && src !== previous;
+			}, before, { timeout: 5000 });
+			assert.match(await moduleSource(), /^\/__build\/[\w.-]+\/assets\/demo\.js$/, "a change reloads into the next build's module path");
+		} finally {
+			await utimes(touched, atime, mtime);
+		}
 	} finally {
 		await demo.close();
 	}
 	console.log("Demo server scenarios passed");
 } finally {
-	await browser.close();
+	await Promise.all([browser?.close(), plain.listening ? closeServer(plain) : undefined]);
 }

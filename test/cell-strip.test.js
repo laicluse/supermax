@@ -237,10 +237,17 @@ try {
 		document.getAnimations().forEach((animation) => animation.finish());
 		await strip.finished;
 		strip.update([entry("parent", 300)], { animate: true });
-		const closing = { connected: cells.other.isConnected, room: cells.other.parentElement.getAnimations().length };
-		await new Promise((resolve) => setTimeout(resolve, TIMING.veilFall + 20));
+		const roomMotions = cells.other.parentElement.getAnimations();
+		const [veil] = document.getAnimations().filter((animation) => animation.effect?.target === cells.other && animation.effect.pseudoElement === "::after");
+		if (!veil) throw new Error("The departing cell did not start its veil motion");
+		const veilEnd = veil.effect.getComputedTiming().endTime;
+		const closing = { connected: cells.other.isConnected, room: roomMotions.some((animation) => animation.effect.getComputedTiming().endTime > veilEnd) };
+		for (const animation of roomMotions) { animation.pause(); animation.currentTime = veilEnd; }
+		veil.finish();
+		await veil.finished;
+		await new Promise((resolve) => requestAnimationFrame(resolve));
 		closing.afterVeil = cells.other.isConnected;
-		document.getAnimations().forEach((animation) => animation.finish());
+		for (const animation of roomMotions) animation.finish();
 		await strip.finished;
 		closing.afterRoom = cells.other.isConnected;
 		strip.destroy();
@@ -256,7 +263,7 @@ try {
 	assert.ok(veiled.opening.detail.delay >= TIMING.veilLag, "content lifts after its room has started to open");
 	assert.equal(veiled.replacing.leaving.duration, TIMING.veilFall, "the replaced content falls in the short exit");
 	assert.ok(veiled.replacing.arriving.delay >= TIMING.veilFall && veiled.replacing.arriving.delay < TIMING.veilFall + TIMING.veilLag, `the new content lifts once the old has gone, without the opening lag: ${veiled.replacing.arriving.delay}`);
-	assert.deepEqual([veiled.closing.connected, veiled.closing.room > 0, veiled.closing.afterVeil, veiled.closing.afterRoom], [true, true, true, false], "a closing cell stays until its room has closed, after its veil has fallen");
+	assert.deepEqual([veiled.closing.connected, veiled.closing.room, veiled.closing.afterVeil, veiled.closing.afterRoom], [true, true, true, false], "a closing cell stays until its room has closed, after its veil has fallen");
 	const nudged = await page.evaluate(async () => {
 		const { VEIL_PRESENTATION } = await import("/veil.js");
 		const { CellStrip } = await import("/cell-strip.js");

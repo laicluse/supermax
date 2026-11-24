@@ -266,10 +266,12 @@ test("custom modal, loading and frustum paint keep geometry and retry under shel
 				{ from: "root" }
 			);
 			workspace.drawOrigins();
-			await workspace.modal.entrance.finished;
+			const entrance = workspace.modal.entrance;
+			entrance.finish();
+			await entrance.finished;
 			workspace.drawOrigins();
 			const handoff = hits.progress;
-			await new Promise((resolve) => setTimeout(resolve, 320));
+			await new Promise((resolve) => requestAnimationFrame(resolve));
 			workspace.drawOrigins();
 			const faces = [...host.querySelectorAll(".supermax-frustum-face")];
 			const count = hits.frustum;
@@ -334,9 +336,17 @@ test("a transparent host veil conceals foreground on the shell timeline while ma
 				}
 			});
 			workspace.navigate("work", { from: "root", origin: null });
-			await new Promise((resolve) => setTimeout(resolve, 50));
 			const entry = workspace.cells.get("root/work");
-			const motions = host.getAnimations({ subtree: true }).filter((animation) => entry.element.contains(animation.effect?.target));
+			const deadline = performance.now() + 2000;
+			const motionsForCell = () => host.getAnimations({ subtree: true }).filter((animation) => entry.element.contains(animation.effect?.target));
+			let motions = motionsForCell();
+			while (!motions.some((animation) => animation.effect.target === entry.body)) {
+				if (performance.now() >= deadline) throw new Error("The work cell did not start its content motion");
+				await new Promise((resolve) => requestAnimationFrame(resolve));
+				motions = motionsForCell();
+			}
+			await Promise.all(motions.map((animation) => animation.ready));
+			motions = motionsForCell();
 			const snapshots = [];
 			for (const fraction of [0, 1]) {
 				for (const animation of motions) {
