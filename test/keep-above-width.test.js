@@ -97,3 +97,16 @@ test("the rows of a split follow the same rule", () => {
 	assert.equal(layout.cells.get("menu/card/table").width, 390);
 	assert.equal(layout.overflowX, false);
 });
+
+test("a row keeps its fuller form when only a cell's minimum exceeds the workspace", () => {
+	const model = new Navigator({ root: "card", minViewportHeight: 360, chrome: { header: 28 }, destinations: {
+		card: { title: "Card", rows: [
+			{ destination: "chart", minHeight: 28, preferredHeight: 300, maxHeight: 420, variants: [{ id: "expanded", when: { minHeight: 124 } }, { id: "summary", minHeight: 28, preferredHeight: 28, maxHeight: 123 }] },
+			{ destination: "table", minHeight: 200, maxHeight: "*", preferredHeight: 520 },
+		] },
+		chart: { title: "Chart", min: 380, preferred: 620, max: "*", header: "title" },
+		table: { title: "Table", min: 520, preferred: 860, max: "*", header: "title" },
+	} });
+	model.resize({ width: 390, height: 844 });
+	assert.equal(model.layout().rows.get("card/chart").variant, "expanded");
+});

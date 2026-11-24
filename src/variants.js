@@ -120,7 +120,7 @@ export function selectVariants(model, allocate) {
 		for (const cell of chain.cells) {
 			const occurrence = model.get(cell.occurrence);
 			const definition = model.definitionOf(occurrence.destination);
-			let ownWidth = full.has(occurrence.id) ? minimum(definition, widths.get(occurrence.id), "min", "minWidth", position) : 0;
+			let ownWidth = full.has(occurrence.id) ? Math.min(minimum(definition, widths.get(occurrence.id), "min", "minWidth", position), model.size.width || Infinity) : 0;
 			let ownHeight = full.has(occurrence.id) ? minimum(definition, widths.get(occurrence.id), "minHeight", "minHeight", position) : 0;
 			if (cell.rows) {
 				ownWidth = 0;
