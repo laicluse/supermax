@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { chromium } from "playwright";
+import { openBrowser } from "./browser.js";
 import { serveDocs } from "./serve-docs.js";
+import { settleDemo } from "./settle-demo.js";
 import { FoldController } from "../src/folding.js";
 
 test("opposing fold handles do not compete for a small touch target", () => {
@@ -31,7 +32,7 @@ test("opposing fold handles do not compete for a small touch target", () => {
 
 for (const presentation of ["veil", "origami", "fold"]) test(`a row trade retains the preceding page handle and one gutter below the title (${presentation})`, async () => {
 	const server = await serveDocs();
-	const browser = await chromium.launch({ channel: "chrome", headless: true });
+	const browser = await openBrowser();
 	try {
 		const page = await browser.newPage({ viewport: { width: 1500, height: 900 } });
 		await page.goto(`${server.url}/?delay=0&presentation=${presentation}`);
@@ -75,7 +76,7 @@ for (const presentation of ["veil", "origami", "fold"]) test(`a row trade retain
 
 test("zoom retains an exit when its ancestors were already hidden", async () => {
 	const server = await serveDocs();
-	const browser = await chromium.launch({ channel: "chrome", headless: true });
+	const browser = await openBrowser();
 	try {
 		const page = await browser.newPage();
 		await page.goto(`${server.url}/blank`);
@@ -110,7 +111,7 @@ test("zoom retains an exit when its ancestors were already hidden", async () => 
 
 test("adjacent folded cells share one handle that brings back the nearest, one at a time", async () => {
 	const server = await serveDocs();
-	const browser = await chromium.launch({ channel: "chrome", headless: true });
+	const browser = await openBrowser();
 	try {
 		const page = await browser.newPage();
 		await page.goto(`${server.url}/blank`);
@@ -172,7 +173,7 @@ test("adjacent folded cells share one handle that brings back the nearest, one a
 
 test("a run of folds on a short seam shows its one handle, and a drag keeps what changed meanwhile", async () => {
 	const server = await serveDocs();
-	const browser = await chromium.launch({ channel: "chrome", headless: true });
+	const browser = await openBrowser();
 	try {
 		const page = await browser.newPage();
 		await page.goto(`${server.url}/blank`);
@@ -210,7 +211,7 @@ test("a run of folds on a short seam shows its one handle, and a drag keeps what
 
 test("a reverse vertical page drag keeps a canvas gutter under its handle", async () => {
 	const server = await serveDocs();
-	const browser = await chromium.launch({ channel: "chrome", headless: true });
+	const browser = await openBrowser();
 	try {
 		const page = await browser.newPage({ viewport: { width: 1500, height: 900 } });
 		await page.goto(`${server.url}/?delay=0`);
@@ -228,7 +229,7 @@ test("a reverse vertical page drag keeps a canvas gutter under its handle", asyn
 		});
 		assert.ok(Math.abs(titleSeam.cue - titleSeam.title) < .5, `the first page handle outlines the title's canvas gutter: ${JSON.stringify(titleSeam)}`);
 		for (let step = 0; step < 2; step += 1) await page.locator(`${frame} .supermax-up:not([hidden])`).click();
-		await page.waitForTimeout(400);
+		await settleDemo(page);
 		const handle = page.locator(`${frame} .supermax-fold-cue.is-vertical[data-fold-occurrence="albums/album:coast/coast:map"]`);
 		await handle.scrollIntoViewIfNeeded();
 		const box = await handle.boundingBox();
@@ -259,7 +260,7 @@ test("a reverse vertical page drag keeps a canvas gutter under its handle", asyn
 
 test("content after the active cell remains scrollable in a split with nothing kept above it", async () => {
 	const server = await serveDocs();
-	const browser = await chromium.launch({ channel: "chrome", headless: true });
+	const browser = await openBrowser();
 	try {
 		const page = await browser.newPage();
 		await page.goto(`${server.url}/blank`);
@@ -305,7 +306,7 @@ test("content after the active cell remains scrollable in a split with nothing k
 
 test("allocated rows and cells remain physically reachable with overflow on both axes", async () => {
 	const server = await serveDocs();
-	const browser = await chromium.launch({ channel: "chrome", headless: true });
+	const browser = await openBrowser();
 	try {
 		const page = await browser.newPage();
 		await page.goto(`${server.url}/blank`);
@@ -351,7 +352,7 @@ test("allocated rows and cells remain physically reachable with overflow on both
 
 test("a clicked cue opens its fold, a cell by closing the trailing cell and a row by folding the rows after it", async () => {
 	const server = await serveDocs();
-	const browser = await chromium.launch({ channel: "chrome", headless: true });
+	const browser = await openBrowser();
 	try {
 		const page = await browser.newPage();
 		await page.goto(`${server.url}/blank`);
@@ -489,7 +490,7 @@ test("a clicked cue opens its fold, a cell by closing the trailing cell and a ro
 
 test("the main demo exposes both fold axes and follows its Motion choice", async () => {
 	const server = await serveDocs();
-	const browser = await chromium.launch({ channel: "chrome", headless: true });
+	const browser = await openBrowser();
 	try {
 		const page = await browser.newPage({ viewport: { width: 1800, height: 1000 } });
 		const errors = [];
@@ -523,15 +524,15 @@ test("the main demo exposes both fold axes and follows its Motion choice", async
 			return { offset: Math.abs(cell.getBoundingClientRect().left - cell.parentElement.getBoundingClientRect().left), paper: cell.querySelector(":scope > .supermax-cell-body").getBoundingClientRect().width };
 		});
 		assert.ok(opened.offset < 2 && opened.paper >= 320, `an opening cell keeps its content at full width inside its moving room: ${JSON.stringify(opened)}`);
-		await page.waitForTimeout(350);
+		await horizontal.waitFor({ state: "detached" });
 		assert.equal(await horizontal.count(), 0, "the opened cell took the room of the cell after it, which closed");
 		await page.locator('[data-presentation]').selectOption("origami");
-		await page.waitForTimeout(250);
+		await settleDemo(page);
 		assert.notEqual(await narrow.locator('.supermax-row.is-folded > .supermax-row-chain').evaluate((chain) => getComputedStyle(chain).transform), "none");
 		await vertical.locator(".supermax-fold-mark").click();
 		assert.equal(await narrow.locator('.supermax-fold-cue.is-vertical:visible').count(), 1, "the row after it folds in turn and gets the handle");
 		await page.locator('[data-presentation]').selectOption("veil");
-		await page.waitForTimeout(250);
+		await settleDemo(page);
 		assert.equal(await narrow.locator('.supermax-row.is-folded > .supermax-row-chain').evaluate((chain) => getComputedStyle(chain).transform), "none");
 		assert.deepEqual(errors, []);
 	} finally {
@@ -542,13 +543,13 @@ test("the main demo exposes both fold axes and follows its Motion choice", async
 
 test("Show navigates backward through folds instead of toggling them", async () => {
 	const server = await serveDocs();
-	const browser = await chromium.launch({ channel: "chrome", headless: true });
+	const browser = await openBrowser();
 	try {
 		const page = await browser.newPage({ viewport: { width: 1800, height: 1000 } });
 		await page.goto(server.url);
 		await page.getByRole("button", { name: "Folding: cells and rows" }).click();
 		const frame = page.locator('[data-frame="b"]');
-		await page.waitForTimeout(400);
+		await settleDemo(page);
 		assert.equal(await frame.locator('.supermax-up:not([hidden]):visible').count(), 1, "folds remain discoverable through Show");
 		const result = await page.evaluate(() => {
 			const workspace = window.supermaxDemo.frames[1].workspace;
@@ -581,14 +582,14 @@ test("Show navigates backward through folds instead of toggling them", async () 
 
 test("fold handles attach on either side of their seam outside content clipping", async () => {
 	const server = await serveDocs();
-	const browser = await chromium.launch({ channel: "chrome", headless: true });
+	const browser = await openBrowser();
 	try {
 		const page = await browser.newPage({ viewport: { width: 1800, height: 1000 } });
 		await page.goto(server.url);
 		await page.getByRole("button", { name: "Folding: cells and rows", exact: true }).click();
 		const directions = new Set();
 		const check = async () => {
-			await page.waitForTimeout(400);
+			await settleDemo(page);
 			const marks = await page.locator('[data-frame="b"] .supermax-fold-cue:visible').evaluateAll((cues) => cues.map((cue) => {
 				const mark = cue.firstElementChild;
 				const box = mark.getBoundingClientRect();
@@ -615,19 +616,19 @@ test("fold handles attach on either side of their seam outside content clipping"
 
 test("the reserved demo uses 8px on both axes and gutters can be disabled", async () => {
 	const server = await serveDocs();
-	const browser = await chromium.launch({ channel: "chrome", headless: true });
+	const browser = await openBrowser();
 	try {
 		const page = await browser.newPage({ viewport: { width: 1800, height: 1000 } });
 		await page.goto(server.url);
 		await page.getByRole("button", { name: "Folding: 8px reserved on both axes", exact: true }).click();
-		await page.waitForTimeout(500);
+		await settleDemo(page);
 		const frame = page.locator('[data-frame="b"]');
 		assert.equal(await frame.locator('.supermax-cell.is-folded').first().evaluate((cell) => cell.getBoundingClientRect().width), 8);
 		assert.equal(await frame.locator('.supermax-row.is-folded').first().evaluate((row) => row.getBoundingClientRect().height), 8);
 		await frame.locator('.supermax-fold-cue.is-horizontal:visible .supermax-fold-mark').click();
 		await frame.locator('.supermax-fold-cue.is-vertical:visible .supermax-fold-mark').click();
 		await page.getByRole("button", { name: "Folding: cells and rows", exact: true }).click();
-		await page.waitForTimeout(500);
+		await settleDemo(page);
 		assert.equal(await frame.locator('.supermax-cell.is-folded').first().evaluate((cell) => cell.getBoundingClientRect().width), 0);
 		assert.equal(await frame.locator('.supermax-row.is-folded').first().evaluate((row) => row.getBoundingClientRect().height), 0);
 		await page.evaluate(() => {
@@ -655,14 +656,14 @@ test("the reserved demo uses 8px on both axes and gutters can be disabled", asyn
 
 test("canvas gaps remain one pixel after fold trades, including split and viewport edges", async () => {
 	const server = await serveDocs();
-	const browser = await chromium.launch({ channel: "chrome", headless: true });
+	const browser = await openBrowser();
 	try {
 		for (const scale of [1, 2]) {
 			const page = await browser.newPage({ viewport: { width: 1800, height: 1000 }, deviceScaleFactor: scale });
 			await page.goto(server.url);
 			await page.getByRole('button', { name: 'Folding: cells and rows', exact: true }).click();
 			const checkPixels = async () => {
-				await page.waitForTimeout(500);
+				await settleDemo(page);
 				const points = await page.evaluate(() => {
 					const points = [];
 					for (const frame of document.querySelectorAll('.frame')) {
@@ -711,7 +712,8 @@ test("canvas gaps remain one pixel after fold trades, including split and viewpo
 			await page.locator('[data-frame="b"] .supermax-fold-cue.is-horizontal[data-fold-occurrence="albums/album:folding/folding:thumbnails"]').click();
 			await checkPixels();
 			await page.evaluate(() => window.supermaxDemo.resize([[960, 640], [420, 360]]));
-			await page.waitForTimeout(500);
+			await page.waitForFunction(() => window.supermaxDemo.frames[1].workspace.layout.height === 360);
+			await settleDemo(page);
 			await page.locator('[data-frame="b"] .supermax-fold-cue.is-vertical:visible').click();
 			await checkPixels();
 			await page.close();
@@ -721,7 +723,7 @@ test("canvas gaps remain one pixel after fold trades, including split and viewpo
 
 test("dragging folds follows the pointer and settles beyond the directional golden ratio", async () => {
 	const server = await serveDocs();
-	const browser = await chromium.launch({ channel: "chrome", headless: true });
+	const browser = await openBrowser();
 	try {
 		const page = await browser.newPage({ viewport: { width: 390, height: 700 }, isMobile: true, hasTouch: true });
 		await page.goto(`${server.url}/blank`);
@@ -807,7 +809,7 @@ test("dragging folds follows the pointer and settles beyond the directional gold
 					}, { occurrence, axis, direction });
 					assert.ok(Math.abs(seam.actual - seam.expected) < 1, `${presentation} ${direction}: handle follows gutter owner ${JSON.stringify(seam)}`);
 					await page.mouse.up();
-					await page.waitForTimeout(400);
+					await page.waitForFunction(() => !window.workspace.folds.drag);
 					assert.equal(await cue.isVisible(), fraction < 0.618, `${direction}: release at ${fraction}`);
 				}
 			}
@@ -848,7 +850,7 @@ test("dragging folds follows the pointer and settles beyond the directional gold
 				await touch.send("Input.dispatchTouchEvent", { type: "touchMove", touchPoints: [point(.8)] });
 				if (ending === "return") await touch.send("Input.dispatchTouchEvent", { type: "touchMove", touchPoints: [point(.2)] });
 				await touch.send("Input.dispatchTouchEvent", { type: ending === "cancel" ? "touchCancel" : "touchEnd", touchPoints: [] });
-				await page.waitForTimeout(350);
+				await page.waitForFunction(() => !window.workspace.folds.drag);
 				assert.equal(await touchCue.isVisible(), ending !== "open", `${axis}: touch ${ending} from the extended hit area`);
 			}
 			await touch.detach();
@@ -864,15 +866,15 @@ test("dragging folds follows the pointer and settles beyond the directional gold
 
 test("a vertical fold drag preserves horizontal fold choices and carries its canvas gutter", async () => {
 	const server = await serveDocs();
-	const browser = await chromium.launch({ channel: "chrome", headless: true });
+	const browser = await openBrowser();
 	try {
 		const page = await browser.newPage({ viewport: { width: 1800, height: 1000 }, deviceScaleFactor: 2 });
 		await page.goto(server.url);
 		await page.getByRole("button", { name: "Folding: cells and rows", exact: true }).click();
-		await page.waitForTimeout(500);
+		await settleDemo(page);
 		const frame = page.locator('[data-frame="b"]');
 		await frame.locator('.supermax-fold-cue.is-horizontal:visible').click();
-		await page.waitForTimeout(400);
+		await settleDemo(page);
 		const before = await page.evaluate(() => {
 			const workspace = window.supermaxDemo.frames[1].workspace;
 			window.hostAnimation = workspace.cells.get("albums/album:folding/folding:thumbnails").body.animate([{ outlineOffset: "0px" }, { outlineOffset: "1px" }], { duration: 60000 });
@@ -908,7 +910,7 @@ test("a vertical fold drag preserves horizontal fold choices and carries its can
 		assert.deepEqual(color, [221, 221, 221, 255], "the moving row boundary reveals the canvas gutter");
 		await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2 + 260, { steps: 10 });
 		await page.mouse.up();
-		await page.waitForTimeout(350);
+		await page.waitForFunction(() => !window.supermaxDemo.frames[1].workspace.folds.drag);
 		const persisted = await page.evaluate(() => {
 			const workspace = window.supermaxDemo.frames[1].workspace;
 			const snapshot = workspace.navigator.snapshot();
@@ -924,13 +926,14 @@ test("a vertical fold drag preserves horizontal fold choices and carries its can
 
 test("a released fold finishes visibly and keeps its handle on the moving gutter", async () => {
 	const server = await serveDocs();
-	const browser = await chromium.launch({ channel: "chrome", headless: true });
+	const browser = await openBrowser();
 	try {
 		const page = await browser.newPage({ viewport: { width: 1800, height: 1000 }, deviceScaleFactor: 2 });
 		await page.goto(server.url);
 		await page.getByRole("button", { name: "Folding: cells and rows", exact: true }).click();
 		await page.evaluate(() => window.supermaxDemo.resize([[960, 640], [414, 334]]));
-		await page.waitForTimeout(400);
+		await page.waitForFunction(() => window.supermaxDemo.frames[1].workspace.layout.height === 334);
+		await settleDemo(page);
 		const cue = page.locator('[data-frame="b"] .supermax-fold-cue.is-vertical[data-direction="down"]:visible');
 		const occurrence = await cue.getAttribute("data-fold-occurrence");
 		const distance = await page.evaluate((id) => {
@@ -981,16 +984,17 @@ test("a released fold finishes visibly and keeps its handle on the moving gutter
 
 test("a fold opening up keeps its handle on the interior gutter", async () => {
 	const server = await serveDocs();
-	const browser = await chromium.launch({ channel: "chrome", headless: true });
+	const browser = await openBrowser();
 	try {
 		const page = await browser.newPage({ viewport: { width: 1800, height: 1000 }, deviceScaleFactor: 2 });
 		await page.goto(server.url);
 		await page.getByRole("button", { name: "Folding: cells and rows", exact: true }).click();
 		await page.evaluate(() => window.supermaxDemo.resize([[960, 640], [414, 334]]));
-		await page.waitForTimeout(400);
+		await page.waitForFunction(() => window.supermaxDemo.frames[1].workspace.layout.height === 334);
+		await settleDemo(page);
 		const frame = page.locator('[data-frame="b"]');
 		await frame.locator('.supermax-fold-cue.is-vertical[data-direction="down"]:visible').click();
-		await page.waitForTimeout(400);
+		await settleDemo(page);
 		const upward = frame.locator('.supermax-fold-cue.is-vertical[data-direction="up"]:visible');
 		const rowId = await upward.getAttribute("data-fold-occurrence");
 		const upwardBox = await upward.boundingBox();
@@ -1016,7 +1020,7 @@ test("a fold opening up keeps its handle on the interior gutter", async () => {
 
 test("a fold between two full cells opens toward its trailing side, with its handle on that moving gutter", async () => {
 	const server = await serveDocs();
-	const browser = await chromium.launch({ channel: "chrome", headless: true });
+	const browser = await openBrowser();
 	try {
 		const page = await browser.newPage({ viewport: { width: 700, height: 1000 } });
 		await page.goto(`${server.url}/blank`);
@@ -1062,7 +1066,7 @@ test("a fold between two full cells opens toward its trailing side, with its han
 
 test("a cell that folds keeps the responsive form it was last shown in", async () => {
 	const server = await serveDocs();
-	const browser = await chromium.launch({ channel: "chrome", headless: true });
+	const browser = await openBrowser();
 	try {
 		const page = await browser.newPage({ viewport: { width: 1000, height: 800 } });
 		await page.goto(`${server.url}/blank`);
@@ -1107,7 +1111,7 @@ test("a cell that folds keeps the responsive form it was last shown in", async (
 
 test("a fold drag leaves the styles of the content inside its cells alone", async () => {
 	const server = await serveDocs();
-	const browser = await chromium.launch({ channel: "chrome", headless: true });
+	const browser = await openBrowser();
 	try {
 		const page = await browser.newPage({ viewport: { width: 700, height: 1000 } });
 		await page.goto(`${server.url}/blank`);
@@ -1175,7 +1179,7 @@ test("a fold drag leaves the styles of the content inside its cells alone", asyn
 
 test("a fold handle stays under the pointer when preceding cells unfold together", async () => {
 	const server = await serveDocs();
-	const browser = await chromium.launch({ channel: "chrome", headless: true });
+	const browser = await openBrowser();
 	try {
 		const page = await browser.newPage();
 		await page.goto(`${server.url}/blank`);
@@ -1217,13 +1221,14 @@ test("a fold handle stays under the pointer when preceding cells unfold together
 
 test("a completed fold drag carries its handle into the next fold", async () => {
 	const server = await serveDocs();
-	const browser = await chromium.launch({ channel: "chrome", headless: true });
+	const browser = await openBrowser();
 	try {
 		const page = await browser.newPage({ viewport: { width: 1800, height: 1000 } });
 		await page.goto(server.url);
 		await page.getByRole("button", { name: "Folding: cells and rows", exact: true }).click();
 		await page.evaluate(() => window.supermaxDemo.resize([[960, 640], [414, 334]]));
-		await page.waitForTimeout(400);
+		await page.waitForFunction(() => window.supermaxDemo.frames[1].workspace.layout.height === 334);
+		await settleDemo(page);
 		const frame = page.locator('[data-frame="b"]');
 		const cue = frame.locator('.supermax-fold-cue.is-vertical[data-direction="down"]:visible');
 		const box = await cue.boundingBox();
@@ -1274,13 +1279,14 @@ test("a completed fold drag carries its handle into the next fold", async () => 
 
 test("clicking a row's fold handle animates the handle handoff", async () => {
 	const server = await serveDocs();
-	const browser = await chromium.launch({ channel: "chrome", headless: true });
+	const browser = await openBrowser();
 	try {
 		const page = await browser.newPage({ viewport: { width: 1800, height: 1000 } });
 		await page.goto(server.url);
 		await page.getByRole("button", { name: "Folding: cells and rows", exact: true }).click();
 		await page.evaluate(() => window.supermaxDemo.resize([[960, 640], [414, 334]]));
-		await page.waitForTimeout(400);
+		await page.waitForFunction(() => window.supermaxDemo.frames[1].workspace.layout.height === 334);
+		await settleDemo(page);
 		for (const axis of ["vertical"]) {
 			const motion = await page.evaluate(async (axis) => {
 				const frame = document.querySelector('[data-frame="b"]');
@@ -1316,7 +1322,7 @@ test("clicking a row's fold handle animates the handle handoff", async () => {
 
 test("a fold drag passes through the frames of the transition Show plays", async () => {
 	const server = await serveDocs();
-	const browser = await chromium.launch({ channel: "chrome", headless: true });
+	const browser = await openBrowser();
 	try {
 		const open = async () => {
 			const page = await browser.newPage();

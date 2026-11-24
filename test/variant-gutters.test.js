@@ -1,14 +1,17 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { chromium } from "playwright";
+import { openBrowser } from "./browser.js";
 import { serveDocs } from "./serve-docs.js";
 
 test("moving split and row seams expose one gutter throughout responsive exchanges", async () => {
 	const server = await serveDocs();
-	const browser = await chromium.launch({ channel: "chrome", headless: true });
+	const browser = await openBrowser();
 	try {
 		for (const scale of [1, 2]) for (const presentation of ["veil", "origami", "plain"]) for (const gutter of [0, 1, 4]) {
 			const page = await browser.newPage({ viewport: { width: 800, height: 760 }, deviceScaleFactor: scale, colorScheme: "dark" });
+			const capture = await page.context().newCDPSession(page);
+			const viewport = page.viewportSize();
+			const clip = { x: 0, y: 0, ...viewport, scale };
 			await page.goto(`${server.url}/?delay=0&presentation=${presentation}`);
 			await page.waitForFunction(() => window.supermaxDemo?.frames.length === 2);
 			await page.addStyleTag({ content: ".topbar,.controls,.frame-wrapper:first-child{display:none}.demo{display:block;padding:16px}" });
@@ -49,9 +52,10 @@ test("moving split and row seams expose one gutter throughout responsive exchang
 						return points;
 					}, fraction);
 					if (gutter === 0) points.splice(0, 1);
-					const screenshot = (await page.screenshot()).toString("base64");
-					const pixels = await page.evaluate(async ({ screenshot, points, scale, gutter }) => {
+					const { data: screenshot } = await capture.send("Page.captureScreenshot", { format: "png", clip, captureBeyondViewport: false, optimizeForSpeed: true });
+					const pixels = await page.evaluate(async ({ screenshot, points, scale, gutter, viewport }) => {
 						const image = new Image(); image.src = `data:image/png;base64,${screenshot}`; await image.decode();
+						if (image.width !== viewport.width * scale || image.height !== viewport.height * scale) throw new Error(`Unexpected screenshot dimensions: ${image.width} × ${image.height}`);
 						const canvas = document.createElement("canvas"); canvas.width = image.width; canvas.height = image.height;
 						const context = canvas.getContext("2d"); context.drawImage(image, 0, 0);
 						return points.map((point) => {
@@ -63,7 +67,7 @@ test("moving split and row seams expose one gutter throughout responsive exchang
 							}
 							return { ...point, coverage };
 						});
-					}, { screenshot, points, scale, gutter });
+					}, { screenshot, points, scale, gutter, viewport });
 					for (const point of pixels) assert.ok(Math.abs(point.coverage - gutter) < .03, `${presentation}, DPR ${scale}, gutter ${gutter}, width ${width}, progress ${fraction}, ${point.name}: ${point.coverage} CSS pixels of canvas`);
 				}
 				await page.evaluate(async () => {

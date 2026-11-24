@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { chromium } from "playwright";
+import { openBrowser } from "./browser.js";
 import { Navigator } from "../src/navigation.js";
 import { serveDocs } from "./serve-docs.js";
 
@@ -55,7 +55,7 @@ test("a restored snapshot opens the same folds as the model it came from", () =>
 
 test("surviving leading edges stay still during shrinking, growing and interrupted room changes", async () => {
 	const server = await serveDocs();
-	const browser = await chromium.launch({ channel: "chrome", headless: true });
+	const browser = await openBrowser();
 	try {
 		const page = await browser.newPage();
 		await page.goto(`${server.url}/blank`);
@@ -94,7 +94,7 @@ test("surviving leading edges stay still during shrinking, growing and interrupt
 
 test("opening folded rows keeps the menu and its centered content stable in every presentation", async () => {
 	const server = await serveDocs();
-	const browser = await chromium.launch({ channel: "chrome", headless: true });
+	const browser = await openBrowser();
 	try {
 		const page = await browser.newPage({ viewport: { width: 1100, height: 900 } });
 		await page.goto(`${server.url}/blank`);

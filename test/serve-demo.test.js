@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { readFile, stat } from "node:fs/promises";
 import { createServer } from "node:http";
-import { chromium } from "playwright";
+import { openBrowser } from "./browser.js";
 import { serveDocs } from "./serve-docs.js";
 
 const earlier = { "/": "<!doctype html><script type=\"module\" src=\"./assets/demo.js\"></script>", "/assets/demo.js": "window.build = \"earlier\";" };
@@ -15,7 +15,7 @@ const plain = createServer((request, response) => {
 await new Promise((done) => plain.listen(0, "127.0.0.1", done));
 const port = plain.address().port;
 
-const browser = await chromium.launch({ channel: "chrome", headless: true });
+const browser = await openBrowser();
 try {
 	const page = await browser.newPage();
 	await page.goto(`http://127.0.0.1:${port}/`);

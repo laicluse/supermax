@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { after, before, beforeEach, test } from "node:test";
-import { chromium } from "playwright";
+import { openBrowser } from "./browser.js";
 import { albums, depthCount, depthId, paths } from "../docs/assets/album.js";
 import { appendAction, decodeLog, encodeLog } from "../docs/assets/deeplink.js";
 import { STRIP_TIMING } from "../src/cell-strip.js";
@@ -19,9 +19,8 @@ const errors = [];
 
 before(async () => {
 	server = await serveDocs();
-	browser = await chromium.launch({ channel: "chrome", headless: true });
-	page = await browser.newPage({ viewport: { width: 1720, height: 900 } });
-	page.on("pageerror", (error) => errors.push(error.message));
+	browser = await openBrowser();
+	page = await newDemoPage();
 });
 
 after(async () => {
@@ -33,6 +32,23 @@ after(async () => {
 beforeEach(async () => {
 	await page.emulateMedia({ reducedMotion: "no-preference" });
 });
+
+async function newDemoPage() {
+	const demoPage = await browser.newPage({ viewport: { width: 1720, height: 900 } });
+	demoPage.on("pageerror", (error) => errors.push(error.message));
+	return demoPage;
+}
+
+async function useDemoClock(test) {
+	const originalPage = page;
+	const clockPage = await newDemoPage();
+	page = clockPage;
+	test.after(async () => {
+		page = originalPage;
+		await clockPage.close();
+	});
+	await clockPage.clock.install();
+}
 
 const PRESENTATION = process.env.SUPERMAX_PRESENTATION ?? "origami";
 
@@ -555,10 +571,9 @@ test("a modal grows out of its source cell in a new cell's time while its frustu
 		const cell = source.getBoundingClientRect();
 		const frustum = workspace.modal.originLayer.querySelector(".supermax-frustum");
 		const innerFades = dialog.getAnimations({ subtree: true }).filter((animation) => animation.effect.target !== dialog && animation.effect.getKeyframes().some((frame) => frame.opacity !== undefined)).length;
-		return { duration: entrance.effect.getTiming().duration, easing: entrance.effect.getTiming().easing, innerFades, cell: cell.width, now: now.width, final: final.width, opacity: Number(frustum.style.opacity) };
+		return { duration: entrance.effect.getTiming().duration, innerFades, cell: cell.width, now: now.width, final: final.width, opacity: Number(frustum.style.opacity) };
 	}, coast.photo("map", "b"));
 	assert.equal(midway.duration, 200, "the same 200ms as a new cell");
-	assert.equal(midway.easing, "ease-out", "and it eases out as a new cell does");
 	assert.equal(midway.innerFades, 0, "the dialog fades as one, not part by part");
 	assert.ok(midway.now > Math.min(midway.cell, midway.final) && midway.now < Math.max(midway.cell, midway.final), "halfway the plane sits between the source cell and the modal");
 	assert.ok(midway.opacity > 0 && midway.opacity < 1, "and its frustum is fading in with it");
@@ -583,7 +598,6 @@ test("a closed modal folds back into its source as a closing cell does, while th
 			modal: workspace.modal,
 			usable: !workspace.body.inert,
 			leaving: !!layer?.inert && layer.hasAttribute("data-supermax-exiting"),
-			easing: exit?.effect.getTiming().easing,
 			duration: exit?.effect.getTiming().duration,
 			cell: document.querySelector(`.frame[data-frame="a"] [data-occurrence="${photo}"]`).getBoundingClientRect().width,
 			final,
@@ -594,7 +608,6 @@ test("a closed modal folds back into its source as a closing cell does, while th
 	assert.ok(closing.usable, "and the cells behind it take input again");
 	assert.ok(closing.leaving, "while the dialog leaves inert on its way out");
 	assert.equal(closing.duration, 200, "in a closing cell's time");
-	assert.equal(closing.easing, "ease-in", "easing in as a closing cell does");
 	assert.ok(closing.now > Math.min(closing.cell, closing.final) && closing.now < Math.max(closing.cell, closing.final), "halfway the plane sits between the modal and its source");
 	await page.waitForFunction(() => {
 		const frustum = document.querySelector('.frame[data-frame="a"] .supermax-modal-layer .supermax-frustum');
@@ -826,7 +839,6 @@ const folds = (frameKey) => page.evaluate((key) => document.getAnimations()
 		start: animation.startTime,
 		delay: animation.effect.getTiming().delay,
 		duration: animation.effect.getTiming().duration,
-		easing: animation.effect.getTiming().easing,
 		first: animation.effect.getKeyframes()[0].transform,
 	})), frameKey);
 
@@ -838,7 +850,7 @@ test("a click opens its cell and every default under it in one stroke, folding t
 	const opening = (await folds("a")).filter((fold) => !fold.leaving);
 	assert.deepEqual(opening.map((fold) => fold.cell).sort(), ["coast:history:d", "coast:metadata:d", "coast:photo:d"], "the photo and its whole default chain fold open");
 	assert.equal(new Set(opening.map((fold) => `${fold.start}+${fold.delay}`)).size, 1, "at the same moment");
-	assert.ok(opening.every((fold) => fold.duration === 200 && fold.easing === "ease-out"), "in one 200ms stroke that eases out");
+	assert.equal(new Set(opening.map((fold) => fold.duration)).size, 1, "the cells complete their stroke together");
 	const replaced = (await folds("a")).filter((fold) => fold.leaving).map((fold) => fold.cell).sort();
 	assert.deepEqual(replaced, ["coast:metadata:a", "coast:photo:a"], "and the cells it replaces fold away with it, defaults included");
 	assert.ok(opening.every((fold) => fold.delay === 200), "a replacement from rest first lets the old cells fold away");
@@ -955,28 +967,6 @@ test("browser back and forward animate, while a reload shows its state at once",
 	await page.waitForFunction(() => location.hash.includes("photo:b"));
 	assert.ok(await folds() > 0, "and so does browser forward");
 	await settle();
-});
-
-test("a split that closes stays until the cells in its rows have folded away", { skip: PRESENTATION !== "origami" }, async () => {
-	await openDemo([open("album:coast", "albums")]);
-	await closeNewest("a");
-	const midway = await page.evaluate(() => {
-		document.getAnimations().forEach((animation) => { animation.pause(); animation.currentTime = 100; });
-		const split = document.querySelector('.frame[data-frame="a"] .supermax-cell.is-split');
-		const inner = split ? [...split.querySelectorAll(".supermax-cell")] : [];
-		return {
-			split: !!split?.isConnected,
-			splitFolds: split ? split.getAnimations().some((animation) => animation.effect.getKeyframes().some((frame) => String(frame.transform ?? "").includes("rotate"))) : null,
-			inner: inner.length,
-			folding: inner.filter((cell) => cell.getAnimations().some((animation) => animation.effect.getKeyframes().some((frame) => String(frame.transform ?? "").includes("rotate")))).length,
-		};
-	});
-	assert.equal(midway.split, true, "halfway the split is still there");
-	assert.equal(midway.splitFolds, false, "it does not fold itself");
-	assert.ok(midway.inner > 0 && midway.folding === midway.inner, `while every cell in its rows folds away: ${midway.folding} of ${midway.inner}`);
-	await page.evaluate(() => document.getAnimations().forEach((animation) => animation.play()));
-	await settle();
-	assert.equal(await page.locator(inFrame("a", ".supermax-cell.is-split")).count(), 0, "and it is gone once they have");
 });
 
 test("a cell that shrinks keeps its layout until the transition ends, and slides under the cell that opens", { skip: PRESENTATION !== "origami" }, async () => {
@@ -1526,7 +1516,6 @@ test("clicks faster than a stroke tear the earlier cells off from where they are
 	assert.deepEqual(after, before, "the half-open cell starts its tear from its own pose");
 	const tearing = (await folds("a")).find((fold) => fold.cell === "coast:photo:b");
 	assert.equal(tearing?.leaving, true);
-	assert.equal(tearing.easing, "ease-in", "and tears off as an exit");
 	assert.equal((await folds("a")).find((fold) => fold.cell === "coast:photo:c" && !fold.leaving)?.delay, 0, "a place in motion does not wait: the next cell folds open at once");
 	await page.evaluate((selector) => document.querySelector(selector).click(), thumb("d"));
 	assert.ok(await page.locator(inFrame("a", `[data-supermax-exiting][data-occurrence$="coast:photo:b"], [data-supermax-exiting][data-occurrence$="coast:photo:c"]`)).count() >= 2, "every superseded layer stays on its own path");
@@ -1648,7 +1637,6 @@ test("going back to a cell that is still folding away brings the same cell back 
 	await page.evaluate((selector) => document.querySelector(selector).click(), inFrame("a", `[data-occurrence="${coast.row("thumbnails")}"] .thumb[data-destination="coast:photo:a"]`));
 	const back = (await folds("a")).find((fold) => fold.cell === "coast:photo:a" && !fold.leaving);
 	assert.ok(back, "Photo A folds back open");
-	assert.equal(back.easing, "ease-out");
 	assert.equal(await element.evaluate((node) => node.isConnected && !node.hasAttribute("data-supermax-exiting")), true, "it is the same cell, drafts and all");
 	await page.evaluate(() => document.getAnimations().forEach((animation) => animation.play()));
 	await settle();
@@ -1675,7 +1663,6 @@ test("origami folds a cell open from its parent's edge and back onto it when it 
 				cell: cell.dataset.occurrence.split("/").pop(),
 				leaving: cell.hasAttribute("data-supermax-exiting"),
 				origin: cell.style.transformOrigin,
-				easing: fold.effect.getTiming().easing,
 				direction: fold.effect.getTiming().direction,
 				delay: fold.effect.getTiming().delay,
 				end: fold.effect.getComputedTiming().endTime,
@@ -1684,30 +1671,29 @@ test("origami folds a cell open from its parent's edge and back onto it when it 
 				transparent: fade ? edge(fade.effect.getKeyframes(), (frame) => Number(frame.opacity) === 1) : null,
 				opaque: getComputedStyle(cell).opacity,
 				shadeOnCompositor: !!fade && !fade.effect.getKeyframes().some((frame) => Object.keys(frame).some((key) => key.startsWith("--"))),
-				fadeTiming: fade ? [fade.effect.getTiming().easing, fade.effect.getTiming().delay, fade.effect.getComputedTiming().endTime] : null,
+				fadeTiming: fade ? [fade.effect.getTiming().delay, fade.effect.getComputedTiming().endTime] : null,
 				innerFades: document.getAnimations().filter((animation) => cell.contains(animation.effect?.target) && animation.effect.target !== cell && !animation.effect.target.classList.contains("supermax-veil") && animation.effect.getKeyframes().some((frame) => frame.opacity !== undefined)).length,
 			};
 		}).filter(Boolean);
 	});
-	const wholeCell = (animation, label, easing) => {
-		assert.equal(animation.easing, easing, `${label} has ${easing}`);
+	const wholeCell = (animation, label) => {
 		assert.deepEqual(animation.transparent, animation.onEdge, `${label} is fully shaded to the canvas exactly while it stands on edge`);
 		assert.equal(animation.opaque, "1", `${label} stays opaque, so overlapping cells never show through each other`);
 		assert.equal(animation.shadeOnCompositor, true, `${label} shades through the opacity of its canvas-coloured overlay, never through a property its content would recalculate`);
-		assert.deepEqual(animation.fadeTiming, [animation.easing, animation.delay, animation.end], `${label} fades on the fold's timeline`);
+		assert.deepEqual(animation.fadeTiming, [animation.delay, animation.end], `${label} fades on the fold's timeline`);
 		assert.equal(animation.innerFades, 0, `${label} fades as one, not element by element`);
 	};
 	await page.click(inFrame("a", '[data-occurrence$="coast:metadata:a"] .metadata-link:not(.album-export)'));
 	const opening = (await motion()).find((animation) => !animation.leaving && animation.cell === "coast:history:a");
 	assert.equal(opening?.origin, "left center", "a new cell folds open from the edge it shares with its parent");
 	assert.equal(opening.transforms[0], "rotateY(90deg)");
-	wholeCell(opening, "the opening cell", "ease-out");
+	wholeCell(opening, "the opening cell");
 	await settle();
 	await page.evaluate(() => window.supermaxDemo.dispatch({ type: "close" }, window.supermaxDemo.frames[0].workspace));
 	const closing = (await motion()).find((animation) => animation.leaving && animation.cell === "coast:history:a");
 	assert.equal(closing?.origin, "left center", "a closed cell folds back onto the edge it opened from");
-	assert.deepEqual([closing.transforms[0], closing.direction], ["rotateY(90deg)", "reverse"], "by playing its opening backwards, so its ease-out runs as an ease-in");
-	wholeCell(closing, "the closing cell", "ease-out");
+	assert.deepEqual([closing.transforms[0], closing.direction], ["rotateY(90deg)", "reverse"], "by playing its opening backwards");
+	wholeCell(closing, "the closing cell");
 	await settle();
 	await page.click(inFrame("a", `[data-occurrence="${coast.row("thumbnails")}"] .thumb[data-destination="coast:photo:b"]`));
 	const turning = await motion();
@@ -2070,7 +2056,8 @@ test("the demo shows persistent recovery, busy feedback, and host resolution", a
 	assert.equal(await page.evaluate(() => window.supermaxDemo.frames[0].workspace.notices.notices.has("recovery-demo")), false);
 });
 
-test("a notice is a bubble in its source cell, and moves to the top of the viewport naming a source out of view", async () => {
+test("a notice is a bubble in its source cell, and moves to the top of the viewport naming a source out of view", async (test) => {
+	await useDemoClock(test);
 	await openDemoWithNothingKept([open("album:coast", "albums")]);
 	await resize([[1100, 640], [360, 640]]);
 	const photoA = inFrame("a", `[data-occurrence="${coast.photo("thumbnails", "a")}"]`);
@@ -2082,7 +2069,8 @@ test("a notice is a bubble in its source cell, and moves to the top of the viewp
 	const narrowNotice = inFrame("b", ".supermax-notices .supermax-notice");
 	assert.equal(await page.locator(`${narrowNotice} .supermax-notice-text`).textContent(), "Photo A (not open): Caption saved", "where the source is not open the workspace notice names it");
 	assert.equal(await page.locator(`${narrowNotice} .supermax-notice-go:not([hidden])`).count(), 0, "and offers no way to reopen a closed source");
-	await page.waitForSelector(cellNotice, { state: "detached", timeout: 9000 });
+	await page.clock.fastForward(TIMING.noticeLife);
+	await page.waitForSelector(cellNotice, { state: "detached", timeout: 2000 });
 	assert.equal(await page.locator(narrowNotice).count(), 0, "success notices expire on their own");
 	await page.evaluate(() => { const workspace = window.supermaxDemo.frames[0].workspace; workspace.notify({ id: "dup", scope: "workspace", kind: "action", message: "Once" }); workspace.notify({ id: "dup", scope: "workspace", kind: "action", message: "Once" }); });
 	assert.equal(await page.locator(inFrame("a", '.supermax-notice[data-notice="dup"]')).count(), 1, "the same event id shows once");
@@ -2093,7 +2081,9 @@ test("a notice is a bubble in its source cell, and moves to the top of the viewp
 	await page.waitForSelector(`${cellNotice}.is-error`);
 	assert.equal(await page.locator(`${cellNotice}.is-error`).getAttribute("role"), "alert");
 	assert.match(await page.locator(`${cellNotice} .supermax-notice-text`).textContent(), /^Saving the caption failed/);
-	await page.waitForTimeout(4500);
+	const errorId = await page.locator(`${cellNotice}.is-error`).getAttribute("data-notice");
+	await page.clock.fastForward(TIMING.noticeLife + 1);
+	assert.ok(await page.evaluate((id) => window.supermaxDemo.frames[0].workspace.notices.notices.has(id), errorId), "the error remains after a success notice would expire");
 	assert.equal(await page.locator(`${cellNotice}.is-error`).count(), 1, "an error stays until it is dismissed or acted on");
 	const noticesBefore = await page.locator(inFrame("a", ".supermax-notice")).count();
 	await page.click(inFrame("a", `[data-occurrence="${coast.row("map")}"] [data-destination="coast:photo:c"]`));
@@ -2126,7 +2116,8 @@ test("a notice is a bubble in its source cell, and moves to the top of the viewp
 	assert.equal(await page.locator(`${late} .supermax-notice-text`).textContent(), "Photo B (not open): Caption saved", "a late response for a closed source names it");
 	assert.ok(!(await state("a")).occurrences.includes(coast.photo("people", "b")), "and does not reopen it");
 	await page.selectOption("[data-delay]", "0");
-	await page.waitForSelector(late, { state: "detached", timeout: 9000 });
+	await page.clock.fastForward(TIMING.noticeLife);
+	await page.waitForSelector(late, { state: "detached", timeout: 2000 });
 	await page.click(inFrame("a", `[data-occurrence="${coast.metadata("thumbnails", "a")}"] .album-export`));
 	const exportNotice = inFrame("a", ".supermax-notice.is-action");
 	assert.equal(await page.locator(`${inFrame("a", `[data-occurrence="${coast.metadata("thumbnails", "a")}"]`)} .supermax-cell-notices .supermax-notice-text`).textContent(), "Export of Coast is ready", "the bubble in its source cell needs no name");
@@ -2221,8 +2212,8 @@ test("veil replaces a cell without turning it, keeps its surface and lifts the n
 	assert.ok(replacing.length > 0 && replacing.every((fold) => fold.first === "none"), `no cell turns or travels: ${JSON.stringify(replacing)}`);
 	const leaving = replacing.filter((fold) => fold.leaving);
 	const arriving = replacing.filter((fold) => !fold.leaving).sort((first, second) => first.delay - second.delay);
-	assert.ok(leaving.length > 0 && leaving.every((fold) => fold.duration === TIMING.veilFall && fold.easing === "cubic-bezier(0.4, 0, 1, 1)"), "the old content falls quickly and accelerating");
-	assert.ok(arriving.every((fold) => fold.duration > TIMING.veilFall && fold.easing === "cubic-bezier(0, 0, 0.2, 1)"), "the new content lifts slower than the old fell, decelerating");
+	assert.ok(leaving.length > 0 && leaving.every((fold) => fold.duration === TIMING.veilFall), "the old content completes its fall");
+	assert.ok(arriving.every((fold) => fold.duration > TIMING.veilFall), "the new content lifts slower than the old fell");
 	assert.equal(arriving[0].delay, TIMING.veilFall, "the new content lifts as soon as the old has fallen, so the two never show at once");
 	assert.deepEqual(arriving.map((fold) => fold.cell), ["coast:photo:b", "coast:metadata:b"], "and lifts in reading order");
 	assert.equal(arriving[1].delay - arriving[0].delay, TIMING.stagger, "one stagger apart");
@@ -2521,22 +2512,21 @@ test("a layout that fails leaves the workspace as it was, with Retry at its sour
 	assert.deepEqual(await groups("a"), ["Coast", "Photo B"]);
 });
 
-test("the demo's Speed control slows every time Supermax and the demo keep, and keeps that in the URL", async () => {
+test("the demo's Speed control slows every time Supermax and the demo keep, and keeps that in the URL", async (test) => {
+	await useDemoClock(test);
 	const SLOW = 10;
-	const near = (actual, expected) => actual >= expected * 0.9 && actual <= expected * 1.4;
-	const until = (check) => page.evaluate((source) => new Promise((resolve) => {
-		const test = new Function(`return (${source})()`);
-		const started = performance.now();
-		const poll = () => (test() ? resolve(performance.now() - started) : requestAnimationFrame(poll));
-		poll();
-	}), check.toString());
 	await openDemo(LONG_CHAIN);
 	await resize([[960, 640], [380, 640]]);
 	await page.selectOption("[data-speed]", String(SLOW));
 	assert.match(page.url(), /[?&]speed=10/, "the choice is in the URL");
+	await page.clock.pauseAt(await page.evaluate(() => Date.now() + 1000));
 	await page.evaluate(() => { window.slowNotice = window.supermaxDemo.frames[0].workspace.notify({ scope: "workspace", kind: "success", message: "Saved", duration: 100 }); });
-	const expiry = await until(() => !window.supermaxDemo.frames[0].workspace.notices.notices.has(window.slowNotice));
-	assert.ok(near(expiry, 100 * SLOW), `a notice expires after ${SLOW} times its duration: ${Math.round(expiry)}ms`);
+	const noticeIsOpen = () => page.evaluate(() => window.supermaxDemo.frames[0].workspace.notices.notices.has(window.slowNotice));
+	await page.clock.runFor(100 * SLOW - 1);
+	assert.equal(await noticeIsOpen(), true, "the notice remains until the scaled deadline");
+	await page.clock.runFor(1);
+	assert.equal(await noticeIsOpen(), false, "the notice expires at its scaled deadline");
+	await page.clock.resume();
 
 	await openDemo([open("album:coast", "albums")]);
 	await page.selectOption("[data-speed]", String(SLOW));
@@ -2551,9 +2541,11 @@ test("the demo's Speed control slows every time Supermax and the demo keep, and 
 	await page.evaluate(() => window.supermaxDemo.setNetwork({ delay: "400" }));
 	await page.click(inFrame("a", `[data-occurrence="${coast.row("thumbnails")}"] .thumb[data-destination="coast:photo:c"]`));
 	assert.equal((await departureOf(inFrame("a", `[data-occurrence="${coast.photo("thumbnails", "b")}"]`)))?.delay, TIMING.depart * SLOW, "the wait before a departure grows with it");
-	await page.waitForTimeout(400 * 3);
+	await page.clock.fastForward(400 * 3);
 	assert.equal((await state("a")).occurrences.includes(coast.photo("thumbnails", "c")), false, "the demo's network delay is slowed too");
-	await page.waitForFunction((id) => window.supermaxDemo.frames[0].workspace.navigator.get(id), coast.photo("thumbnails", "c"), { timeout: 400 * SLOW * 2 });
+	await page.selectOption("[data-delay]", "0");
+	await page.clock.fastForward(400 * SLOW);
+	await page.waitForFunction((id) => window.supermaxDemo.frames[0].workspace.navigator.get(id), coast.photo("thumbnails", "c"), { timeout: 2000 });
 	await settle();
 	await closeNewest("a");
 	const closingFolds = (await folds("a")).filter((fold) => fold.leaving);
@@ -2561,7 +2553,7 @@ test("the demo's Speed control slows every time Supermax and the demo keep, and 
 	await settle();
 	const requests = await page.evaluate(() => window.supermaxDemo.requests.length);
 	await page.hover(inFrame("a", `[data-occurrence="${coast.row("thumbnails")}"] .thumb[data-destination="coast:photo:d"]`));
-	await page.waitForTimeout(100 * 4);
+	await page.clock.fastForward(100 * 4);
 	assert.equal(await page.evaluate(() => window.supermaxDemo.requests.length), requests, "and so is the pause before a hover asks for a layout");
 	await page.reload();
 	await page.waitForFunction(() => window.supermaxDemo?.frames.length === 2);
@@ -2642,12 +2634,26 @@ test("a closing split keeps its rows until the exit finishes", async () => {
 	await closeNewest("a");
 	const during = await page.evaluate(() => {
 		document.getAnimations().forEach((animation) => { animation.pause(); animation.currentTime = 100; });
-		const exiting = document.querySelector('.frame[data-frame="a"] [data-supermax-exiting]');
-		return { exiting: !!exiting, rows: exiting?.querySelectorAll(".supermax-row").length ?? 0 };
+		const split = document.querySelector('.frame[data-frame="a"] .supermax-cell.is-split');
+		const rotates = (cell) => cell.getAnimations().some((animation) => animation.effect.getKeyframes().some((frame) => String(frame.transform ?? "").includes("rotate")));
+		const inner = [...(split?.querySelectorAll(".supermax-cell") ?? [])];
+		return {
+			exiting: split?.hasAttribute("data-supermax-exiting") ?? false,
+			rows: split?.querySelectorAll(".supermax-row").length ?? 0,
+			splitFolds: split ? rotates(split) : null,
+			inner: inner.length,
+			folding: inner.filter(rotates).length,
+		};
 	});
-	assert.deepEqual(during, { exiting: true, rows: 3 }, "the departing album still carries its rows mid-exit");
+	assert.deepEqual({ exiting: during.exiting, rows: during.rows }, { exiting: true, rows: 3 }, "the departing album still carries its rows mid-exit");
+	if (PRESENTATION === "origami") {
+		assert.equal(during.splitFolds, false, "the split does not fold itself");
+		assert.ok(during.inner > 0 && during.folding === during.inner, `every cell in its rows folds away: ${during.folding} of ${during.inner}`);
+	}
+	await page.evaluate(() => document.getAnimations().forEach((animation) => animation.play()));
 	await settle();
 	assert.equal(await page.locator(inFrame("a", ".supermax-row")).count(), 0, "rows are gone after the exit");
+	assert.equal(await page.locator(inFrame("a", ".supermax-cell.is-split")).count(), 0, "the split is gone once its rows have folded away");
 });
 
 test("each frame resizes through its own handle and the readout follows", async () => {

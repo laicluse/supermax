@@ -1,11 +1,11 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { chromium } from "playwright";
+import { openBrowser } from "./browser.js";
 import { serveDocs } from "./serve-docs.js";
 
 test("a chain holds no scroll offset when focus lands in a cell beside content that left the window", async () => {
 	const server = await serveDocs();
-	const browser = await chromium.launch({ channel: "chrome", headless: true });
+	const browser = await openBrowser();
 	try {
 		const page = await browser.newPage({ viewport: { width: 1200, height: 760 } });
 		await page.goto(`${server.url}/?delay=0`);

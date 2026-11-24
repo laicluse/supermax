@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { createServer } from "node:http";
-import { chromium } from "playwright";
+import { openBrowser } from "./browser.js";
 
 const server = createServer(async (request, response) => {
 	if (request.url === "/") {
@@ -18,7 +18,7 @@ const server = createServer(async (request, response) => {
 	}
 });
 await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
-const browser = await chromium.launch({ channel: "chrome", headless: true });
+const browser = await openBrowser();
 try {
 	const page = await browser.newPage();
 	await page.goto(`http://127.0.0.1:${server.address().port}/`);

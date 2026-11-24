@@ -1,11 +1,11 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { chromium } from "playwright";
+import { openBrowser } from "./browser.js";
 import { serveDocs } from "./serve-docs.js";
 
 test("notice action progress fills its button and clears when the action changes", async () => {
 	const server = await serveDocs();
-	const browser = await chromium.launch({ channel: "chrome", headless: true });
+	const browser = await openBrowser();
 	try {
 		const page = await browser.newPage();
 		await page.goto(`${server.url}/blank`);
@@ -34,7 +34,7 @@ test("notice action progress fills its button and clears when the action changes
 
 test("host renderers own paint and native controls while shell retains navigation and lifecycle", async () => {
 	const server = await serveDocs();
-	const browser = await chromium.launch({ channel: "chrome", headless: true });
+	const browser = await openBrowser();
 	try {
 		const page = await browser.newPage();
 		await page.goto(`${server.url}/blank`);
@@ -177,7 +177,7 @@ test("host renderers own paint and native controls while shell retains navigatio
 
 test("custom modal, loading and frustum paint keep geometry and retry under shell control", async () => {
 	const server = await serveDocs();
-	const browser = await chromium.launch({ channel: "chrome", headless: true });
+	const browser = await openBrowser();
 	try {
 		const page = await browser.newPage();
 		await page.goto(`${server.url}/blank`);
@@ -299,7 +299,7 @@ test("custom modal, loading and frustum paint keep geometry and retry under shel
 
 test("a transparent host veil conceals foreground on the shell timeline while material stays painted", async () => {
 	const server = await serveDocs();
-	const browser = await chromium.launch({ channel: "chrome", headless: true });
+	const browser = await openBrowser();
 	try {
 		const page = await browser.newPage();
 		await page.goto(`${server.url}/blank`);
@@ -364,7 +364,7 @@ test("a transparent host veil conceals foreground on the shell timeline while ma
 
 test("renderer configuration faults are explicit and leave no mounted workspace", async () => {
 	const server = await serveDocs();
-	const browser = await chromium.launch({ channel: "chrome", headless: true });
+	const browser = await openBrowser();
 	try {
 		const page = await browser.newPage();
 		await page.goto(`${server.url}/blank`);
@@ -422,7 +422,7 @@ test("renderer configuration faults are explicit and leave no mounted workspace"
 
 test("native action bindings preserve availability, busy focus and disposal across host button replacement", async () => {
 	const server = await serveDocs();
-	const browser = await chromium.launch({ channel: "chrome", headless: true });
+	const browser = await openBrowser();
 	try {
 		const page = await browser.newPage();
 		await page.goto(`${server.url}/blank`);
@@ -515,7 +515,7 @@ test("native action bindings preserve availability, busy focus and disposal acro
 
 test("lazy renderer faults clean up notice records and staged modal parts", async () => {
 	const server = await serveDocs();
-	const browser = await chromium.launch({ channel: "chrome", headless: true });
+	const browser = await openBrowser();
 	try {
 		const page = await browser.newPage();
 		await page.goto(`${server.url}/blank`);
@@ -580,7 +580,7 @@ test("lazy renderer faults clean up notice records and staged modal parts", asyn
 
 test("renderer faults dispose frustum faces and updates while preserving an existing modal", async () => {
 	const server = await serveDocs();
-	const browser = await chromium.launch({ channel: "chrome", headless: true });
+	const browser = await openBrowser();
 	try {
 		const page = await browser.newPage();
 		await page.goto(`${server.url}/blank`);
