@@ -442,6 +442,14 @@ function allocateChain(model, cells, width) {
 	}
 	const byId = new Map(sharing.cells.map((cell) => [cell.config.id, cell]));
 	const allocation = { ...sharing, cells: cells.map((occurrence) => byId.get(occurrence.id) ?? { config: { id: occurrence.id, title: occurrence.title }, actual: 0, visible: false }) };
+	// allow-comment: a row is as wide as its split, so what its cells leave after their maxima belongs to the newest one standing, unless the user sized that cell or its split: a title bar and a surface never stop short of the row's edge.
+	if (split) {
+		const left = width - allocation.cells.reduce((sum, cell) => sum + (cell.visible ? cell.actual : 0), 0);
+		const index = allocation.cells.findLastIndex((cell) => cell.visible && !fold.has(cell.config.id));
+		const last = index >= 0 ? cells.find((occurrence) => occurrence.id === allocation.cells[index].config.id) : null;
+		const free = last && !sizedRow && model.sizeOf(last.id, "width") === null;
+		if (left > 0.5 && free) allocation.cells[index] = { ...allocation.cells[index], actual: allocation.cells[index].actual + left };
+	}
 	return { allocation, fold };
 }
 
