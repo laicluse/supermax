@@ -64,8 +64,11 @@ function formOf(owner, variant, axis) {
 	return { ...form, [maximum]: Math.min(form[maximum], form[preferred]), reach: form[maximum] };
 }
 
+// allow-comment: a cell never asks more width than the workspace has: on a screen narrower than its minimum it takes the workspace and its content scrolls inside it, so the workspace itself does not scroll sideways.
 export function definitionFor(model, occurrence) {
-	return model.variantDefinitions?.get(occurrence.id) ?? model.definitionOf(occurrence.destination);
+	const definition = model.variantDefinitions?.get(occurrence.id) ?? model.definitionOf(occurrence.destination);
+	const width = model.size?.width ?? 0;
+	return width > 0 && definition.min > width ? { ...definition, min: width } : definition;
 }
 
 export function rowDefinitions(model, split) {

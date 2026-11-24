@@ -67,3 +67,33 @@ test("the condition is a positive finite width on a keep policy and nothing else
 		assert.throws(() => declare(overflow), JSON.stringify(overflow));
 	}
 });
+
+test("a cell never asks more width than the workspace has", () => {
+	const model = new Navigator({ root: "rail", minViewportHeight: 300, destinations: { ...destinations(), work: { title: "Work", min: 520, preferred: 860, max: "*" } } });
+	model.resize({ width: 390, height: 700 });
+	model.open("menu", { from: "rail" });
+	model.open("work", { from: "rail/menu" });
+	const layout = model.layout();
+	assert.equal(layout.cells.get("rail/menu/work").width, 390, "the work takes the workspace and scrolls inside itself");
+	assert.equal(layout.overflowX, false, "the workspace does not scroll sideways");
+	model.resize({ width: 1200, height: 700 });
+	assert.ok(model.layout().cells.get("rail/menu/work").width >= 520, "with room it keeps its minimum");
+});
+
+test("the rows of a split follow the same rule", () => {
+	const model = new Navigator({ root: "menu", minViewportHeight: 300, destinations: {
+		menu: { title: "Menu", min: 48, preferred: 180, max: 240, overflow: { mode: "keep", when: { minWorkspaceWidth: 600 } } },
+		card: { title: "Card", rows: [
+			{ destination: "chart", minHeight: 120, maxHeight: 300, preferredHeight: 200 },
+			{ destination: "table", minHeight: 120, maxHeight: "*", preferredHeight: 400 },
+		] },
+		chart: { title: "Chart", min: 380, preferred: 620, max: "*" },
+		table: { title: "Table", min: 520, preferred: 860, max: "*" },
+	} });
+	model.resize({ width: 390, height: 700 });
+	model.open("card", { from: "menu" });
+	const layout = model.layout();
+	assert.equal(layout.cells.get("menu/card").width, 390);
+	assert.equal(layout.cells.get("menu/card/table").width, 390);
+	assert.equal(layout.overflowX, false);
+});
