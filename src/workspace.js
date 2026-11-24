@@ -207,6 +207,10 @@ export class Workspace extends EventTarget {
 		}
 		const target = this.navigator.upTarget(this.layout ?? undefined);
 		if (!target) return { ok: false, reason: "nothing-hidden" };
+		if (this.growth.gaveWay(target.id, "horizontal")) {
+			this.growth.yield();
+			return { ok: true, shown: target.id, closed: [] };
+		}
 		const { after, closed } = this.rehearse(() => this.navigator.showByClosing(target.id));
 		if (!this.askToShow(target.id, closed)) return { ok: false, reason: "cancelled" };
 		this.navigator.restore(after);

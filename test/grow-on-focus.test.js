@@ -4,9 +4,9 @@ import { Navigator } from "../src/navigation.js";
 import { layoutWorkspace, withGrowth } from "../src/layout.js";
 import { LAYOUT_SCHEMA, layoutOf, validateDeclarationSet } from "../src/layout-declaration.js";
 
-function chain({ width = 1000, height = 700, form = {}, detail = {} } = {}) {
+function chain({ width = 1000, height = 700, list = {}, form = {}, detail = {} } = {}) {
 	const model = new Navigator({ root: "list", minViewportHeight: 300, destinations: {
-		list: { title: "List", min: 240, preferred: 320, max: 400 },
+		list: { title: "List", min: 240, preferred: 320, max: 400, ...list },
 		form: { title: "Form", min: 300, preferred: 560, max: 640, overflow: { mode: "keep" }, growOnFocus: true, ...form },
 		detail: { title: "Detail", min: 300, preferred: 500, max: "*", ...detail },
 	} });
@@ -17,19 +17,44 @@ function chain({ width = 1000, height = 700, form = {}, detail = {} } = {}) {
 }
 
 const widths = (layout, ids) => ids.map((id) => layout.cells.get(id).visible ? layout.cells.get(id).width : null);
-const visible = (layout) => [...layout.cells].filter(([, cell]) => cell.visible).map(([id, cell]) => [id, cell.folded]);
+const shown = (layout, id) => { const cell = layout.cells.get(id); return cell.visible && !cell.folded; };
+// allow-comment: growth only takes room: a cell or row the ordinary layout holds back never appears or unfolds for it, and every open cell keeps a route.
+function assertOnlyGivesWay(model, grown, plain, label) {
+	for (const [id, cell] of grown.cells) assert.ok(!(cell.visible && !cell.folded) || shown(plain, id), `${id} shows only where the ordinary layout shows it, ${label}`);
+	for (const [id, row] of grown.rows) assert.ok(!(row.visible && !row.folded) || (plain.rows.get(id).visible && !plain.rows.get(id).folded), `row ${id} shows only where the ordinary layout shows it, ${label}`);
+	for (const occurrence of model.occurrences.values()) assert.ok(grown.access.get(occurrence.id), `${occurrence.id} keeps a route, ${label}`);
+}
 const CHAIN = ["list", "list/form", "list/form/detail"];
 
-test("a kept cell with focus grows toward its preference while the cell after it gives way to its minimum", () => {
+test("the cell after the one with focus folds when its minimum still leaves the preference out of reach", () => {
 	const model = chain({ width: 800 });
 	assert.deepEqual(widths(model.layout(), CHAIN), [null, 350, 450], "a kept form stands under its preference in a small window");
-	assert.deepEqual(widths(layoutWorkspace(withGrowth(model, "list/form")), CHAIN), [null, 500, 300]);
+	const grown = layoutWorkspace(withGrowth(model, "list/form"));
+	assert.ok(grown.cells.get("list/form").width >= 560, `the form reaches its preference (${grown.cells.get("list/form").width})`);
+	assert.equal(grown.cells.get("list/form/detail").folded, true, "the detail folds for it");
+	assert.equal(grown.access.get("list/form/detail").kind, "fold", "and stays reachable by its fold");
+	assert.deepEqual(widths(layoutWorkspace(withGrowth(model, null)), CHAIN), [null, 350, 450], "the ordinary layout returns when focus leaves");
 });
 
-test("growth stops at what the neighbours leave above their minima, on either side", () => {
+test("a cell before the one with focus leaves the window when the minima do not leave the preference", () => {
 	const model = chain({ width: 1000 });
 	assert.deepEqual(widths(model.layout(), CHAIN), [253, 353, 394]);
+	const [list, form, detail] = widths(layoutWorkspace(withGrowth(model, "list/form")), CHAIN);
+	assert.equal(list, null, "the list gives way first, by its overflow mode");
+	assert.ok(form >= 560 && detail >= 300 && form + detail === 1000, `the form reaches its preference beside the detail (${form}, ${detail})`);
+	assert.deepEqual(widths(layoutWorkspace(withGrowth(model, null)), CHAIN), [253, 353, 394], "the list returns when focus leaves");
+});
+
+test("kept cells on either side stay and growth takes what they leave above their minima", () => {
+	const model = chain({ width: 1000, list: { overflow: { mode: "keep" } }, detail: { overflow: { mode: "keep" } } });
 	assert.deepEqual(widths(layoutWorkspace(withGrowth(model, "list/form")), CHAIN), [240, 460, 300]);
+});
+
+test("nothing closes for growth", () => {
+	const model = chain({ width: 800 });
+	const before = model.snapshot();
+	layoutWorkspace(withGrowth(model, "list/form"));
+	assert.deepEqual(model.snapshot(), before);
 });
 
 test("growth asks for the preference and no more: the room above it is shared as usual", () => {
@@ -46,11 +71,15 @@ test("growth never shrinks a cell that already has its preference or more", () =
 	}
 });
 
-test("growth shows and folds the same cells as the ordinary layout", () => {
+test("growth only makes cells give way: none appears or unfolds for it and each keeps a route", () => {
+	let gaveWay = 0;
 	for (const width of [600, 700, 800, 900, 1000, 1100, 1400]) {
 		const model = chain({ width });
-		assert.deepEqual(visible(layoutWorkspace(withGrowth(model, "list/form"))), visible(model.layout()), `at ${width}px`);
+		const grown = layoutWorkspace(withGrowth(model, "list/form"));
+		assertOnlyGivesWay(model, grown, model.layout(), `at ${width}px`);
+		gaveWay += CHAIN.some((id) => shown(model.layout(), id) && !shown(grown, id));
 	}
+	assert.ok(gaveWay >= 4, `a cell gives way at the narrow widths (${gaveWay})`);
 });
 
 test("a size the user set with a divider wins over growth", () => {
@@ -93,12 +122,23 @@ test("a cell in a row grows through its split's width and its row's height, with
 	const model = card();
 	const plain = model.layout();
 	const grown = layoutWorkspace(withGrowth(model, "menu/card/chart"));
-	assert.ok(grown.cells.get("menu/card").width > plain.cells.get("menu/card").width, "the split widens for the cell in its row");
-	assert.ok(grown.cells.get("menu/card/chart").width > plain.cells.get("menu/card/chart").width);
+	assert.ok(grown.cells.get("menu/card/chart").width >= 900, `the chart reaches its preference (${grown.cells.get("menu/card/chart").width})`);
+	assert.equal(grown.cells.get("menu").visible, false, "the menu before the split leaves the window");
+	assert.equal(grown.cells.get("menu/card/chart/side").folded, true, "the cell beside the split folds");
 	const row = grown.rows.get("menu/card/chart");
-	assert.ok(row.height >= plain.rows.get("menu/card/chart").height, "the row never shrinks");
+	assert.ok(row.height >= 300 && row.height >= plain.rows.get("menu/card/chart").height, `the row reaches its preferred height (${row.height})`);
 	assert.ok(row.height <= Math.max(120, row.fitHeight), "the row stays within the chart's aspect ratio");
-	assert.equal(grown.cells.get("menu/card").width + grown.cells.get("menu").width + grown.cells.get("menu/card/chart/side").width, 1000);
+	assertOnlyGivesWay(model, grown, plain, "in the card");
+});
+
+test("the other row folds when the row with focus cannot reach its preferred height beside it", () => {
+	const model = card({ width: 1800, height: 380 });
+	const plain = model.layout();
+	assert.ok(plain.rows.get("menu/card/chart").height < 300, "the chart row starts under its preferred height");
+	const grown = layoutWorkspace(withGrowth(model, "menu/card/chart"));
+	assert.ok(grown.rows.get("menu/card/chart").height >= 300);
+	assert.equal(grown.rows.get("menu/card/table").folded, true);
+	assert.equal(layoutWorkspace(withGrowth(model, null)).rows.get("menu/card/table").folded, false, "the table row returns when focus leaves");
 });
 
 test("growOnFocus is a boolean on a cell and travels with its layout declaration", () => {
@@ -129,12 +169,12 @@ function cardWithThumbnails(width) {
 	return model;
 }
 
-test("a cell in a row never shrinks and its row shows and folds the same cells when its split widens", () => {
+test("a cell in a row never shrinks and no cell of its row appears when its split widens", () => {
 	for (let width = 700; width <= 1800; width += 20) {
 		const model = cardWithThumbnails(width);
 		const plain = model.layout();
 		const grown = layoutWorkspace(withGrowth(model, "menu/card/thumbnails/chart"));
-		assert.deepEqual(visible(grown), visible(plain), `the same cells show and fold at ${width}px`);
+		assertOnlyGivesWay(model, grown, plain, `at ${width}px`);
 		const chart = (layout) => layout.cells.get("menu/card/thumbnails/chart");
 		if (chart(plain).visible && !chart(plain).folded) assert.ok(chart(grown).width >= chart(plain).width, `the chart keeps at least ${chart(plain).width}px at ${width}px, got ${chart(grown).width}`);
 		assert.ok(grown.rows.get("menu/card/thumbnails").height >= plain.rows.get("menu/card/thumbnails").height, `the chart row never shrinks at ${width}px`);
@@ -149,7 +189,7 @@ test("a width the user set on a cell in a row keeps its split from widening for 
 	assert.deepEqual(widths(grown, ["menu", "menu/card", "menu/card/chart/side"]), widths(plain, ["menu", "menu/card", "menu/card/chart/side"]));
 });
 
-test("growth keeps the form each neighbour shows and gives way in it only down to where that form holds", () => {
+test("growth keeps the form each neighbour shows while that neighbour stands", () => {
 	let grew = false;
 	for (let width = 560; width <= 1400; width += 10) {
 		const model = new Navigator({ root: "list", minViewportHeight: 300, destinations: {
@@ -164,8 +204,8 @@ test("growth keeps the form each neighbour shows and gives way in it only down t
 		model.open("form", { from: "list/menu" });
 		const plain = model.layout();
 		const grown = layoutWorkspace(withGrowth(model, "list/menu/form"));
-		assert.deepEqual(visible(grown), visible(plain), `the same cells show at ${width}px`);
-		assert.equal(grown.cells.get("list/menu").variant, plain.cells.get("list/menu").variant, `the menu keeps its form at ${width}px`);
+		assertOnlyGivesWay(model, grown, plain, `at ${width}px`);
+		if (shown(grown, "list/menu")) assert.equal(grown.cells.get("list/menu").variant, plain.cells.get("list/menu").variant, `the menu keeps its form at ${width}px`);
 		assert.ok(grown.cells.get("list/menu/form").width >= plain.cells.get("list/menu/form").width, `the form never shrinks at ${width}px`);
 		grew ||= grown.cells.get("list/menu/form").width > plain.cells.get("list/menu/form").width;
 	}
@@ -185,7 +225,7 @@ test("a kept neighbour with a wide form keeps that form and the cells before it 
 	model.open("form", { from: "list/menu" });
 	const plain = model.layout();
 	const grown = layoutWorkspace(withGrowth(model, "list/menu/form"));
-	assert.deepEqual(visible(grown), visible(plain));
+	assertOnlyGivesWay(model, grown, plain, "beside a kept menu");
 	assert.equal(grown.cells.get("list/menu").variant, plain.cells.get("list/menu").variant);
 	assert.ok(grown.cells.get("list/menu").width >= 250, "the wide menu keeps the width its form needs");
 	assert.ok(grown.cells.get("list/menu/form").width >= plain.cells.get("list/menu/form").width);
@@ -202,4 +242,25 @@ test("a width in growOnFocus is the growth target for a cell whose preference is
 	assert.deepEqual(problems(560), []);
 	assert.ok(problems(200).includes("invalid-grow-on-focus"), "a target under the minimum is refused");
 	assert.ok(problems(-1).includes("invalid-grow-on-focus"));
+});
+
+test("what gives way never leaves the cell with focus smaller on the other axis", () => {
+	const model = new Navigator({ root: "menu", minViewportHeight: 300, destinations: {
+		menu: { title: "Menu", min: 200, preferred: 240, max: 280, defaultChild: null },
+		card: { title: "Card", overflow: { mode: "keep" }, rows: [
+			{ destination: "banner", minHeight: 60, maxHeight: 420, preferredHeight: 300 },
+			{ destination: "table", minHeight: 120, maxHeight: "*", preferredHeight: 300 },
+		] },
+		banner: { title: "Banner", min: 200, preferred: 600, max: 1200, aspectRatio: 6, overflow: { mode: "keep" }, growOnFocus: true },
+		poster: { title: "Poster", min: 200, preferred: 400, max: 600, aspectRatio: 1 },
+		table: { title: "Table", min: 300, preferred: 600, max: "*" },
+	} });
+	model.resize({ width: 800, height: 600 });
+	model.open("card", { from: "menu" });
+	model.open("poster", { from: "menu/card/banner" });
+	const plain = model.layout();
+	assert.ok(plain.rows.get("menu/card/banner").height > 200, "the poster beside the banner sets a tall row");
+	const grown = layoutWorkspace(withGrowth(model, "menu/card/banner"));
+	assert.ok(grown.cells.get("menu/card/banner").width >= plain.cells.get("menu/card/banner").width);
+	assert.ok(grown.rows.get("menu/card/banner").height >= plain.rows.get("menu/card/banner").height, `the banner row keeps its ${plain.rows.get("menu/card/banner").height}px, got ${grown.rows.get("menu/card/banner").height}`);
 });

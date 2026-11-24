@@ -125,7 +125,7 @@ test("a cell's renderer paints the gutters around its cell, and a raised cell wi
 		assert.deepEqual(rest.splitGutterBesideThumbs, COLOURS["albums/album/thumbs"], "the leading cell of a row paints its split's gutter");
 		assert.deepEqual(rest.betweenThumbsAndPhoto, COLOURS["albums/album/thumbs/photo"], "the later cell lies on top in a shared gutter");
 		assert.deepEqual(rest.belowThumbs, COLOURS["albums/album/map"], "the lower row lies on top in a shared gutter");
-		assert.deepEqual(rest.belowPhoto, COLOURS["albums/album/thumbs/photo"], "a cell paints the gutter below it where no cell stands under it");
+		assert.deepEqual(rest.belowPhoto, COLOURS["albums/album/map"], "the lower row reaches its split's edge, so it lies on top under every cell above it");
 		assert.deepEqual(rest.aboveMap, COLOURS["albums/album/map"]);
 		assert.deepEqual(rest.besideMap, COLOURS["albums/album/map"]);
 
@@ -147,7 +147,7 @@ test("a cell's renderer paints the gutters around its cell, and a raised cell wi
 		assert.deepEqual(raised.splitGutterBesideThumbs, COLOURS["albums/album/thumbs"]);
 		assert.deepEqual(raised.betweenThumbsAndPhoto, COLOURS["albums/album/thumbs"]);
 		assert.deepEqual(raised.belowThumbs, COLOURS["albums/album/thumbs"], "a raised cell wins the gutter it shares with the row below");
-		assert.deepEqual(raised.belowPhoto, [128, 128, 128], "and the other cells of its row leave the gutter under them alone");
+		assert.deepEqual(raised.belowPhoto, COLOURS["albums/album/map"], "and under the other cells of its row the lower row still lies on top");
 		await page.evaluate(() => parts.raise["albums/album/thumbs"](false));
 		const lowered = await colourAt(page, await page.evaluate(strips));
 		assert.deepEqual(lowered.betweenThumbsAndPhoto, COLOURS["albums/album/thumbs/photo"]);
@@ -193,12 +193,12 @@ test("a presentation without rooms keeps the same gutter rules", async () => {
 		const rest = await colourAt(page, await page.evaluate(strips));
 		assert.deepEqual(rest.splitGutterBesideThumbs, COLOURS["albums/album/thumbs"]);
 		assert.deepEqual(rest.betweenThumbsAndPhoto, COLOURS["albums/album/thumbs/photo"]);
-		assert.deepEqual(rest.belowPhoto, COLOURS["albums/album/thumbs/photo"]);
+		assert.deepEqual(rest.belowPhoto, COLOURS["albums/album/map"]);
 		await page.evaluate(() => parts.raise["albums/album/thumbs"](true));
 		const raised = await colourAt(page, await page.evaluate(strips));
 		assert.deepEqual(raised.betweenThumbsAndPhoto, COLOURS["albums/album/thumbs"], "a raised cell wins a shared gutter without a room around it");
 		assert.deepEqual(raised.belowThumbs, COLOURS["albums/album/thumbs"]);
-		assert.deepEqual(raised.belowPhoto, [128, 128, 128], "and the other cells of its row leave the gutter under them alone");
+		assert.deepEqual(raised.belowPhoto, COLOURS["albums/album/map"], "and under the other cells of its row the lower row still lies on top");
 		assert.deepEqual(raised.splitGutterBesideHeader, COLOURS["albums/album"], "a raised cell that does not reach the split's trailing edge leaves the split in place");
 		const moving = await page.evaluate(() => {
 			parts.raise["albums/album/thumbs"](false);
