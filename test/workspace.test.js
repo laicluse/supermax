@@ -39,7 +39,7 @@ async function newDemoPage() {
 	return demoPage;
 }
 
-async function useDemoClock(test) {
+async function useDemoPage(test) {
 	const originalPage = page;
 	const clockPage = await newDemoPage();
 	page = clockPage;
@@ -47,7 +47,11 @@ async function useDemoClock(test) {
 		page = originalPage;
 		await clockPage.close();
 	});
-	await clockPage.clock.install();
+}
+
+async function useDemoClock(test) {
+	await useDemoPage(test);
+	await page.clock.install();
 }
 
 const PRESENTATION = process.env.SUPERMAX_PRESENTATION ?? "origami";
@@ -1898,7 +1902,9 @@ test("a dragged divider sizes its preceding cell and resets its preference", asy
 	assert.ok((await page.locator(inFrame("a", ".supermax-divider.is-horizontal")).count()) >= 2, "reopening the same split brings its row dividers back");
 });
 
-test("a remote destination opens once its layout arrives, with its whole chain in one render, and its content loads in a cell that already has its final shape", async () => {
+test("a remote destination opens once its layout arrives, with its whole chain in one render, and its content loads in a cell that already has its final shape", async (test) => {
+	await useDemoPage(test);
+	await page.emulateMedia({ reducedMotion: "no-preference" });
 	await openDemo([open("album:coast", "albums")]);
 	await resize([[1100, 640], [360, 640]]);
 	await page.selectOption("[data-delay]", "400");
@@ -1935,10 +1941,21 @@ test("a remote destination opens once its layout arrives, with its whole chain i
 	assert.equal(await page.locator(`${failedCell} .viewer-line`).textContent(), "Viewing as Ana", "retry loads the content without a new navigation");
 	assert.deepEqual(await groups("a"), ["Coast", "Photo C", "Warm tint (C)"], "and adds no Back step");
 
+	await page.clock.install();
 	await page.selectOption("[data-delay]", "1500");
-	await page.click(inFrame("a", `[data-occurrence="${coast.row("map")}"] [data-destination="coast:photo:b"]`));
+	await page.clock.pauseAt(await page.evaluate(() => Date.now() + 1000));
+	const lateSelector = inFrame("a", `[data-occurrence="${coast.row("map")}"] [data-destination="coast:photo:b"]`);
+	const lateLink = page.locator(lateSelector);
+	await lateLink.evaluate((element) => element.click());
+	assert.equal(await lateLink.getAttribute("aria-busy"), "true", "the layout is still on its way");
+	await page.selectOption("[data-delay]", "0");
 	await closeNewest("a");
-	await page.waitForTimeout(1700);
+	assert.deepEqual(await groups("a"), ["Coast", "Photo C"], "Back closes the newest group before the layout arrives");
+	assert.equal(await page.evaluate(() => window.supermaxDemo.declares("coast:photo:b")), false);
+	await page.clock.runFor(1500);
+	await page.clock.resume();
+	await page.waitForFunction(() => window.supermaxDemo.declares("coast:photo:b"));
+	await page.waitForFunction((selector) => document.querySelector(selector)?.getAttribute("aria-busy") === null, lateSelector);
 	await settle();
 	assert.ok(!(await state("a")).occurrences.includes(coast.photo("map", "b")), "a layout arriving after Back opens nothing");
 });
