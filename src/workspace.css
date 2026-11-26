@@ -10,9 +10,13 @@
 	box-sizing: border-box;
 }
 .supermax-workspace {
-	position: relative;
 	display: flex;
 	flex-direction: column;
+	isolation: isolate;
+}
+/* allow-comment: the host owns the element's size and placement, so these defaults carry no specificity and any host rule wins whatever order the stylesheets load in. */
+:where(.supermax-workspace) {
+	position: relative;
 	height: 100%;
 	min-height: 0;
 }
@@ -411,22 +415,6 @@
 	border-left-width: var(--supermax-cell-gutter, 0px);
 }
 
-.supermax-workspace,
-.supermax-workspace * {
-	box-sizing: border-box;
-}
-.supermax-workspace {
-	position: relative;
-	display: flex;
-	flex-direction: column;
-	height: 100%;
-	min-height: 0;
-	isolation: isolate;
-	background: transparent;
-}
-.supermax-workspace [hidden] {
-	display: none !important;
-}
 .supermax-canvas {
 	position: absolute;
 	inset: 0;

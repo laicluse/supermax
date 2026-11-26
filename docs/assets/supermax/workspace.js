@@ -620,10 +620,19 @@ export class Workspace extends EventTarget {
 		this.notices.veil();
 	}
 
-	// allow-comment: the Show control lives in the first cell of the root chain in view, in its title bar or at its top left corner when it has no bar. Any other cell that can step back uses the same control for that, unnamed, because its parent stands beside it.
+	// allow-comment: the Show control stands in the first cell in view after the content it brings back, in its title bar or at its top left corner when it has no bar; beside a fold below a kept menu that is the cell next to the fold, where a step back stands once that content fits, and with nothing kept it is the first cell in view. Any other cell that can step back uses the same control for that, unnamed, because its parent stands beside it.
+	showHost(next) {
+		const chain = this.layout?.chain.cells ?? [];
+		const first = chain.find((cell) => cell.inView && !cell.folded) ?? chain.find((cell) => cell.inView);
+		if (!next || this.upDestination.zoomOnly) return first;
+		const cells = this.layout.chains.get(chainRootOf(this.navigator, next).id)?.cells ?? [];
+		const index = cells.findIndex((cell) => cell.occurrence === next.id);
+		return (index === -1 ? null : cells.slice(index + 1).find((cell) => cell.inView && !cell.folded)) ?? first;
+	}
+
 	renderUp() {
 		const next = this.upDestination && this.navigator.get(this.upDestination.id);
-		const first = this.layout?.chain.cells.find((cell) => cell.inView && !cell.folded) ?? this.layout?.chain.cells.find((cell) => cell.inView);
+		const first = this.showHost(next);
 		this.upButton = null;
 		for (const [id, entry] of this.cells) {
 			const occurrence = this.navigator.get(id);

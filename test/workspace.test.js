@@ -316,7 +316,7 @@ test("a deeplink opens three rows in both frames; a fresh navigation replays it 
 	assert.deepEqual(await state("a"), narrowLive, "a reload restores the stored snapshot although the frame is wide again");
 });
 
-test("a long name in the Show control gives way to the title on a phone", async () => {
+test("on a phone the Show control stands beside what it brings back, and a long name there becomes Back", async () => {
 	await openDemo(TWENTY_DEEP);
 	await resize([[960, 640], [390, 640]]);
 	await page.evaluate(() => {
@@ -331,13 +331,14 @@ test("a long name in the Show control gives way to the title on a phone", async 
 			nameShown: getComputedStyle(up.querySelector(".supermax-up-target")).display !== "none",
 			label: up.getAttribute("aria-label"),
 			hidden: up.hidden,
-			albums: cell.dataset.occurrence === "albums",
+			beside: cell.dataset.occurrence.split("/").slice(-2).join("/"),
+			text: up.textContent,
 		};
 	});
 	assert.equal(measured.hidden, false, "the Show control is there");
-	assert.equal(measured.albums, true, "in the first cell in view, the kept albums menu");
-	assert.ok(measured.cellWidth >= 48 && measured.up <= measured.cellWidth, "the control fits inside the host's narrow menu");
-	assert.equal(measured.nameShown, false, "with only its arrow, since the name has no room there");
+	assert.equal(measured.beside, "depth:19/depth:20", "in the first cell after the hidden Depth 19, not in the kept albums menu");
+	assert.ok(measured.up <= measured.cellWidth, "the control fits inside that cell's bar");
+	assert.equal(measured.text, "Back", "a name too long for the bar becomes Back");
 	assert.match(measured.label, /A very long name for depth:19/, "while its accessible name still names the hidden parent by its new title");
 	await openDemo(THREE_ROWS);
 	await resize([[960, 370], [420, 640]]);
@@ -354,9 +355,9 @@ test("the Show control says Back when the name of what it brings back is long or
 	assert.deepEqual(await control(), { text: "Back", label: "Show Your order at the corner shop has been delivered" }, "a long name becomes Back, while the accessible name still names the cell");
 	await page.evaluate(() => {
 		const workspace = window.supermaxDemo.frames[0].workspace;
-		workspace.setTitle(workspace.upDestination.id, "Albums");
+		workspace.setTitle(workspace.upDestination.id, "Depth 18");
 	});
-	assert.deepEqual(await control(), { text: "Back", label: "Show Albums" }, "and so does a name that repeats the title of the bar it stands in");
+	assert.deepEqual(await control(), { text: "Back", label: "Show Depth 18" }, "and so does a name that repeats the title of the bar it stands in, Depth 18 beside the hidden cell");
 });
 
 test("the up control names the nearest hidden parent, closes what falls off the end to show it, and browser back undoes that", async () => {

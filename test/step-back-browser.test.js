@@ -150,12 +150,12 @@ test("where the parent has left the window, the cell holds Show instead of a ste
 	], "one control in the slot: Show, which brings the inbox back");
 });
 
-test("a step back is not offered while the parent is folded, because the fold handle is its route", async () => {
+test("while the parent is folded below a kept menu, Show stands in the cell beside the fold, where the step back stands once the parent fits", async () => {
 	await page.evaluate(() => { destinations.menu = { ...destinations.menu, overflow: { mode: "keep" } }; });
 	try {
 		await build(["menu", "inbox", "message"], 560);
 		const state = await page.evaluate(() => ({ inbox: workspace.findCell("menu/inbox").folded, controls: controls() }));
-		assert.deepEqual(state, { inbox: true, controls: [{ cell: "menu", offered: true, text: "Inbox", label: "Show Inbox", inLeading: true }] }, "the message offers nothing; Show in the first cell reaches the folded inbox");
+		assert.deepEqual(state, { inbox: true, controls: [{ cell: "menu/inbox/message", offered: true, text: "Inbox", label: "Show Inbox", inLeading: true }] }, "Show stands in the message, next to the fold it opens, not in the kept menu");
 	} finally {
 		await page.evaluate(() => { const { overflow, ...menu } = destinations.menu; destinations.menu = menu; });
 	}
