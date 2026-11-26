@@ -6,7 +6,7 @@ import { DEFAULT_CURVE } from "./cell-collection.js";
 import { variantProblems } from "./variants.js";
 import { aspectProblems } from "./aspect.js";
 import { ELASTIC, breakoutOf, chainCells, chainFits, chainRootOf, chainWidth, isBesideSplit, isSplit, layoutWorkspace, rowSplitOf, validateSplit } from "./layout.js";
-import { growthProblems, sameLayout, validateDeclarationSet } from "./layout-declaration.js";
+import { flagProblems, growthProblems, sameLayout, validateDeclarationSet } from "./layout-declaration.js";
 
 const DEFAULT_CHROME = { header: 28, maxRows: 4 };
 
@@ -44,9 +44,7 @@ export function validateDestinations(destinations, { minViewportHeight, chrome =
 		if (destinations[id].placement != null && (!isBesideSplit(destinations[id]) || isSplit(destinations[id]))) problems.push({ destination: id, reason: "invalid-placement" });
 		if (isSplit(destinations[id]) && ["min", "max", "preferred", "growOnFocus"].some((key) => destinations[id][key] != null)) problems.push({ destination: id, reason: "split-with-width" });
 		for (const reason of growthProblems(definition)) problems.push({ destination: id, reason });
-		if (destinations[id].header != null && destinations[id].header !== "title") problems.push({ destination: id, reason: "invalid-header" });
-		if (destinations[id].menu != null && destinations[id].menu !== true && destinations[id].menu !== "exact") problems.push({ destination: id, reason: "invalid-menu" });
-		if (destinations[id].back != null && typeof destinations[id].back !== "boolean") problems.push({ destination: id, reason: "invalid-back" });
+		for (const reason of flagProblems(definition)) problems.push({ destination: id, reason });
 		for (const reason of overflowProblems(definition, definition.min)) problems.push({ destination: id, reason });
 		if (isSplit(definition) && definition.overflow?.mode === "fold") problems.push({ destination: id, reason: "folding-split" });
 	}
