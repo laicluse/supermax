@@ -1539,15 +1539,21 @@ test("a layout that fails folds the departed cells back, and a slow click folds 
 	await page.evaluate(() => window.supermaxDemo.prepare("coast:photo:c"));
 	await page.click(pin);
 	const fast = (await folds("a")).find((fold) => fold.cell === "coast:photo:b" && fold.leaving);
-	const fastPose = await page.locator(photoB).evaluate((cell) => cell.getAnimations().find((animation) => animation.effect.getKeyframes().some((frame) => String(frame.transform ?? "").includes("rotate"))).effect.getKeyframes().at(-1).transform);
+	const fastPose = await (await page.waitForFunction((selector) => {
+		const animation = document.querySelector(selector)?.getAnimations().find((candidate) => candidate.effect.getKeyframes().some((frame) => String(frame.transform ?? "").includes("rotate")));
+		return animation ? animation.effect.getKeyframes().at(-1).transform : null;
+	}, photoB, { timeout: 3000 })).jsonValue();
 	assert.ok(fast, "the fast click replaces Photo B");
 	await settle();
 	await openDemo([open("album:coast", "albums"), open("coast:photo:a", coast.row("thumbnails")), open("coast:photo:b", coast.row("map"))]);
 	await page.evaluate(() => window.supermaxDemo.setNetwork({ delay: "400", fail: "manifest" }));
 	await page.click(pin);
 	assert.equal((await departureOf(photoB)).to, fastPose, "the slow click folds Photo B away on the same edge");
-	await page.waitForFunction((selector) => window.supermaxDemo.pending === 0 && document.querySelector(selector).getAnimations().some((animation) => animation.playbackRate === -1), photoB, { timeout: 3000 });
-	const back = await departureOf(photoB);
+	const back = await (await page.waitForFunction((selector) => {
+		if (window.supermaxDemo.pending !== 0) return null;
+		const animation = document.querySelector(selector).getAnimations().find((candidate) => candidate.playbackRate === -1 && candidate.effect.getKeyframes().some((frame) => frame.transform !== undefined));
+		return animation ? { rate: animation.playbackRate, state: animation.playState } : null;
+	}, photoB, { timeout: 3000 })).jsonValue();
 	assert.ok(back.rate === -1 && back.state === "running", `when the layout fails, Photo B folds back from where it is: ${JSON.stringify(back)}`);
 	await settle();
 	assert.equal(await page.locator(photoB).evaluate((cell) => !cell.inert && getComputedStyle(cell).transform === "none"), true, "and is usable again");
