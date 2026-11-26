@@ -242,10 +242,13 @@ export class Workspace extends EventTarget {
 		return { ok: true, destination: parent.id, closed };
 	}
 
-	// allow-comment: a cell that declares back steps back while it and the cell it was opened from are both in full view; once that parent hid or folded, Show or its fold handle is the way back instead. A parent that gave way only to growth on focus still counts, so focusing the step back never takes it away.
+	// allow-comment: a cell that declares back steps back while it is the trailing cell of its chain and it and the cell it was opened from are both in full view, so a row of open cells shows one arrow; once that parent hid or folded, Show or its fold handle is the way back instead. A parent that gave way only to growth on focus still counts, so focusing the step back never takes it away.
 	stepBackFrom(occurrenceId) {
 		const occurrence = this.navigator.get(occurrenceId);
 		if (!occurrence?.parent || !this.navigator.definitionOf(occurrence.destination).back || this.navigator.isRowRoot(occurrence)) return null;
+		const split = isSplit(this.navigator.definitionOf(occurrence.destination));
+		const after = split ? this.navigator.next(occurrence) ?? (this.navigator.newestWithin(occurrence) !== occurrence ? true : null) : this.navigator.child(occurrence);
+		if (after) return null;
 		const parent = this.navigator.get(occurrence.parent);
 		const present = this.layout?.cells.get(parent.id)?.full || this.growth.gaveWay(parent.id, "horizontal");
 		return this.layout?.cells.get(occurrenceId)?.full && present ? parent : null;

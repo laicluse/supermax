@@ -64,8 +64,17 @@ test("a cell that declares back carries a step back in its leading part while it
 	assert.deepEqual(look, { className: "supermax-up", chevron: true, chevronMargin: "0px" }, "it is the Show control's own button and chevron, so a host renderer draws it the way it draws Show, without the gap a name would need");
 });
 
-test("the step back closes the cell and what it opened, after asking through show, and the parent takes the room", async () => {
+test("only the trailing cell of a chain carries the step back, so a row of open cells shows one arrow", async () => {
 	await build(["menu", "inbox", "message", "notes"]);
+	assert.deepEqual((await page.evaluate(() => controls())).map((control) => `${control.cell}:${control.label}`), ["menu/inbox/message/notes:Back to Invoice 0001"], "the message declares back too, but the notes stand after it");
+	assert.deepEqual(await page.evaluate(() => workspace.requestBack("menu/inbox/message")), { ok: false, reason: "no-step-back" }, "and requestBack refuses a cell that is not the trailing one");
+	await page.click('[data-occurrence="menu/inbox/message/notes"] .supermax-up');
+	await page.evaluate(() => finish());
+	assert.deepEqual((await page.evaluate(() => controls())).map((control) => `${control.cell}:${control.label}`), ["menu/inbox/message:Back to Inbox"], "once the notes closed, the message is the trailing cell and carries it");
+});
+
+test("the step back closes the cell after asking through show, and the parent takes the room", async () => {
+	await build(["menu", "inbox", "message"]);
 	const refused = await page.evaluate(() => {
 		const seen = [];
 		const refuse = (event) => { seen.push(event.detail); event.preventDefault(); };
@@ -74,12 +83,12 @@ test("the step back closes the cell and what it opened, after asking through sho
 		host.querySelector('[data-occurrence="menu/inbox/message"] .supermax-up').click();
 		return { seen: seen.map((entry) => entry === "up" ? entry : { shown: entry.shown.occurrence, closing: entry.closing.map((closing) => closing.destination), retry: typeof entry.retry }), open: workspace.navigator.get("menu/inbox/message") !== null };
 	});
-	assert.deepEqual(refused, { seen: [{ shown: "menu/inbox", closing: ["message", "notes"], retry: "function" }], open: true }, "a host that refuses keeps everything open, and hears what would close, deepest last");
+	assert.deepEqual(refused, { seen: [{ shown: "menu/inbox", closing: ["message"], retry: "function" }], open: true }, "a host that refuses keeps it open, and hears what would close");
 	const closed = await page.evaluate(() => new Promise((resolve) => {
 		workspace.addEventListener("up", (event) => resolve({ shown: event.detail.shown, closed: event.detail.closed.map((entry) => entry.destination) }), { once: true });
 		host.querySelector('[data-occurrence="menu/inbox/message"] .supermax-up').click();
 	}));
-	assert.deepEqual(closed, { shown: "menu/inbox", closed: ["message", "notes"] }, "without a refusal they close and up names them");
+	assert.deepEqual(closed, { shown: "menu/inbox", closed: ["message"] }, "without a refusal it closes and up names it");
 	await page.evaluate(() => finish());
 	const after = await page.evaluate(() => ({ message: workspace.navigator.get("menu/inbox/message"), spare: workspace.layout.chains.get("menu").spare, controls: controls(), focus: workspace.navigator.focus().occurrence }));
 	assert.deepEqual(after, { message: null, spare: 0, controls: [], focus: "menu/inbox" }, "the inbox is the tip, takes the width, and carries no control of its own");
@@ -210,4 +219,21 @@ test("focus on the step back keeps it, also when the cell grows on focus and its
 	await page.keyboard.press("Enter");
 	await page.evaluate(() => finish());
 	assert.equal(await page.evaluate(() => workspace.navigator.get("menu/list/form")), null, "Enter steps back");
+});
+
+test("a split that opened a cell inside its rows is not the trailing cell, so only that cell steps back", async () => {
+	await page.evaluate(() => {
+		host.style.width = "1200px";
+		build(["list", "detail"], { root: "list", set: {
+			list: { title: "List", min: 200, preferred: 240, max: 260, header: "title" },
+			detail: { title: "Detail", rows: [{ destination: "row", minHeight: 60, maxHeight: "*", preferredHeight: 200 }], header: "title", back: true },
+			row: { title: "Row", min: 200, preferred: 260, max: "*" },
+			edit: { title: "Edit", min: 200, preferred: 240, max: 300, header: "title", back: true },
+		} });
+	});
+	await page.evaluate(() => finish());
+	assert.deepEqual((await page.evaluate(() => controls())).map((control) => `${control.cell}:${control.label}`), ["list/detail:Back to List"], "with nothing open in its rows, the split is the trailing cell");
+	await page.evaluate(() => workspace.navigate("edit", { from: "list/detail/row", origin: null }));
+	await page.evaluate(() => finish());
+	assert.deepEqual((await page.evaluate(() => controls())).map((control) => `${control.cell}:${control.label}`), ["list/detail/row/edit:Back to Row"], "the cell in its row comes after it in reading order and carries the only arrow");
 });
