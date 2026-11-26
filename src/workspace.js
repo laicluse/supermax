@@ -218,25 +218,30 @@ export class Workspace extends EventTarget {
 			this.growth.yield();
 			return { ok: true, shown: targetId, closed: [] };
 		}
-		const { after, closed } = this.rehearse(() => this.navigator.showByClosing(targetId));
-		if (!this.askToShow(targetId, closed, () => this.showHidden(targetId))) return { ok: false, reason: "cancelled" };
-		this.navigator.restore(after);
-		if (this.modal) this.closeModal("navigation");
-		this.render({ animate: true });
-		this.dispatchEvent(new CustomEvent("up", { detail: { shown: targetId, closed } }));
-		return { ok: true, destination: targetId, closed };
+		return this.goUp(targetId, () => this.navigator.showByClosing(targetId), () => this.showHidden(targetId));
 	}
 
 	requestBack(occurrenceId) {
 		const parent = this.stepBackFrom(occurrenceId);
 		if (!parent) return { ok: false, reason: "no-step-back" };
-		const { after, closed } = this.rehearse(() => this.navigator.closeSubtree(this.navigator.get(occurrenceId)));
-		if (!this.askToShow(parent.id, closed, () => this.requestBack(occurrenceId))) return { ok: false, reason: "cancelled" };
+		return this.goUp(parent.id, () => this.navigator.closeSubtree(this.navigator.get(occurrenceId)), () => this.requestBack(occurrenceId));
+	}
+
+	goUp(targetId, close, retry) {
+		const closed = this.showClosing(targetId, close, retry);
+		if (!closed) return { ok: false, reason: "cancelled" };
+		this.dispatchEvent(new CustomEvent("up", { detail: { shown: targetId, closed } }));
+		return { ok: true, destination: targetId, closed };
+	}
+
+	// allow-comment: Show, a step back and a fold handle all close cells to bring a surface back; they rehearse the closing, ask the host through show, then apply it with one animated render, so every one of them moves the same way.
+	showClosing(targetId, close, retry) {
+		const { after, closed } = this.rehearse(close);
+		if (!this.askToShow(targetId, closed, retry)) return null;
 		this.navigator.restore(after);
 		if (this.modal) this.closeModal("navigation");
 		this.render({ animate: true });
-		this.dispatchEvent(new CustomEvent("up", { detail: { shown: parent.id, closed } }));
-		return { ok: true, destination: parent.id, closed };
+		return closed;
 	}
 
 	// allow-comment: a cell that declares back steps back while it is the trailing cell of its chain and it and the cell it was opened from are both in full view, so a row of open cells shows one arrow; once that parent hid or folded, Show or its fold handle is the way back instead. A parent that gave way only to growth on focus still counts, so focusing the step back never takes it away.

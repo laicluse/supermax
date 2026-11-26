@@ -195,10 +195,8 @@ export class FoldController {
 		const { workspace } = this;
 		if (!workspace.navigator.get(occurrenceId)) return false;
 		if (workspace.growth.gaveWay(occurrenceId, axis)) return workspace.growth.yield(), true;
-		const { after, closed } = workspace.rehearse(() => workspace.navigator.unfold(occurrenceId, axis));
-		if (!workspace.askToShow(occurrenceId, closed, () => this.open(occurrenceId, axis))) return false;
-		workspace.navigator.restore(after);
-		workspace.render({ animate: true });
+		const closed = workspace.showClosing(occurrenceId, () => workspace.navigator.unfold(occurrenceId, axis), () => this.open(occurrenceId, axis));
+		if (!closed) return false;
 		this.announce(occurrenceId, axis, closed);
 		return true;
 	}
