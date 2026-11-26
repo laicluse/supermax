@@ -819,6 +819,9 @@ scenario("beside-split placement excludes rows and splits while independent spli
 	assert.deepEqual(validateDestinations({ ...destinations, full, bad: { ...destinations.inner, placement: "beside-split" } }, { minViewportHeight, chrome }).problems, [{ destination: "bad", reason: "invalid-placement" }], "a split cannot declare beside-split placement");
 	assert.deepEqual(validateDestinations({ ...destinations, full, tall: { ...destinations.gallery, rows: [{ destination: "full", minHeight: 100, maxHeight: "*", preferredHeight: 200 }] } }, { minViewportHeight, chrome }).problems[0].validation.rows[0].problems, ["beside-split-on-row"], "a full-height cell cannot be a row");
 	assert.deepEqual(validateDestinations({ ...destinations, half: { ...full, placement: "inside-split" } }, { minViewportHeight, chrome }).problems, [{ destination: "half", reason: "invalid-placement" }]);
+	const back = { title: "Back", min: 100, max: 200, back: true };
+	assert.deepEqual(validateDestinations({ ...destinations, back, tall: { ...destinations.gallery, rows: [{ destination: "back", minHeight: 100, maxHeight: "*", preferredHeight: 200 }] } }, { minViewportHeight, chrome }).problems[0].validation.rows[0].problems, ["back-on-row"], "a row cannot close on its own, so it cannot step back");
+	assert.deepEqual(validateDestinations({ ...destinations, back: { ...back, back: "parent" } }, { minViewportHeight, chrome }).problems, [{ destination: "back", reason: "invalid-back" }], "back is true or absent");
 	const instance = mail();
 	instance.open("attachment:2", { from: ATTACHMENTS, origin: null });
 	const second = instance.open("second:conversation", { from: `${ATTACHMENTS}/attachment:2` });

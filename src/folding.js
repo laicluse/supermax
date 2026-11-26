@@ -196,7 +196,7 @@ export class FoldController {
 		if (!workspace.navigator.get(occurrenceId)) return false;
 		if (workspace.growth.gaveWay(occurrenceId, axis)) return workspace.growth.yield(), true;
 		const { after, closed } = workspace.rehearse(() => workspace.navigator.unfold(occurrenceId, axis));
-		if (!workspace.askToShow(occurrenceId, closed)) return false;
+		if (!workspace.askToShow(occurrenceId, closed, () => this.open(occurrenceId, axis))) return false;
 		workspace.navigator.restore(after);
 		workspace.render({ animate: true });
 		this.announce(occurrenceId, axis, closed);

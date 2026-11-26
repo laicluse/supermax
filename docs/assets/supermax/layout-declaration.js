@@ -10,7 +10,7 @@ export const LAYOUT_SCHEMA = 2;
 const REQUIRED = ["title", "min", "max", "preferred", "defaultChild"];
 const REQUIRED_SPLIT = ["title", "rows"];
 const WIDTH = ["min", "max", "preferred"];
-const FIELDS = new Set([...REQUIRED, "overflow", "rows", "zoomable", "placement", "header", "variants", "menu", "aspectRatio", "aspectInset", "growOnFocus"]);
+const FIELDS = new Set([...REQUIRED, "overflow", "rows", "zoomable", "placement", "header", "variants", "menu", "back", "aspectRatio", "aspectInset", "growOnFocus"]);
 const ROW_FIELDS = new Set(["destination", "minHeight", "maxHeight", "preferredHeight", "overflow", "variants"]);
 
 export class SupermaxLayoutError extends Error {
@@ -32,6 +32,7 @@ export function layoutOf(definition) {
 			rows: definition.rows.map((row) => ({ destination: row.destination, minHeight: row.minHeight, maxHeight: row.maxHeight, preferredHeight: row.preferredHeight ?? null, ...(row.overflow ? { overflow: structuredClone(row.overflow) } : {}), ...(row.variants ? { variants: structuredClone(row.variants) } : {}) })),
 			...(definition.header === "title" ? { header: "title" } : {}),
 			...(definition.menu != null ? { menu: definition.menu } : {}),
+			...(definition.back != null && definition.back !== false ? { back: definition.back } : {}),
 		};
 	}
 	return {
@@ -50,6 +51,7 @@ export function layoutOf(definition) {
 		...(definition.placement === "beside-split" ? { placement: "beside-split" } : {}),
 		...(definition.header === "title" ? { header: "title" } : {}),
 		...(definition.menu != null ? { menu: definition.menu } : {}),
+		...(definition.back != null && definition.back !== false ? { back: definition.back } : {}),
 	};
 }
 
@@ -77,6 +79,7 @@ function problemsOf(id, declaration) {
 	if (Object.keys(declaration).some((key) => !FIELDS.has(key))) problems.push("unknown-field");
 	if (declaration.header != null && declaration.header !== "title") problems.push("invalid-header");
 	if (declaration.menu != null && declaration.menu !== true && declaration.menu !== "exact") problems.push("invalid-menu");
+	if (declaration.back != null && typeof declaration.back !== "boolean") problems.push("invalid-back");
 	if (typeof declaration.title !== "string" || declaration.title.trim().length === 0) problems.push("invalid-title");
 	problems.push(...growthProblems(declaration));
 	if (declaration.rows != null) {

@@ -72,6 +72,15 @@ for (const context of ["ana", "ben"]) {
 	assert.deepEqual(headed({ menu: "exact" }), [], "menu: \"exact\" is a valid declaration");
 	assert.deepEqual(headed({ menu: "always" }), ["invalid-menu"], "there is no other value");
 	assert.equal(layoutOf({ title: "Day", min: 200, max: 300, menu: "exact" }).menu, "exact");
+	assert.equal(Object.hasOwn(plain, "back"), false, "a cell without a step back carries no back field, so existing hashes stay the same");
+	assert.equal(layoutOf({ title: "Message", min: 200, max: 300, back: true }).back, true, "one with a step back says so");
+	assert.equal(layoutOf({ title: "S", rows: [{ destination: "x", minHeight: 100, maxHeight: "*", preferredHeight: 200 }], back: true }).back, true, "a split opened from a cell can step back too");
+	assert.deepEqual(headed({ back: true }), [], "back: true is a valid declaration");
+	assert.deepEqual(headed({ back: "parent" }), ["invalid-back"], "there is no other value: no step back is the default");
+	assert.equal(Object.hasOwn(layoutOf({ title: "Plain", min: 200, max: 300, back: false }), "back"), false, "back: false is the default and leaves the hash alone");
+	const serialized = layoutOf({ title: "X", min: 200, max: 300, back: "false" });
+	assert.equal(serialized.back, "false", "a server that serializes a wrong value keeps it");
+	assert.deepEqual(headed({ back: serialized.back }), ["invalid-back"], "so the validator refuses it instead of switching the step back on");
 }
 
 console.log("Layout declaration scenarios passed");

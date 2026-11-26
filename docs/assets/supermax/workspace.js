@@ -210,17 +210,45 @@ export class Workspace extends EventTarget {
 		}
 		const target = this.navigator.upTarget(this.layout ?? undefined);
 		if (!target) return { ok: false, reason: "nothing-hidden" };
-		if (this.growth.gaveWay(target.id, "horizontal")) {
+		return this.showHidden(target.id);
+	}
+
+	// allow-comment: a retry names the target its question named, so a window that changed while the host asked never turns it into a request for another cell; a target that came into view meanwhile has nothing left to show.
+	showHidden(targetId) {
+		const target = this.navigator.get(targetId);
+		if (!target || this.navigator.placeOf(target, this.layout ?? undefined) === "in") return { ok: false, reason: "stale" };
+		if (this.growth.gaveWay(targetId, "horizontal")) {
 			this.growth.yield();
-			return { ok: true, shown: target.id, closed: [] };
+			return { ok: true, shown: targetId, closed: [] };
 		}
-		const { after, closed } = this.rehearse(() => this.navigator.showByClosing(target.id));
-		if (!this.askToShow(target.id, closed)) return { ok: false, reason: "cancelled" };
+		const { after, closed } = this.rehearse(() => this.navigator.showByClosing(targetId));
+		if (!this.askToShow(targetId, closed, () => this.showHidden(targetId))) return { ok: false, reason: "cancelled" };
 		this.navigator.restore(after);
 		if (this.modal) this.closeModal("navigation");
 		this.render({ animate: true });
-		this.dispatchEvent(new CustomEvent("up", { detail: { shown: target.id, closed } }));
-		return { ok: true, destination: target.id, closed };
+		this.dispatchEvent(new CustomEvent("up", { detail: { shown: targetId, closed } }));
+		return { ok: true, destination: targetId, closed };
+	}
+
+	requestBack(occurrenceId) {
+		const parent = this.stepBackFrom(occurrenceId);
+		if (!parent) return { ok: false, reason: "no-step-back" };
+		const { after, closed } = this.rehearse(() => this.navigator.closeSubtree(this.navigator.get(occurrenceId)));
+		if (!this.askToShow(parent.id, closed, () => this.requestBack(occurrenceId))) return { ok: false, reason: "cancelled" };
+		this.navigator.restore(after);
+		if (this.modal) this.closeModal("navigation");
+		this.render({ animate: true });
+		this.dispatchEvent(new CustomEvent("up", { detail: { shown: parent.id, closed } }));
+		return { ok: true, destination: parent.id, closed };
+	}
+
+	// allow-comment: a cell that declares back steps back while it and the cell it was opened from are both in full view; once that parent hid or folded, Show or its fold handle is the way back instead. A parent that gave way only to growth on focus still counts, so focusing the step back never takes it away.
+	stepBackFrom(occurrenceId) {
+		const occurrence = this.navigator.get(occurrenceId);
+		if (!occurrence?.parent || !this.navigator.definitionOf(occurrence.destination).back || this.navigator.isRowRoot(occurrence)) return null;
+		const parent = this.navigator.get(occurrence.parent);
+		const present = this.layout?.cells.get(parent.id)?.full || this.growth.gaveWay(parent.id, "horizontal");
+		return this.layout?.cells.get(occurrenceId)?.full && present ? parent : null;
 	}
 
 	// allow-comment: runs an action that may close cells on the navigator and puts the navigator back, so a host can still refuse it and a drag can preview it.
@@ -232,10 +260,11 @@ export class Workspace extends EventTarget {
 		return { before, after, closed };
 	}
 
-	askToShow(occurrenceId, closed) {
+	askToShow(occurrenceId, closed, retry) {
 		const shown = this.navigator.get(occurrenceId);
 		const closing = closed.map(({ id, destination, title }) => ({ occurrence: id, destination, title }));
-		return this.dispatchEvent(new CustomEvent("show", { cancelable: true, detail: { shown: { occurrence: shown.id, destination: shown.destination, title: shown.title }, closing } }));
+		const again = () => (this.destroyed ? { ok: false, reason: "destroyed" } : retry());
+		return this.dispatchEvent(new CustomEvent("show", { cancelable: true, detail: { shown: { occurrence: shown.id, destination: shown.destination, title: shown.title }, closing, retry: again } }));
 	}
 
 	intent(action) {
@@ -583,7 +612,7 @@ export class Workspace extends EventTarget {
 		this.notices.veil();
 	}
 
-	// allow-comment: the Show control lives in the first cell of the root chain in view, in its title bar or at its top left corner when it has no bar.
+	// allow-comment: the Show control lives in the first cell of the root chain in view, in its title bar or at its top left corner when it has no bar. Any other cell that can step back uses the same control for that, unnamed, because its parent stands beside it.
 	renderUp() {
 		const next = this.upDestination && this.navigator.get(this.upDestination.id);
 		const first = this.layout?.chain.cells.find((cell) => cell.inView && !cell.folded) ?? this.layout?.chain.cells.find((cell) => cell.inView);
@@ -591,9 +620,15 @@ export class Workspace extends EventTarget {
 		for (const [id, entry] of this.cells) {
 			const occurrence = this.navigator.get(id);
 			if (!occurrence) continue;
-			const offered = !!next && first?.occurrence === id;
+			const parentBack = this.stepBackFrom(id);
+			const offered = !!next && first?.occurrence === id && parentBack?.id !== next.id;
+			const back = offered ? null : parentBack;
+			entry.stepBack = !!back;
 			const named = next && !this.upDestination.zoomOnly && next.title.length <= UP_NAME_LIMIT && next.title !== occurrence.title;
-			const state = { occurrence: id, title: occurrence.title, gutter: entry.chromeState?.gutter ?? NO_GUTTER, navigationText: next ? (named ? next.title : this.strings.back()) : "", actions: { navigation: { offered, label: next ? (this.upDestination.zoomOnly ? this.strings.zoomOut() : this.strings.up(next.title)) : this.strings.back() } } };
+			const navigation = back
+				? { navigationText: "", actions: { navigation: { offered: true, label: this.strings.backTo(back.title) } } }
+				: { navigationText: next ? (named ? next.title : this.strings.back()) : "", actions: { navigation: { offered, label: next ? (this.upDestination.zoomOnly ? this.strings.zoomOut() : this.strings.up(next.title)) : this.strings.back() } } };
+			const state = { occurrence: id, title: occurrence.title, gutter: entry.chromeState?.gutter ?? NO_GUTTER, ...navigation };
 			entry.chromeState = state;
 			entry.chromePart.update(state);
 			const cell = this.layout?.cells.get(id);
@@ -741,7 +776,7 @@ export class Workspace extends EventTarget {
 			if (on) raised.add(part); else raised.delete(part);
 			element.toggleAttribute("data-supermax-raised", raised.size > 0);
 		};
-		const chromePart = mountPart(this, header ? "header" : "navigation", chrome, state, { actions: { navigation: { run: () => this.requestUp() } }, slots: header ? { utilities } : {}, raise: raise("chrome") });
+		const chromePart = mountPart(this, header ? "header" : "navigation", chrome, state, { actions: { navigation: { run: () => (this.cells.get(occurrenceId)?.stepBack ? this.requestBack(occurrenceId) : this.requestUp()) } }, slots: header ? { utilities } : {}, raise: raise("chrome") });
 		const materialPart = mountPart(this, "cell", material, state, { raise: raise("cell") });
 		const veilPart = mountPart(this, "veil", veil, state);
 		element.supermaxPaint = { veil, foreground: [chrome, body], concealContent: () => !!this.presentation.motion?.concealContent };
@@ -1023,6 +1058,7 @@ export class Workspace extends EventTarget {
 	}
 
 	destroy() {
+		this.destroyed = true;
 		if (this.modal) this.closeModal("destroyed");
 		this.notices?.clear();
 		this.dividers?.clear();
