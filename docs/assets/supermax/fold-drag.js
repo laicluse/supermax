@@ -126,7 +126,8 @@ export class FoldDrag {
 		if (this.settling) return;
 		this.detach();
 		if (!this.active) { this.controller.drag = null; return; }
-		if (open && !this.workspace.askToShow(this.record.occurrence, this.trial.closed)) open = false;
+		const { occurrence, axis } = this.record;
+		if (open && !this.workspace.askToShow(occurrence, this.trial.closed, () => this.controller.open(occurrence, axis))) open = false;
 		this.settling = true;
 		if (open) {
 			this.visible = new Set([...this.controller.entries].filter(([, { occurrence, axis }]) => {

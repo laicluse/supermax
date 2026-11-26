@@ -19,6 +19,7 @@ const files = [
 	"test/retention.test.js",
 	"test/chain-scroll.test.js",
 	"test/grow-on-focus-browser.test.js",
+	"test/step-back-browser.test.js",
 	"test/cell-strip.test.js",
 	"test/serve-demo.test.js",
 ];

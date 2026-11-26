@@ -46,6 +46,7 @@ export function validateDestinations(destinations, { minViewportHeight, chrome =
 		for (const reason of growthProblems(definition)) problems.push({ destination: id, reason });
 		if (destinations[id].header != null && destinations[id].header !== "title") problems.push({ destination: id, reason: "invalid-header" });
 		if (destinations[id].menu != null && destinations[id].menu !== true && destinations[id].menu !== "exact") problems.push({ destination: id, reason: "invalid-menu" });
+		if (destinations[id].back != null && typeof destinations[id].back !== "boolean") problems.push({ destination: id, reason: "invalid-back" });
 		for (const reason of overflowProblems(definition, definition.min)) problems.push({ destination: id, reason });
 		if (isSplit(definition) && definition.overflow?.mode === "fold") problems.push({ destination: id, reason: "folding-split" });
 	}

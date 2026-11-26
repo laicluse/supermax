@@ -123,6 +123,7 @@ export function validateSplit(model, definitionId, parentOccurrence) {
 		if (!rowDefinition) problems.push("unknown-row-destination");
 		if (rowDefinition && isSplit(rowDefinition)) problems.push("split-row");
 		if (rowDefinition && isBesideSplit(rowDefinition)) problems.push("beside-split-on-row");
+		if (rowDefinition?.back) problems.push("back-on-row");
 		if (rowDefinition?.aspectRatio != null && row.maxHeight === ELASTIC) problems.push("aspect-ratio-on-elastic-row");
 		if (seen.has(row.destination)) problems.push("duplicate-row-destination");
 		seen.add(row.destination);

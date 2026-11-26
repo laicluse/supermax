@@ -54,6 +54,9 @@
 .supermax-up-label {
 	margin-right: 0.35em;
 }
+.supermax-up-label:has(+ .supermax-up-target:empty) {
+	margin-right: 0;
+}
 .supermax-up-label svg {
 	display: block;
 	width: 12px;
