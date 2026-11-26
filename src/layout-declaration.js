@@ -59,6 +59,14 @@ export function growthProblems(declaration) {
 	return Number.isFinite(growth) && growth > 0 && !(Number.isFinite(declaration.min) && growth < declaration.min) ? [] : ["invalid-grow-on-focus"];
 }
 
+export function flagProblems(declaration) {
+	const problems = [];
+	if (declaration.header != null && declaration.header !== "title") problems.push("invalid-header");
+	if (declaration.menu != null && declaration.menu !== true && declaration.menu !== "exact") problems.push("invalid-menu");
+	if (declaration.back != null && typeof declaration.back !== "boolean") problems.push("invalid-back");
+	return problems;
+}
+
 export function canonicalJSON(value) {
 	if (Array.isArray(value)) return `[${value.map(canonicalJSON).join(",")}]`;
 	if (value && typeof value === "object") return `{${Object.keys(value).sort().map((key) => `${JSON.stringify(key)}:${canonicalJSON(value[key])}`).join(",")}}`;
@@ -74,9 +82,7 @@ function problemsOf(id, declaration) {
 	const problems = [...variantProblems(declaration), ...overflowProblems(declaration, declaration.min)];
 	if (id.includes("/")) problems.push("invalid-id");
 	if (Object.keys(declaration).some((key) => !FIELDS.has(key))) problems.push("unknown-field");
-	if (declaration.header != null && declaration.header !== "title") problems.push("invalid-header");
-	if (declaration.menu != null && declaration.menu !== true && declaration.menu !== "exact") problems.push("invalid-menu");
-	if (declaration.back != null && typeof declaration.back !== "boolean") problems.push("invalid-back");
+	problems.push(...flagProblems(declaration));
 	if (typeof declaration.title !== "string" || declaration.title.trim().length === 0) problems.push("invalid-title");
 	problems.push(...growthProblems(declaration));
 	if (declaration.rows != null) {
