@@ -203,19 +203,29 @@ test("a remote destination opens once its layout arrives, with its whole chain i
 	await openDemo([open("album:coast", "albums")]);
 	await resize([[1100, 640], [360, 640]]);
 	await page.selectOption("[data-delay]", "400");
-	await page.evaluate(() => {
-		window.__renders = 0;
-		window.supermaxDemo.frames[0].workspace.addEventListener("render", () => { window.__renders += 1; });
-	});
 	const thumb = inFrame("a", `[data-occurrence="${coast.row("people")}"] [data-destination="coast:photo:c"]`);
-	await page.locator(thumb).evaluate((element) => element.click());
-	await page.evaluate(() => { window.__renders = 0; });
-	assert.equal(await page.locator(thumb).getAttribute("aria-busy"), "true", "the control shows at once that it is waiting");
-	assert.ok(!(await state("a")).occurrences.includes(coast.photo("people", "c")), "nothing opens before the layout is known");
 	const metadataCell = inFrame("a", `[data-occurrence="${coast.metadata("people", "c")}"]`);
-	await page.waitForSelector(`${metadataCell}.is-loading`, { state: "attached" });
-	const loading = await page.locator(metadataCell).evaluate((element) => element.offsetWidth);
-	assert.ok((await state("a")).occurrences.includes(coast.history("people", "c")), "the whole default chain opens with the photo");
+	const atClick = await page.evaluate(({ thumb, metadataCell, photo, history }) => {
+		const workspace = window.supermaxDemo.frames.find((candidate) => candidate.key === "a").workspace;
+		workspace.addEventListener("render", () => { window.__renders += 1; });
+		window.__loading = null;
+		const observer = new MutationObserver(() => {
+			const cell = document.querySelector(`${metadataCell}.is-loading`);
+			if (!cell) return;
+			window.__loading = { width: cell.offsetWidth, historyOpen: workspace.navigator.state().occurrences.includes(history) };
+			observer.disconnect();
+		});
+		observer.observe(document.querySelector('.frame[data-frame="a"]'), { subtree: true, childList: true, attributes: true, attributeFilter: ["class"] });
+		const button = document.querySelector(thumb);
+		button.click();
+		window.__renders = 0;
+		return { busy: button.getAttribute("aria-busy"), photoOpen: workspace.navigator.state().occurrences.includes(photo) };
+	}, { thumb, metadataCell, photo: coast.photo("people", "c"), history: coast.history("people", "c") });
+	assert.equal(atClick.busy, "true", "the control shows at once that it is waiting");
+	assert.ok(!atClick.photoOpen, "nothing opens before the layout is known");
+	const recorded = await (await page.waitForFunction(() => window.__loading)).jsonValue();
+	const loading = recorded.width;
+	assert.ok(recorded.historyOpen, "the whole default chain opens with the photo");
 	await settle();
 	assert.equal(await page.evaluate(() => window.__renders), 1, "one render once the layout is known, also while content loads");
 	assert.equal(await page.locator(metadataCell).evaluate((element) => element.offsetWidth), loading, "the loaded cell keeps the width it opened with");
