@@ -1,5 +1,31 @@
 # Changelog
 
+## 2.1.0 (2026-11-26)
+
+2.1.0 adds a step back for a cell beside its parent, places Show beside what it brings back, and leaves the workspace's size and place to the host's own rules. A host on 2.0.0 upgrades by bumping the pin; nothing it declares changes meaning.
+
+### Added
+
+- A destination can declare `back: true`. While such a cell is the trailing cell of its chain and it and the cell it was opened from both stand in full view, the Show control's button in its leading part, chevron only, steps back: `requestBack(occurrence)` closes the cell, and the parent takes the room. A chain of such cells shows one arrow, on the last. A detail that opened by itself beside its collection used to close only when the user chose another item. Where the parent hid or folded, Show and the fold handle remain the route, and a cell that holds Show shows Show. The step back asks through `show` and reports through `up`; its accessible name is the new string `backTo`. A row cannot declare it (`back-on-row`).
+- The `show` event carries `retry()`, which repeats the request that asked: Show, a fold handle or a step back. A host that refused to ask about a draft calls it once the user agrees; calling `requestUp()` there repeated only Show.
+- A destination can declare `growOnFocus: true`. While the new Workspace option `growOnFocus` (or `setGrowOnFocus`) is on and DOM focus is inside such a cell, it grows toward its `preferred` (or toward a width given in place of `true`), and its split row toward its `preferredHeight`, and the cells around it give way for that: down to their minima, then by hiding or folding in the order a narrow window uses, a kept cell staying. It never ends smaller than without growth and closes nothing; everything returns when focus leaves, and opening a fold that only growth made ends the growth. A divider size wins, zoom suspends it, and the change animates through the presentation. Off by default.
+- A keep policy can hold only from a workspace width up: `overflow: { mode: "keep", when: { minWorkspaceWidth } }`. Below that width the cell gives way like any other, with Show as its route back, so a main menu stays on a desktop and steps aside on a phone without a second set of declarations.
+
+### Changed
+
+- The Show control stands in the first cell in view after what it brings back. Beside a fold below a kept menu it used to stand in the menu, the first cell in view, far from the fold it opens; it now stands in the cell next to the fold, where the step back stands once the folded cell fits. With nothing kept the place is unchanged.
+- The newest cell of a split row takes what the row's cells leave after their maxima, unless the user sized that cell or its split, so a title bar and a surface never stop short of the row's edge.
+- A cell that opened only because there was room closes when a resize needs that room; it used to stay and, as the newest cell, push the work out of view. A cell the user chose, a branch that holds one, and a zoomed cell stay.
+- A cell never asks more width than the workspace has: a minimum wider than the workspace resolves to the workspace width and the content scrolls inside the cell, where a phone used to scroll the workspace sideways.
+
+### Fixed
+
+- A host's own rules size and place the workspace: the stylesheet's `position`, `height` and `min-height` defaults carry no specificity. A host that set its height with a class of its own lost to the stylesheet when it loaded later, and the height then followed the content and grew with every resize.
+- Choosing between a row's forms counts the workspace width where the layout does, so a chart on a phone keeps its fuller form when it fits instead of falling back to its summary strip.
+- A modal closes only on a primary click that starts and ends on its backdrop; a right click or a press the browser cancelled used to throw away the form in it.
+
+2.1.0 is the `master` branch on GitHub at the commit the README names. It is not on the npm registry; install it from a git reference.
+
 ## 2.0.0 (2026-11-20)
 
 Start with [Migrating from v1 to v2](docs/migrating-to-v2.md). A dependency version bump alone does not migrate the host's behavior, and adopting the new Workspace is a separate choice.
@@ -11,12 +37,6 @@ Start with [Migrating from v1 to v2](docs/migrating-to-v2.md). A dependency vers
 
 ### Workspace composition
 
-- The newest cell of a split row takes what the row's cells leave after their maxima, unless the user sized that cell or its split, so a title bar and a surface never stop short of the row's edge.
-- A destination can declare `growOnFocus: true`. While the new Workspace option `growOnFocus` (or `setGrowOnFocus`) is on and DOM focus is inside such a cell, it grows toward its `preferred` (or toward a width given in place of `true`), and its split row toward its `preferredHeight`, and the cells around it give way for that: down to their minima, then by hiding or folding in the order a narrow window uses, a kept cell staying. It never ends smaller than without growth and closes nothing; everything returns when focus leaves, and opening a fold that only growth made ends the growth. A divider size wins, zoom suspends it, and the change animates through the presentation. Off by default.
-- A destination can declare `back: true`. While such a cell is the trailing cell of its chain and it and the cell it was opened from both stand in full view, the Show control's button in its leading part, chevron only, steps back: `requestBack(occurrence)` closes the cell, and the parent takes the room. A chain of such cells shows one arrow, on the last. A detail that opened by itself beside its collection used to close only when the user chose another item. Where the parent hid or folded, Show and the fold handle remain the route, and a cell that holds Show shows Show. The step back asks through `show` and reports through `up`; its accessible name is the new string `backTo`. A row cannot declare it (`back-on-row`).
-- The Show control stands in the first cell in view after what it brings back. Beside a fold below a kept menu it used to stand in the menu, the first cell in view, far from the fold it opens; it now stands in the cell next to the fold, where the step back stands once the folded cell fits. With nothing kept the place is unchanged.
-- A host's own rules size and place the workspace: the stylesheet's `position`, `height` and `min-height` defaults carry no specificity. A host that set its height with a class of its own lost to the stylesheet when it loaded later, and the height then followed the content and grew with every resize.
-- The `show` event carries `retry()`, which repeats the request that asked: Show, a fold handle or a step back. A host that refused to ask about a draft calls it once the user agrees; calling `requestUp()` there repeated only Show.
 - A destination can declare `aspectRatio` for content that scales with its width, such as a chart. A split row holding it asks no more height than the content shows at its cell's width, so a narrower window or a cell opened beside it gives that row's height to the elastic row below. The ratio is a second ceiling beside `maxHeight` and never goes below `minHeight`; the layout row reports it as `fitHeight`. `aspectInset` keeps a toolbar or padding that does not scale out of the ratio, and `setAspectRatio` switches both when the content changes form. See [Aspect ratio](README.md#aspect-ratio).
 - A server that declares a destination again after `setVariants` or `setAspectRatio` changed it is compared with its own earlier declaration, and new splits in that response are checked against the runtime value. The repeat used to fail with `declaration-mismatch`.
 

@@ -1,6 +1,6 @@
 {
   "name": "@laicluse/supermax",
-  "version": "2.0.0",
+  "version": "2.1.0",
   "description": "Framework-free workspace shell with branching rows, folds, a Show control, dividers, loading cells, modals and notices, on top of a cell allocator and an animated cell strip.",
   "type": "module",
   "license": "MIT",
