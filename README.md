@@ -4,10 +4,10 @@ Framework-free cell layout and navigation primitives for workspaces that open co
 
 ## Install
 
-The package is not on the npm registry. Install it from GitHub and pin a commit of `master`, for example the 2.0.0 merge:
+The package is not on the npm registry. Install it from GitHub and pin a commit of `master`, for example the 2.1.0 release:
 
 ```bash
-corepack pnpm add github:laicluse/supermax#beaf89b
+corepack pnpm add github:laicluse/supermax#4cac16e
 ```
 
 Any package manager that installs from a git reference works the same way.
