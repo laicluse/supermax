@@ -98,6 +98,10 @@ Preserve choices, defaults, pending/result feedback, errors and recovery when mo
 
 ## The contract per click
 
+**Start with the control's owner.** A menu choice normally opens a direct child of the occurrence that presents it, replacing the previous child and its descendants. For each step in the open path, including on reload or from history, ask why the parent provides access to the next destination. Application actions can change shared data anywhere. If an action also navigates, apply the same ownership check. An optional default can continue the selected branch through `ifRoom`. A labeled shortcut can open its destination as a child of the occurrence that offers it.
+
+**Check the open path.** On a wide and a narrow viewport, switch between two menu choices and compare the Navigator's open path with the expected hierarchy after click, reload, and browser Back and Forward. Verify that the selected child opens under the owner and the previous branch closes. Include any defaults and shortcuts in the check.
+
 1. **Pass the clicked element as `origin`** to each click-driven `navigate`, `sync` and `depart`; for `apply`, put `origin` in the open action, not the options. A replaced cell folds away towards the new click, compared with the click that opened it; without an origin it folds on its far edge. Pass `origin: null` when nothing was clicked (a route change, a keyboard shortcut, a timer).
 2. **Pass `from` to `openModal`**: the occurrence the modal belongs to, so a frustum links them. `from: null` for a modal that belongs to no cell.
 3. **Know the layout before you open.** A split declares `rows` instead of width; its width follows what is open in its rows. Every destination the page does not embed needs its layout declaration registered first: `navigator.register(await readLayout(response))`, from a `HEAD` the server answers with a `Supermax-Layout` header.
