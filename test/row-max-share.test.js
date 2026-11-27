@@ -182,6 +182,7 @@ test("forms with minima of their own still admit every size: a form its share ca
 	assert.equal(heights(model)[0], 80);
 	assert.equal(model.layout().cells.get("card/chart").rowVariant, "compact");
 	assertEverySizeAdmitted(row, "minima of their own");
+	assertEverySizeAdmitted({ ...row, maxHeight: "50%" }, "minima of their own at half");
 });
 
 test("a fallback that ends at a share starts lowest among the shared forms", () => {

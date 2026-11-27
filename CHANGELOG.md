@@ -8,6 +8,7 @@
 
 ### Fixed
 
+- A size the user set below a larger form's own minimum keeps the smaller form at that size. A form that declares a `min` or `minHeight` above its owner's used to pull the cell or row up to that minimum, so a divider could not reach the sizes of the smaller form.
 - A form of a split row that starts above the height its `aspectRatio` fits is no longer chosen; the row keeps a smaller form.
 - A row's `resizeMax` leaves out a form that waits for more width than the row has, so the divider ends where the forms that are there end.
 - A row size stored above the row's ceiling no longer makes that row fold when another row grows on focus.

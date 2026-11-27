@@ -24,7 +24,7 @@ export function shareHeight(value, extent) {
 	return Math.floor(Number(whole + decimals) * extent / 10 ** (decimals.length + 2));
 }
 
-const startOf = (owner, form) => Math.max(form.minHeight ?? owner.minHeight, form.when?.minHeight ?? 0);
+const startOf = (owner, form, axis = "height") => axis === "height" ? Math.max(form.minHeight ?? owner.minHeight, form.when?.minHeight ?? 0) : Math.max(form.min ?? owner.min, form.when?.minWidth ?? 0);
 
 // allow-comment: a form that waits for a height its row cannot reach is not there: its ceiling, the share of the split or the height its drawing fits, lies under where the form starts. Only the last form, the fallback, always stands.
 export function outOfReach(owner, form, { share = null, fit = null } = {}) {
@@ -239,6 +239,9 @@ export function selectVariants(model, allocate) {
 			const shown = choice.axis === "height" ? row?.inView && !row.folded : cell?.full;
 			if (shown && !matches(selected[index], choice.axis === "height" ? row.width : cell.width, choice.axis === "height" ? row.height : cell.height)) return false;
 			if (shown && choice.axis === "height" && outOfReach(choice.owner, selected[index], { share: row.shareHeight, fit: row.fitHeight })) return false;
+			// allow-comment: a size the user set is a choice of form as well: a form that starts above it would pull the cell or row up to its own start, so it stands aside for the form that admits the size. A zoomed cell takes its width from the zoom, not from that size, and keeps its forms.
+			const stored = choice.axis === "width" && model.zoomed === choice.occurrence.id ? null : model.sizeOf(choice.occurrence.id, choice.axis);
+			if (shown && stored !== null && selected[index] !== choice.owner.variants.at(-1) && stored < startOf(choice.owner, selected[index], choice.axis)) return false;
 		}
 		const rank = [Number(layout.overflowX || layout.overflow), ...occurrences.toReversed().map((occurrence) => {
 			const cell = layout.cells.get(occurrence.id);
