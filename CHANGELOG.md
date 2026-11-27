@@ -1,5 +1,18 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- A split row can declare its `maxHeight` as a share of its split, a percentage above 0 and up to 100 with at most four decimals, such as `maxHeight: "50%"`. The row takes at most that part of the height the split's rows have together, never below its `minHeight`; its `preferredHeight` and the divider stay within it, a size dragged above it stays stored and returns when the split grows, and the layout row reports the ceiling in pixels as `maxHeight` and the share itself as `shareHeight`. It combines with an `aspectRatio`, the lower ceiling holding, and with row `variants`: the forms that end at a share use the same one (`variant-shares-differ`), and the forms in pixels close their own range up to where the shared form starts (`variant-gap`). A share does not make a row elastic, and a cell's width refuses a percentage. Existing declarations keep their meaning.
+
+### Fixed
+
+- A form of a split row that starts above the height its `aspectRatio` fits is no longer chosen; the row keeps a smaller form.
+- A row's `resizeMax` leaves out a form that waits for more width than the row has, so the divider ends where the forms that are there end.
+- A row size stored above the row's ceiling no longer makes that row fold when another row grows on focus.
+- `validateDeclarationSet` refuses a row `preferredHeight` that is not a positive number within the row's bounds, as the navigator already did.
+
 ## 2.1.0 (2026-11-26)
 
 2.1.0 adds a step back for a cell beside its parent, places Show beside what it brings back, and leaves the workspace's size and place to the host's own rules. A host on 2.0.0 upgrades by bumping the pin; nothing it declares changes meaning.

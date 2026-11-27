@@ -4,6 +4,38 @@
 import { foldSize } from "./overflow.js";
 const WIDTH = ["min", "max", "preferred"];
 const HEIGHT = ["minHeight", "maxHeight", "preferredHeight"];
+const SHARE = /^(\d{1,3}(?:\.\d{1,4})?)%$/;
+
+// allow-comment: a split row may cap its height at a share of its split, written as a percentage such as "50%"; a cell's width never is one.
+export function shareOf(value) {
+	const match = typeof value === "string" ? SHARE.exec(value) : null;
+	const percent = match ? Number(match[1]) : null;
+	return percent !== null && percent > 0 && percent <= 100 ? percent : null;
+}
+
+// allow-comment: a share is a ceiling in pixels only once the split's height is known; until then it bounds nothing. It never falls below the row's own minimum. The percentage is taken as the whole number its digits spell over a power of ten, so 58% of 400 is 232 and 49.9999999% of 400 is 199: multiplying the fraction itself would land a pixel off.
+export function rowCeiling(value, floor, extent = null) {
+	if (shareOf(value) === null) return value;
+	return extent === null ? Infinity : Math.max(floor, shareHeight(value, extent));
+}
+
+export function shareHeight(value, extent) {
+	const [whole, decimals = ""] = SHARE.exec(value)[1].split(".");
+	return Math.floor(Number(whole + decimals) * extent / 10 ** (decimals.length + 2));
+}
+
+const startOf = (owner, form) => Math.max(form.minHeight ?? owner.minHeight, form.when?.minHeight ?? 0);
+
+// allow-comment: a form that waits for a height its row cannot reach is not there: its ceiling, the share of the split or the height its drawing fits, lies under where the form starts. Only the last form, the fallback, always stands.
+export function outOfReach(owner, form, { share = null, fit = null } = {}) {
+	if (!owner.variants || form === owner.variants.at(-1)) return false;
+	const ceiling = Math.min(share !== null && shareOf(form.maxHeight ?? owner.maxHeight) !== null ? share : Infinity, fit ?? Infinity);
+	return ceiling < startOf(owner, form);
+}
+
+export function sharedBy(owner) {
+	return (owner.variants ?? [owner]).map((form) => form.maxHeight ?? owner.maxHeight).find((value) => shareOf(value) !== null) ?? null;
+}
 
 export function variantProblems(owner, axis = "width") {
 	if (owner.variants == null) return [];
@@ -11,14 +43,15 @@ export function variantProblems(owner, axis = "width") {
 	if (!Array.isArray(variants) || variants.length < 2) return ["invalid-variants"];
 	const fields = axis === "width" ? WIDTH : HEIGHT;
 	const [minimum, maximum, preferred] = fields;
+	const open = (value) => value === "*" || (axis === "height" && shareOf(value) !== null);
 	const ids = new Set();
 	for (const [index, variant] of variants.entries()) {
 		if (!variant || typeof variant !== "object" || typeof variant.id !== "string" || !/^[a-z][a-z0-9-]*$/.test(variant.id) || ids.has(variant.id)) return ["invalid-variant-id"];
 		ids.add(variant.id);
 		if (Object.keys(variant).some((key) => !["id", "when", ...fields].includes(key))) return ["invalid-variant-field"];
 		const bounds = { ...owner, ...variant };
-		if (!Number.isFinite(bounds[minimum]) || bounds[minimum] <= 0 || (bounds[maximum] !== "*" && (!Number.isFinite(bounds[maximum]) || bounds[maximum] < bounds[minimum]))) return ["invalid-variant-size"];
-		if ((bounds[maximum] === "*" && bounds[preferred] == null) || (bounds[preferred] != null && (!Number.isFinite(bounds[preferred]) || bounds[preferred] < bounds[minimum] || (bounds[maximum] !== "*" && bounds[preferred] > bounds[maximum])))) return ["invalid-variant-preferred"];
+		if (!Number.isFinite(bounds[minimum]) || bounds[minimum] <= 0 || (!open(bounds[maximum]) && (!Number.isFinite(bounds[maximum]) || bounds[maximum] < bounds[minimum]))) return ["invalid-variant-size"];
+		if ((bounds[maximum] === "*" && bounds[preferred] == null) || (bounds[preferred] != null && (!Number.isFinite(bounds[preferred]) || bounds[preferred] < bounds[minimum] || (!open(bounds[maximum]) && bounds[preferred] > bounds[maximum])))) return ["invalid-variant-preferred"];
 		if (bounds[minimum] <= foldSize(owner)) return ["invalid-variant-fold"];
 		if (axis === "height" && (bounds[maximum] === "*") !== (owner[maximum] === "*")) return ["variant-changes-elastic-row"];
 		if (Number.isFinite(bounds[maximum]) && (variant.when?.[axis === "width" ? "minWidth" : "minHeight"] ?? 0) > bounds[maximum]) return ["unreachable-variant"];
@@ -30,30 +63,47 @@ export function variantProblems(owner, axis = "width") {
 	}
 	// allow-comment: a user drags a divider through every size between the smallest and the largest form, so the forms together must admit all of them; a size no form admits would make the cell jump over it.
 	const [condition, across] = axis === "width" ? ["minWidth", "minHeight"] : ["minHeight", "minWidth"];
+	const shared = (variant) => axis === "height" && shareOf({ ...owner, ...variant }[maximum]) !== null;
+	// allow-comment: forms that end at a share reach as far as the split allows, so two different shares would let the smaller one strand below the form that follows it.
+	if (new Set(variants.filter(shared).map((variant) => shareOf({ ...owner, ...variant }[maximum]))).size > 1) return ["variant-shares-differ"];
 	const gapped = (forms) => {
-		const admitted = forms.map((variant) => {
+		const start = (variant) => Math.max({ ...owner, ...variant }[minimum], variant.when?.[condition] ?? 0);
+		const admitted = forms.filter((variant) => !shared(variant)).map((variant) => {
 			const bounds = { ...owner, ...variant };
-			return [Math.max(bounds[minimum], variant.when?.[condition] ?? 0), bounds[maximum] === "*" ? Infinity : bounds[maximum]];
+			return [start(variant), bounds[maximum] === "*" ? Infinity : bounds[maximum]];
 		}).sort((first, second) => first[0] - second[0]);
+		const starts = forms.filter(shared).map(start);
+		// allow-comment: the fallback is where a row ends up when nothing else is in reach, so among the forms that end at a share it starts lowest; a larger form below it would leave the sizes between them unadmitted.
+		if (shared(variants.at(-1)) && forms.includes(variants.at(-1)) && start(variants.at(-1)) > Math.min(...starts)) return true;
+		if (admitted.length === 0) return false;
 		let reach = admitted[0][1];
 		for (const [from, until] of admitted.slice(1)) {
 			if (Math.ceil(from) > Math.floor(reach) + 1) return true;
 			reach = Math.max(reach, until);
 		}
-		return false;
+		// allow-comment: a share is a ceiling the split's height sets, anywhere from nothing upward. The forms that end at one cover from the lowest of their starts to that ceiling, so the forms in pixels must close their own range and that start must lie inside it; then no height of the split leaves a size between the forms unadmitted.
+		return starts.length > 0 && (Math.min(...starts) < admitted[0][0] || Math.ceil(Math.min(...starts)) > Math.floor(reach) + 1);
 	};
-	// allow-comment: a form that also waits for room on the other axis is not always there, so the forms without such a condition must close the range by themselves as well.
-	if (gapped(variants) || gapped(variants.filter((variant) => variant.when?.[across] == null))) return ["variant-gap"];
+	// allow-comment: a form that also waits for room on the other axis is not always there, so the forms that are there must close the range by themselves at every such threshold, from none of them up to all.
+	const thresholds = [0, ...variants.map((variant) => variant.when?.[across] ?? 0)];
+	if (thresholds.some((threshold) => gapped(variants.filter((variant) => (variant.when?.[across] ?? 0) <= threshold)))) return ["variant-gap"];
 	return [];
 }
 
-export function resizeBounds(owner, axis = "width") {
+// allow-comment: a row's divider travels only through the forms that are there: a form that waits for a width the row lacks, or for a height its share or its drawing cannot give, takes no part. Both ends come from that same set, and the fit height caps each form above its own minimum.
+export function resizeBounds(owner, axis = "width", { extent = null, across = null, fit = null } = {}) {
 	const [minimum, maximum] = axis === "width" ? WIDTH : HEIGHT;
-	const forms = owner.variants ?? [owner];
-	return {
-		min: Math.min(...forms.map((form) => form[minimum] ?? owner[minimum])),
-		max: Math.max(...forms.map((form) => (form[maximum] ?? owner[maximum]) === "*" ? Infinity : form[maximum] ?? owner[maximum])),
+	const share = axis === "height" && extent !== null && sharedBy(owner) !== null ? shareHeight(sharedBy(owner), extent) : null;
+	const absent = (form) => axis === "height" && form !== owner.variants?.at(-1) && ((across !== null && (form.when?.minWidth ?? 0) > across) || outOfReach(owner, form, { share, fit }));
+	const forms = (owner.variants ?? [owner]).filter((form) => !absent(form));
+	const floor = (form) => form[minimum] ?? owner[minimum];
+	const ceiling = (form) => {
+		const value = form[maximum] ?? owner[maximum];
+		if (value === "*") return Infinity;
+		const own = axis === "height" ? rowCeiling(value, floor(form), extent) : value;
+		return fit === null ? own : Math.max(floor(form), Math.min(own, fit));
 	};
+	return { min: Math.min(...forms.map(floor)), max: Math.max(...forms.map(ceiling)) };
 }
 
 // allow-comment: a smaller form reaches up to where the next form takes over, so a divider can stop at every size between them. Allocation gives it no more than it prefers; the room above that is the user's to drag into.
@@ -61,7 +111,7 @@ function formOf(owner, variant, axis) {
 	const form = { ...owner, ...variant };
 	const [maximum, preferred] = axis === "width" ? ["max", "preferred"] : ["maxHeight", "preferredHeight"];
 	if (variant === owner.variants[0] || form[maximum] === "*" || form[preferred] == null) return form;
-	return { ...form, [maximum]: Math.min(form[maximum], form[preferred]), reach: form[maximum] };
+	return { ...form, [maximum]: shareOf(form[maximum]) === null ? Math.min(form[maximum], form[preferred]) : form[preferred], reach: form[maximum] };
 }
 
 // allow-comment: a cell never asks more width than the workspace has: on a screen narrower than its minimum it takes the workspace and its content scrolls inside it, so the workspace itself does not scroll sideways.
@@ -188,6 +238,7 @@ export function selectVariants(model, allocate) {
 			const row = layout.rows.get(choice.occurrence.id);
 			const shown = choice.axis === "height" ? row?.inView && !row.folded : cell?.full;
 			if (shown && !matches(selected[index], choice.axis === "height" ? row.width : cell.width, choice.axis === "height" ? row.height : cell.height)) return false;
+			if (shown && choice.axis === "height" && outOfReach(choice.owner, selected[index], { share: row.shareHeight, fit: row.fitHeight })) return false;
 		}
 		const rank = [Number(layout.overflowX || layout.overflow), ...occurrences.toReversed().map((occurrence) => {
 			const cell = layout.cells.get(occurrence.id);
