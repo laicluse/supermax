@@ -13,6 +13,7 @@
 - A row's `resizeMax` leaves out a form that waits for more width than the row has, so the divider ends where the forms that are there end.
 - A row size stored above the row's ceiling no longer makes that row fold when another row grows on focus.
 - `validateDeclarationSet` refuses a row `preferredHeight` that is not a positive number within the row's bounds, as the navigator already did.
+- A zoom no longer folds a cell after the zoomed one that showed before it. The cells the zoom hides used to count toward the room the chain asked for, and a neighbour's preference could fold a cell after the zoomed one; now the cells from the zoomed one on share the whole width, and one folds only once their minima no longer fit.
 
 ## 2.1.0 (2026-11-26)
 

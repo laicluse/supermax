@@ -298,15 +298,18 @@ function activeRow(model, split, roots) {
 
 // allow-comment: room gives way in reading order, in one walk from the left: a cell before a split hides first, then the split gives its widest row up one cell at a time from the row's left, then the split itself hides; the newest cell always stays. The walk first makes room for what every cell asks (its preference, or its minimum without one), folding and hiding by each cell's overflow mode; only when the cells that cannot give way ask more than there is does it settle for the minima instead. What is left shares the width with the demand that walk settled on.
 function settleChain(model, cells, width, protectedIndex, demandOf, laddered, held = new Set()) {
-	const fold = foldPass(model, cells, width, demandOf, held);
+	// allow-comment: a zoom hides every cell before its anchor, kept ones too, so those ask for no room: the cells from the anchor on settle among themselves.
+	const anchors = zoomAnchors(model);
+	const zoomedFrom = Math.max(0, cells.findIndex((occurrence) => anchors.has(occurrence.id)));
+	const fold = foldPass(model, cells.slice(zoomedFrom), width, demandOf, held);
 	const units = cells.map((occurrence, index) => {
 		const definition = definitionFor(model, occurrence);
 		const own = boundsOf(model, occurrence);
 		const steps = fold.has(occurrence.id) ? [fold.get(occurrence.id)] : laddered ? own.steps : [demandOf(model, occurrence)];
-		return { occurrence, definition, own, steps, level: 0, hidden: false, keep: overflowMode(definition, model.size.width) === "keep" || fold.has(occurrence.id) || held.has(occurrence.id) || index >= protectedIndex };
+		return { occurrence, definition, own, steps, level: 0, hidden: index < zoomedFrom, keep: overflowMode(definition, model.size.width) === "keep" || fold.has(occurrence.id) || held.has(occurrence.id) || index >= protectedIndex };
 	});
 	const demand = (unit) => unit.steps[unit.level];
-	let total = units.reduce((sum, unit) => sum + demand(unit), 0);
+	let total = units.reduce((sum, unit) => sum + (unit.hidden ? 0 : demand(unit)), 0);
 	for (let index = 0; index < units.length && total > width; ) {
 		const unit = units[index];
 		if (unit.hidden) {
@@ -418,7 +421,8 @@ function allocateChain(model, cells, width) {
 	const unfolded = unfoldedIn(model, cells);
 	let settled = unfolded.size ? settleChain(model, cells, shown, protectedIndex, askDemand, false, unfolded) : null;
 	if (!settled || settled.total > shown) settled = settleChain(model, cells, shown, protectedIndex, askDemand, false);
-	if (settled.total > shown) settled = settleChain(model, cells, shown, protectedIndex, minDemand, true);
+	// allow-comment: a zoom only gives room, so a cell after its anchor never folds for another cell's preference; it folds once the minima no longer fit.
+	if (settled.total > shown || (anchor && settled.fold.size)) settled = settleChain(model, cells, shown, protectedIndex, minDemand, true);
 	const { fold, units, floorOf } = settled;
 	const split = chainRootOf(model, cells[0]).parent;
 	const sizedRow = !!split && model.sizeOf(split, "width") !== null;
